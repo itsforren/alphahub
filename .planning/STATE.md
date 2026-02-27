@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 3 in progress: Backend Infrastructure migration.
+**Current focus:** Phase 3 complete. Ready for Phase 4 (Stripe Migration) and Phase 5 (Frontend Deployment) -- can run in parallel.
 
 ## Current Position
 
-Phase: 3 of 6 (Backend Infrastructure)
-Plan: 3 of 5 in Phase 3 (Storage migration -- public buckets complete, agreements pending)
-Status: In progress
-Last activity: 2026-02-27 -- Completed 03-03-PLAN.md (Storage Migration)
+Phase: 3 of 6 (Backend Infrastructure) -- COMPLETE
+Plan: 5 of 5 in Phase 3
+Status: Phase 3 complete
+Last activity: 2026-02-27 -- Completed 03-05-PLAN.md (Backend Deployment)
 
-Progress: [###############.....] 75%
+Progress: [██████████..........] 50% (3 of 6 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: ~30min
-- Total execution time: ~4.5 hours
+- Total plans completed: 11
+- Average duration: ~28min
+- Total execution time: ~5 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [###############.....] 75%
 |-------|-------|-------|----------|
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
-| 03-backend-infrastructure | 3/5 | 32min | ~11min |
+| 03-backend-infrastructure | 5/5 | ~55min | ~11min |
 
 **Recent Trend:**
-- Last 5 plans: 02-03 (~15min), 03-01 (2min), 03-02 (3min), 03-03 (27min)
-- Trend: 03-03 involved live file migration across projects; 03-04/05 will need secrets + deployment
+- Last 5 plans: 03-01 (2min), 03-02 (3min), 03-03 (27min), 03-04 (14min), 03-05 (9min)
+- Trend: Phase 3 was fast (infrastructure work, no complex data migration)
 
 *Updated after each plan completion*
 
@@ -78,6 +78,10 @@ Recent decisions affecting current work:
 - [03-03]: chat-attachments bucket kept as public per user decision (not changed to private)
 - [03-03]: Old project service role key inaccessible via Management API -- agreements migration deferred
 - [03-03]: 54.7 MB wav file exceeds free tier 50MB upload limit -- will migrate after Pro upgrade
+- [03-05]: Free tier caps at 100 edge functions -- 6 remaining need Pro upgrade to deploy
+- [03-05]: Deployed functions one-by-one after bulk deploy hit free tier limit
+- [03-05]: Realtime tables were already configured by migration SQL -- no manual ADD TABLE needed
+- [03-05]: Vault stores project_url and anon_key for pg_cron job auth to edge functions
 
 ### Pending Todos
 
@@ -87,6 +91,7 @@ Recent decisions affecting current work:
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
 - **NEW**: Migrate agreements bucket files -- needs old project service role key from Supabase Dashboard or Lovable settings. Run: `OLD_SUPABASE_SERVICE_KEY="<key>" npx tsx scripts/migrate-storage.ts --bucket agreements`
 - **NEW**: Migrate oversized wav file (54.7 MB) after Pro tier upgrade. Path: media/lesson-files/1767150569935-0hry6b.wav
+- **NEW**: Deploy remaining 6 edge functions after Pro tier upgrade: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
 
 ### Blockers/Concerns
 
@@ -101,6 +106,7 @@ Recent decisions affecting current work:
 - ~~config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.~~ RESOLVED: Removed in 03-01. CLI link successful.
 - **NEW**: Agreements bucket (private) has 0 files on new project -- needs old service role key to migrate ~114 files. Only 20 are referenced by database records; rest may be old drafts/versions.
 - **NEW**: Temporary auth user `migration-temp@test.com` created on old project during investigation -- harmless but should be cleaned up during cutover/decommission.
+- **NEW**: Free tier limits edge functions to 100. Need Pro upgrade ($25/mo) to deploy remaining 6 functions. Same upgrade resolves 50MB upload limit for wav file.
 
 ## Phase 1 Inventory Files
 
@@ -114,8 +120,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-27
-Stopped at: Completed 03-03 (Storage Migration). 204/~317 files migrated from public buckets. Agreements bucket pending.
+Last session: 2026-02-27T18:19:01Z
+Stopped at: Completed 03-05 (Backend Deployment). Phase 3 complete. 100/106 functions deployed, 37 secrets, 6 cron jobs, 11 Realtime tables.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -132,3 +138,9 @@ Resume file: None
 - Agreements bucket: 0 files -- needs OLD_SUPABASE_SERVICE_KEY to migrate
 - Old project anon key hardcoded in script (for public bucket access)
 - Database file URL references still point to old project -- URL rewriting needed during cutover
+- Edge functions: 100/106 deployed (free tier limit). 6 need Pro upgrade.
+- Secrets: 37 configured (33 manual + 4 auto-set SUPABASE_*)
+- Cron jobs: 6 active via pg_cron + vault + net.http_post pattern
+- Realtime: 11 tables published (configured by migration SQL)
+- Vault secrets: project_url and anon_key stored for cron auth
+- Missing functions: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
