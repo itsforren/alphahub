@@ -31,12 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A complete secrets inventory exists listing every `Deno.env.get()` call across all 90+ edge functions with the secret name, which function uses it, and where the value lives
   4. A complete external webhook inventory exists listing every URL that must change (Stripe x2, GHL, lead sources, Fathom, MCP consumers) with old and new URL patterns
   5. A Lovable migration prompt has been created and executed to extract DB dump commands, schema details, and migration-specific instructions
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 01-01: Clone repo and audit codebase structure
-- [ ] 01-02: Create Supabase project and build secrets/webhook inventories
-- [ ] 01-03: Execute Lovable migration prompt and capture outputs
+- [ ] 01-01-PLAN.md -- Clone repo and audit codebase structure (Wave 1, autonomous)
+- [ ] 01-02-PLAN.md -- Create Supabase project and build secrets/webhook inventories (Wave 2, has checkpoint)
+- [ ] 01-03-PLAN.md -- Execute Lovable AI extraction prompts and capture outputs (Wave 2, has checkpoint)
 
 ### Phase 2: Database & Auth
 **Goal**: The new Supabase project contains all 111 tables with data, all RLS policies are verified active, all triggers and functions execute correctly, and every user can log in with their existing credentials
