@@ -12,7 +12,7 @@ This roadmap migrates AlphaHub from Lovable Cloud to a self-managed Supabase pro
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Preparation & Audit** - Clone source, create new Supabase project, inventory all secrets and external integrations
+- [x] **Phase 1: Preparation & Audit** - Clone source, create new Supabase project, inventory all secrets and external integrations
 - [ ] **Phase 2: Database & Auth** - Migrate full schema, data, RLS policies, auth users with password hashes preserved
 - [ ] **Phase 3: Backend Infrastructure** - Deploy edge functions with secrets, migrate storage buckets, enable Realtime
 - [ ] **Phase 4: Stripe Migration** - Re-point both Stripe accounts' webhooks and verify billing flow end-to-end
@@ -34,9 +34,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 01-01-PLAN.md -- Clone repo and audit codebase structure (Wave 1, autonomous)
-- [ ] 01-02-PLAN.md -- Create Supabase project and build secrets/webhook inventories (Wave 2, has checkpoint)
-- [ ] 01-03-PLAN.md -- Execute Lovable AI extraction prompts and capture outputs (Wave 2, has checkpoint)
+- [x] 01-01-PLAN.md -- Clone repo and audit codebase structure (Wave 1, autonomous)
+- [x] 01-02-PLAN.md -- Create Supabase project and build secrets/webhook inventories (Wave 2, has checkpoint)
+- [x] 01-03-PLAN.md -- Execute Lovable AI extraction prompts and capture outputs (Wave 2, has checkpoint)
 
 ### Phase 2: Database & Auth
 **Goal**: The new Supabase project contains all 111 tables with data, all RLS policies are verified active, all triggers and functions execute correctly, and every user can log in with their existing credentials
@@ -131,7 +131,7 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Preparation & Audit | 0/3 | Not started | - |
+| 1. Preparation & Audit | 3/3 | Complete ✓ | 2026-02-27 |
 | 2. Database & Auth | 0/3 | Not started | - |
 | 3. Backend Infrastructure | 0/4 | Not started | - |
 | 4. Stripe Migration | 0/2 | Not started | - |
@@ -140,4 +140,4 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-02-26*
+*Last updated: 2026-02-27*

@@ -7,11 +7,11 @@
 
 ### Preparation
 
-- [ ] **PREP-01**: Clone alpha-agent-flow repo locally and audit full codebase structure
-- [ ] **PREP-02**: Create detailed Lovable migration prompt to extract DB dump commands, schema details, edge function configs, and migration-specific instructions from Lovable
-- [ ] **PREP-03**: Create new Supabase project on supabase.com (user-owned)
-- [ ] **PREP-04**: Audit all edge functions for `Deno.env.get()` calls to build complete secrets inventory (~40+ secrets)
-- [ ] **PREP-05**: Document all external webhook URLs that need updating (Stripe x2, GHL, lead sources, Fathom, etc.)
+- [x] **PREP-01**: Clone alpha-agent-flow repo locally and audit full codebase structure
+- [x] **PREP-02**: Create detailed Lovable migration prompt to extract DB dump commands, schema details, edge function configs, and migration-specific instructions from Lovable
+- [x] **PREP-03**: Create new Supabase project on supabase.com (user-owned)
+- [x] **PREP-04**: Audit all edge functions for `Deno.env.get()` calls to build complete secrets inventory (~40+ secrets)
+- [x] **PREP-05**: Document all external webhook URLs that need updating (Stripe x2, GHL, lead sources, Fathom, etc.)
 
 ### Database Migration
 
@@ -108,11 +108,11 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PREP-01 | Phase 1 | Pending |
-| PREP-02 | Phase 1 | Pending |
-| PREP-03 | Phase 1 | Pending |
-| PREP-04 | Phase 1 | Pending |
-| PREP-05 | Phase 1 | Pending |
+| PREP-01 | Phase 1 | Complete |
+| PREP-02 | Phase 1 | Complete |
+| PREP-03 | Phase 1 | Complete |
+| PREP-04 | Phase 1 | Complete |
+| PREP-05 | Phase 1 | Complete |
 | DB-01 | Phase 2 | Pending |
 | DB-02 | Phase 2 | Pending |
 | DB-03 | Phase 2 | Pending |
@@ -167,4 +167,4 @@
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-26 after roadmap creation — all requirements mapped to phases*
+*Last updated: 2026-02-27 — Phase 1 requirements (PREP-01 through PREP-05) marked Complete*
