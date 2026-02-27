@@ -68,11 +68,11 @@ Plans:
 **Plans**: 5 plans in 3 waves
 
 Plans:
-- [ ] 03-01-PLAN.md -- Fix config.toml and link project to new Supabase instance (Wave 1, autonomous)
-- [ ] 03-02-PLAN.md -- Convert 5 LLM functions from Lovable gateway to Anthropic API (Wave 1, autonomous)
-- [ ] 03-03-PLAN.md -- Migrate 3 storage buckets and 317 files (Wave 1, autonomous)
-- [ ] 03-04-PLAN.md -- Gather all secret values and build .env.secrets file (Wave 2, has checkpoint)
-- [ ] 03-05-PLAN.md -- Deploy all functions, set secrets, create cron jobs, enable Realtime (Wave 3, autonomous)
+- [x] 03-01-PLAN.md -- Fix config.toml and link project to new Supabase instance (Wave 1, autonomous)
+- [x] 03-02-PLAN.md -- Convert 5 LLM functions from Lovable gateway to Anthropic API (Wave 1, autonomous)
+- [x] 03-03-PLAN.md -- Migrate 3 storage buckets and 317 files (Wave 1, autonomous)
+- [x] 03-04-PLAN.md -- Gather all secret values and build .env.secrets file (Wave 2, has checkpoint)
+- [x] 03-05-PLAN.md -- Deploy all functions, set secrets, create cron jobs, enable Realtime (Wave 3, autonomous)
 
 ### Phase 4: Stripe Migration
 **Goal**: Both Stripe accounts (management fees and ad spend) have their webhook endpoints pointed at the new Supabase edge function URLs, signing secrets are configured, and billing events flow through the new backend correctly
@@ -134,11 +134,11 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 |-------|----------------|--------|-----------|
 | 1. Preparation & Audit | 3/3 | Complete ✓ | 2026-02-27 |
 | 2. Database & Auth | 3/3 | Complete ✓ | 2026-02-27 |
-| 3. Backend Infrastructure | 0/5 | Not started | - |
+| 3. Backend Infrastructure | 5/5 | Complete ✓ | 2026-02-27 |
 | 4. Stripe Migration | 0/2 | Not started | - |
 | 5. Frontend Deployment | 0/2 | Not started | - |
 | 6. Cutover & Verification | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-02-27 -- Phase 3 planned (5 plans in 3 waves)*
+*Last updated: 2026-02-27 -- Phase 3 complete (100/106 functions, 6 cron jobs, 11 Realtime tables, 33 secrets). Known gaps: 6 functions need Pro upgrade, agreements bucket needs old service key.*

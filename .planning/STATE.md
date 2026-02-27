@@ -78,6 +78,10 @@ Recent decisions affecting current work:
 - [03-03]: chat-attachments bucket kept as public per user decision (not changed to private)
 - [03-03]: Old project service role key inaccessible via Management API -- agreements migration deferred
 - [03-03]: 54.7 MB wav file exceeds free tier 50MB upload limit -- will migrate after Pro upgrade
+- [03-04]: Plaid secrets removed (not in use). GHL optional URLs not set (code handles gracefully).
+- [03-04]: GHL_REDIRECT_URI points to conscious.sysconscious.com (custom domain), not Supabase URL -- no change needed
+- [03-04]: GHL OAuth tokens migrated in Phase 2, ENCRYPTION_KEY preserved, token refresh works
+- [03-04]: Google Ads OAuth: all 5 tokens present, stateless refresh pattern, no callback URLs
 - [03-05]: Free tier caps at 100 edge functions -- 6 remaining need Pro upgrade to deploy
 - [03-05]: Deployed functions one-by-one after bulk deploy hit free tier limit
 - [03-05]: Realtime tables were already configured by migration SQL -- no manual ADD TABLE needed
