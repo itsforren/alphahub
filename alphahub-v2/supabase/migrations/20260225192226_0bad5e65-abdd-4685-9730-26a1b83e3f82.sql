@@ -1,0 +1,1 @@
+ALTER TABLE public.campaigns ADD COLUMN pre_safe_mode_budget numeric NULL;

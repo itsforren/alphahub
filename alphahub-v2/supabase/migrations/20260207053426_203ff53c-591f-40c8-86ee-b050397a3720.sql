@@ -1,0 +1,1 @@
+ALTER TABLE enhanced_conversion_logs ADD COLUMN gclid text;

@@ -1,0 +1,227 @@
+@import './styles/liquid-glass.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 138 100% 42%;
+    --primary-foreground: 0 0% 2%;
+
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --alert: 0 100% 65%;
+    --alert-foreground: 0 0% 98%;
+
+    --success: 138 100% 42%;
+    --success-foreground: 0 0% 2%;
+
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 138 100% 42%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 138 100% 42%;
+    --sidebar-primary-foreground: 0 0% 2%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 0 0% 18%;
+    --sidebar-ring: 138 100% 42%;
+  }
+
+  .dark {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 138 100% 42%;
+    --primary-foreground: 0 0% 2%;
+
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --alert: 0 100% 65%;
+    --alert-foreground: 0 0% 98%;
+
+    --success: 138 100% 42%;
+    --success-foreground: 0 0% 2%;
+
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 138 100% 42%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-montserrat antialiased;
+    line-height: 1.7;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-montserrat font-bold tracking-tight;
+    line-height: 1.2;
+  }
+
+  p {
+    line-height: 1.8;
+  }
+}
+
+@layer components {
+  /* Note: .glass-card is defined in liquid-glass.css */
+
+  .glass-card-hover {
+    @apply bg-card/60 backdrop-blur-xl border border-border/50 rounded-xl transition-all duration-300 hover:border-primary/50 hover:shadow-glow;
+  }
+
+  .frosted-card {
+    @apply relative bg-card/40 backdrop-blur-2xl border border-white/10 rounded-2xl;
+    background: linear-gradient(135deg, hsl(var(--card) / 0.6) 0%, hsl(var(--card) / 0.3) 100%);
+    box-shadow: 
+      0 8px 32px hsl(0 0% 0% / 0.3),
+      inset 0 1px 0 hsl(var(--foreground) / 0.05);
+  }
+
+  .frosted-card-hover {
+    @apply frosted-card transition-all duration-300 cursor-pointer;
+  }
+
+  .frosted-card-hover:hover {
+    @apply border-primary/30;
+    transform: translateY(-2px);
+    box-shadow: 
+      0 12px 40px hsl(0 0% 0% / 0.4),
+      0 0 30px hsl(var(--primary) / 0.15),
+      inset 0 1px 0 hsl(var(--foreground) / 0.08);
+  }
+
+  .glow-text {
+    @apply text-primary drop-shadow-glow;
+  }
+
+  .gradient-border {
+    @apply relative before:absolute before:inset-0 before:rounded-xl before:p-[1px] before:bg-gradient-to-r before:from-primary/50 before:via-transparent before:to-primary/50;
+  }
+
+  .btn-hero {
+    @apply px-8 py-4 text-lg font-bold rounded-xl transition-all duration-300 transform hover:scale-105;
+  }
+
+  .btn-hero-primary {
+    @apply btn-hero bg-primary text-primary-foreground shadow-glow hover:shadow-glow-lg;
+  }
+
+  .btn-hero-secondary {
+    @apply btn-hero bg-secondary border border-border text-foreground hover:border-primary/50 hover:bg-secondary/80;
+  }
+
+  .section-padding {
+    @apply py-24 md:py-36 px-4 md:px-8;
+  }
+
+  .section-divider {
+    @apply w-full h-px bg-gradient-to-r from-transparent via-border to-transparent;
+  }
+
+  .container-custom {
+    @apply max-w-7xl mx-auto;
+  }
+}
+
+@layer utilities {
+  .shadow-glow {
+    box-shadow: 0 0 30px hsl(var(--primary) / 0.3), 0 0 60px hsl(var(--primary) / 0.1);
+  }
+
+  .shadow-glow-lg {
+    box-shadow: 0 0 50px hsl(var(--primary) / 0.4), 0 0 100px hsl(var(--primary) / 0.2);
+  }
+
+  .shadow-glow-sm {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
+  }
+
+  .drop-shadow-glow {
+    filter: drop-shadow(0 0 10px hsl(var(--primary) / 0.5));
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground via-primary to-foreground;
+  }
+
+  .bg-gradient-dark {
+    background: linear-gradient(180deg, hsl(0 0% 4%) 0%, hsl(0 0% 7%) 100%);
+  }
+
+  .bg-gradient-radial {
+    background: radial-gradient(ellipse at center, hsl(0 0% 10%) 0%, hsl(0 0% 4%) 70%);
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 30px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 50px hsl(var(--primary) / 0.5);
+    }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+}
