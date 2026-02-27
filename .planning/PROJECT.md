@@ -48,6 +48,9 @@ All existing functionality continues working after migration — no lost data, n
 - **Auth**: Email/password + TOTP MFA only (no Google OAuth despite initial assumption). Research confirmed no `signInWithOAuth` calls in codebase.
 - **Scale**: 111 database tables, 90+ edge functions, 40+ secrets, 3 storage buckets, 8 Realtime components.
 - **Google Ads API**: Conversion tracking integration exists and must be preserved.
+- **Lovable migration guide**: Official docs recommend applying `supabase/migrations/` files in chronological order (NOT pg_dump). Data via CSV export/import. See `.planning/research/LOVABLE_MIGRATION_GUIDE.md` for full instructions.
+- **Frontend build**: `npm run build` → `dist/`, Node 22, env vars: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SUPABASE_PROJECT_ID`.
+- **Post-migration**: Changes in Lovable will NOT sync after migration. All development moves to Claude Code.
 
 ## Constraints
 
