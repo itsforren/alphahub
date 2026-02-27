@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 2 COMPLETE. Ready for Phase 3: Backend Infrastructure.
+**Current focus:** Phase 3 in progress: Backend Infrastructure migration.
 
 ## Current Position
 
-Phase: 2 of 6 (Database & Auth) -- COMPLETE
-Plan: 3 of 3 in Phase 2 (all complete)
-Status: Phase 2 complete
-Last activity: 2026-02-27 -- Completed 02-03 (Auth Login Test & RLS Verification)
+Phase: 3 of 6 (Backend Infrastructure)
+Plan: 1 of 5 in Phase 3 (config fix & CLI link complete)
+Status: In progress
+Last activity: 2026-02-27 -- Completed 03-01-PLAN.md (Config Fix & CLI Link)
 
-Progress: [######..............] 33%
+Progress: [#######.............] 37%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~40min
+- Total plans completed: 7
+- Average duration: ~35min
 - Total execution time: ~4 hours
 
 **By Phase:**
@@ -29,10 +29,11 @@ Progress: [######..............] 33%
 |-------|-------|-------|----------|
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
+| 03-backend-infrastructure | 1/5 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 01-02 (7min), 02-01 (~120min), 02-02 (~90min), 02-03 (~15min)
-- Trend: Phase 2 was significantly longer due to Lovable Cloud connectivity workarounds
+- Last 5 plans: 02-01 (~120min), 02-02 (~90min), 02-03 (~15min), 03-01 (2min)
+- Trend: 03-01 was a quick config fix. Expect 03-02+ to be longer (secrets, function deployment)
 
 *Updated after each plan completion*
 
@@ -69,6 +70,8 @@ Recent decisions affecting current work:
 - [01-02]: Stripe webhook secrets will regenerate when new endpoints created in Stripe Dashboard.
 - [01-02]: config.toml `schedule` keys incompatible with Supabase CLI v2.75.0 -- link deferred to Phase 3.
 - [01-02]: 17 inbound webhook endpoints need URL updates across 8 external services during cutover.
+- [03-01]: Removed config.toml schedule keys -- cron handled by pg_cron SQL jobs, not CLI config
+- [03-01]: All 106 functions registered in config.toml with verify_jwt=false, ready for bulk deploy
 
 ### Pending Todos
 
@@ -87,7 +90,7 @@ Recent decisions affecting current work:
 - `admin-set-password` uses hardcoded secret (`alpha-admin-2024`) -- should be moved to env var.
 - Stripe price IDs may be hardcoded in edge functions -- needs investigation before Phase 4.
 - chat-attachments storage bucket is public (should be private) -- fix during Phase 3 migration.
-- config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.
+- ~~config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.~~ RESOLVED: Removed in 03-01. CLI link successful.
 
 ## Phase 1 Inventory Files
 
@@ -102,12 +105,12 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed Phase 2 (Database & Auth). All 94 tables, 44 auth users, RLS verified, login confirmed.
+Stopped at: Completed 03-01 (Config Fix & CLI Link). config.toml fixed, CLI linked to qcunascacayiiuufjtaq.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
 - New project DB: `postgresql://postgres.qcunascacayiiuufjtaq:PASSWORD@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
 - Bridge function still active: `https://qydkrpirrfelgtcqasdx.supabase.co/functions/v1/db-migration-bridge` (delete after cutover)
 - Management API SQL endpoint works: `POST https://api.supabase.com/v1/projects/qcunascacayiiuufjtaq/database/query`
-- `supabase link` fails due to config.toml schedule keys — remove before Phase 3
+- ~~`supabase link` fails due to config.toml schedule keys~~ RESOLVED in 03-01: schedule keys removed, link successful
 - Hardcoded old project URL in DEFAULT fixed (clients.success_manager_image_url)

@@ -55,21 +55,14 @@ All credentials are stored in `~/.zprofile` as environment variables. **No secre
 
 ## Local CLI Link
 
-**Status:** Not yet linked (blocked by config.toml `schedule` key incompatibility)
+**Status:** Linked (completed in 03-01)
 
-The source repo's `supabase/config.toml` contains `schedule` keys on two function blocks (`prospect-inactivity-check` and `auto-recharge-run`) which are not supported by Supabase CLI v2.75.0. The link command fails with:
+The CLI is linked to the new project. Schedule keys were removed from config.toml in plan 03-01 (cron scheduling handled by pg_cron SQL jobs, not config.toml).
 
-```
-'functions[prospect-inactivity-check]' has invalid keys: schedule
-'functions[auto-recharge-run]' has invalid keys: schedule
-```
-
-**Resolution:** During Phase 3 (Backend Infrastructure), the config.toml will need to be updated to remove `schedule` keys. Cron scheduling for these functions is handled via `pg_cron` jobs in the database, not through config.toml (as confirmed in 01-03 Lovable extraction -- 6 cron jobs are managed via SQL, not CLI config).
-
-**When ready to link:**
 ```bash
+# Verify link:
 cd /Users/forren/workspace/copy-alphahub/alphahub-v2
-supabase link --project-ref qcunascacayiiuufjtaq
+supabase functions list --project-ref qcunascacayiiuufjtaq
 ```
 
 ## Free Tier Limits
