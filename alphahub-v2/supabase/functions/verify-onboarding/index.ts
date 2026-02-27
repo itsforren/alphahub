@@ -32,7 +32,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const LLM_API_KEY = Deno.env.get("LLM_API_KEY");
 
     const { client_id, run_lead_test = true } = await req.json();
 
@@ -93,7 +93,7 @@ serve(async (req) => {
     });
 
     // AI Lead Test
-    if (run_lead_test && client.lander_link && LOVABLE_API_KEY) {
+    if (run_lead_test && client.lander_link && LLM_API_KEY) {
       console.log("Running AI-powered lead flow test...");
       
       try {
