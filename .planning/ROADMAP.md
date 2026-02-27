@@ -39,21 +39,21 @@ Plans:
 - [x] 01-03-PLAN.md -- Execute Lovable AI extraction prompts and capture outputs (Wave 2, has checkpoint)
 
 ### Phase 2: Database & Auth
-**Goal**: The new Supabase project contains all 111 tables with data, all RLS policies are verified active, all triggers and functions execute correctly, and every user can log in with their existing credentials
+**Goal**: The new Supabase project contains all 94 tables with data, all RLS policies are verified active, all triggers and functions execute correctly, and every user can log in with their existing credentials
 **Depends on**: Phase 1
 **Requirements**: DB-01, DB-02, DB-03, DB-04, DB-05, DB-06, DB-07, DB-08, AUTH-01, AUTH-02, AUTH-03, AUTH-04
 **Success Criteria** (what must be TRUE):
-  1. All 111 tables exist in the new project with row counts matching the source database for every table
+  1. All 94 tables exist in the new project with row counts matching the source database for every table
   2. RLS is enabled on every public table (verified via `pg_tables.rowsecurity = true`) and anon key cannot access protected data
-  3. All 14 RPC functions execute without error when called with valid parameters
+  3. All 28 public functions exist and 48 triggers are present
   4. Every existing user can log in with their original email/password without a forced password reset
-  5. TOTP MFA is configured and functional for users who had it enabled
-**Plans**: TBD
+  5. TOTP MFA factors are preserved (if any users had MFA enabled)
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 02-01: Export and restore database schema (tables, RLS, functions, triggers, extensions)
-- [ ] 02-02: Export and restore production data with row count verification
-- [ ] 02-03: Migrate auth users and verify login with MFA
+- [ ] 02-01-PLAN.md -- Export source database (5 dump files) and restore schema to target (Wave 1, has checkpoint)
+- [ ] 02-02-PLAN.md -- Import all data (auth, public, migration history) and run comprehensive verification (Wave 2, autonomous)
+- [ ] 02-03-PLAN.md -- Auth login test, RLS functional test, and user manual verification (Wave 3, has checkpoint)
 
 ### Phase 3: Backend Infrastructure
 **Goal**: All server-side automation is operational on the new project -- edge functions respond, cron jobs fire on schedule, storage files are accessible, and Realtime subscriptions deliver updates
@@ -132,7 +132,7 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Preparation & Audit | 3/3 | Complete ✓ | 2026-02-27 |
-| 2. Database & Auth | 0/3 | Not started | - |
+| 2. Database & Auth | 0/3 | Planned | - |
 | 3. Backend Infrastructure | 0/4 | Not started | - |
 | 4. Stripe Migration | 0/2 | Not started | - |
 | 5. Frontend Deployment | 0/2 | Not started | - |
