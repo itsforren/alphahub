@@ -35,13 +35,13 @@ async function analyzeFormWithAI(html: string, agentId: string): Promise<{
   fields: Record<string, string>;
   testData: Record<string, string>;
 }> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const LLM_API_KEY = Deno.env.get("LLM_API_KEY");
   
   // Truncate HTML if too large
   const truncatedHtml = html.length > 50000 ? html.substring(0, 50000) : html;
   
-  if (!LOVABLE_API_KEY) {
-    console.log("No LOVABLE_API_KEY - using fallback form analysis");
+  if (!LLM_API_KEY) {
+    console.log("No LLM_API_KEY - using fallback form analysis");
     return {
       formAction: null,
       formMethod: "POST",
@@ -58,22 +58,9 @@ async function analyzeFormWithAI(html: string, agentId: string): Promise<{
   }
 
   try {
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You analyze landing page HTML to extract form details for testing. You identify the main lead capture form, its action URL, method, and all input fields. You generate realistic test data for insurance lead forms.`
-          },
-          {
-            role: "user",
-            content: `Analyze this landing page HTML and find the main lead capture/survey form. Extract:
+    const systemPrompt = `You analyze landing page HTML to extract form details for testing. You identify the main lead capture form, its action URL, method, and all input fields. You generate realistic test data for insurance lead forms.`;
+
+    const userPrompt = `Analyze this landing page HTML and find the main lead capture/survey form. Extract:
 1. Form action URL (the endpoint the form submits to)
 2. Form method (GET or POST)
 3. All input field names and their types
@@ -82,35 +69,48 @@ async function analyzeFormWithAI(html: string, agentId: string): Promise<{
 The agent_id should be set to: ${agentId}
 
 HTML:
-${truncatedHtml}`
+${truncatedHtml}`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": LLM_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          {
+            role: "user",
+            content: userPrompt
           }
         ],
         tools: [{
-          type: "function",
-          function: {
-            name: "extract_form",
-            description: "Extract form details and generate test data",
-            parameters: {
-              type: "object",
-              properties: {
-                form_action: { type: "string", description: "The form's action URL or endpoint" },
-                form_method: { type: "string", enum: ["GET", "POST"] },
-                field_names: { 
-                  type: "array", 
-                  items: { type: "string" },
-                  description: "List of input field names found in the form" 
-                },
-                test_data: { 
-                  type: "object",
-                  description: "Key-value pairs of field names to test values",
-                  additionalProperties: { type: "string" }
-                }
+          name: "extract_form",
+          description: "Extract form details and generate test data",
+          input_schema: {
+            type: "object",
+            properties: {
+              form_action: { type: "string", description: "The form's action URL or endpoint" },
+              form_method: { type: "string", enum: ["GET", "POST"] },
+              field_names: {
+                type: "array",
+                items: { type: "string" },
+                description: "List of input field names found in the form"
               },
-              required: ["form_action", "form_method", "field_names", "test_data"]
-            }
+              test_data: {
+                type: "object",
+                description: "Key-value pairs of field names to test values",
+                additionalProperties: { type: "string" }
+              }
+            },
+            required: ["form_action", "form_method", "field_names", "test_data"]
           }
         }],
-        tool_choice: { type: "function", function: { name: "extract_form" } }
+        tool_choice: { type: "tool", name: "extract_form" }
       }),
     });
 
@@ -119,24 +119,24 @@ ${truncatedHtml}`
     }
 
     const result = await response.json();
-    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0];
-    
-    if (toolCall?.function?.arguments) {
-      const parsed = JSON.parse(toolCall.function.arguments);
+    const toolUseBlock = result.content?.find((b: any) => b.type === "tool_use");
+
+    if (toolUseBlock?.input) {
+      const parsed = toolUseBlock.input;
       const fields: Record<string, string> = {};
       parsed.field_names?.forEach((name: string) => {
         fields[name] = "text";
       });
-      
+
       // Ensure agent_id is in test data
       const testData = parsed.test_data || {};
       testData.agent_id = agentId;
-      
+
       // Ensure email has test domain
       if (testData.email && !testData.email.includes("@alphaagent.test")) {
         testData.email = `test.${Date.now()}@alphaagent.test`;
       }
-      
+
       return {
         formAction: parsed.form_action,
         formMethod: parsed.form_method || "POST",
