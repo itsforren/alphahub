@@ -19,7 +19,7 @@ All existing functionality continues working after migration — no lost data, n
 - [ ] Migrate full Supabase schema (tables, RLS policies, functions, triggers, storage buckets) to new self-owned Supabase project
 - [ ] Migrate all production data (clients, invoices, wallets, campaigns, leads, communications, subscriptions) with zero data loss
 - [ ] Replicate Stripe integration — dual accounts (management + ad spend), invoices, subscriptions, charges, payouts, auto-billing
-- [ ] Replicate Google Auth (and any other auth providers) on new Supabase project
+- [ ] Migrate auth (email/password + TOTP MFA) to new Supabase project with password hashes
 - [ ] Migrate or rebuild all edge functions / server-side logic
 - [ ] Rebuild API layer — all endpoints the frontend currently calls
 - [ ] Migrate frontend codebase (React + Vite + Tailwind + shadcn/ui) from Lovable, re-point to new backend
@@ -42,9 +42,12 @@ All existing functionality continues working after migration — no lost data, n
 - **Dual Stripe accounts**: Management fees and ad spend are separate Stripe accounts. Both must migrate with customer/subscription mappings intact.
 - **Ad spend wallets**: Clients have wallet balances with daily burn rates, auto-recharge logic, and low-balance alerts. Wallet state must transfer exactly.
 - **Current stack**: React + Vite + TypeScript + Tailwind + shadcn/ui frontend. Supabase backend (auth, database, edge functions, storage). Stripe for billing.
-- **Lovable source**: Code available via Lovable's GitHub sync — needs to be exported before migration begins.
+- **Source repo**: `itsforren/alpha-agent-flow` on GitHub (Lovable GitHub sync). Code available locally once cloned.
+- **Domain**: alphaagent.io — this is the production domain, NOT sysconscious.com
 - **AlphaHub MCP**: An MCP server exists that queries the current Supabase instance. Must be updated to point at the new instance post-migration.
-- **Dashboard URL**: Currently at conscious.sysconscious.com (Lovable/Supabase hosted).
+- **Auth**: Email/password + TOTP MFA only (no Google OAuth despite initial assumption). Research confirmed no `signInWithOAuth` calls in codebase.
+- **Scale**: 111 database tables, 90+ edge functions, 40+ secrets, 3 storage buckets, 8 Realtime components.
+- **Google Ads API**: Conversion tracking integration exists and must be preserved.
 
 ## Constraints
 
@@ -52,7 +55,7 @@ All existing functionality continues working after migration — no lost data, n
 - **Data integrity**: Zero tolerance for data loss or duplication, especially in billing/financial data
 - **Timeline**: Needs to happen quickly — this is blocking the ability to iterate on the product
 - **Stripe**: Cannot create new Stripe accounts — must preserve existing customer IDs, subscription IDs, and payment methods
-- **Auth**: Must preserve user sessions or provide seamless re-authentication post-migration
+- **Auth**: Must preserve user accounts with password hashes — no forced password resets
 
 ## Key Decisions
 
@@ -62,6 +65,9 @@ All existing functionality continues working after migration — no lost data, n
 | Brief downtime cutover (not zero-downtime) | Simpler migration, acceptable for the business | -- Pending |
 | 1:1 migration before any new features | Reduce risk, validate the new setup matches current behavior | -- Pending |
 | Export Lovable source via GitHub sync | Fastest way to get the codebase locally | -- Pending |
+| Auth is email/password + TOTP MFA (no OAuth) | Research confirmed — simplifies migration | -- Pending |
+| Domain is alphaagent.io | Production domain for the app | -- Pending |
+| Source repo: itsforren/alpha-agent-flow | Lovable GitHub sync repo | -- Pending |
 
 ---
-*Last updated: 2026-02-26 after initialization*
+*Last updated: 2026-02-26 after research phase — corrected domain, auth method, added scale metrics*
