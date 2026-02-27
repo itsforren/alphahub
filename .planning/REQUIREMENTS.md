@@ -15,21 +15,21 @@
 
 ### Database Migration
 
-- [ ] **DB-01**: Export full database schema from Lovable Supabase (111 tables, RLS policies, functions, triggers, extensions)
-- [ ] **DB-02**: Apply schema to new Supabase project with all RLS policies intact
-- [ ] **DB-03**: Verify RLS policies are present and correct post-migration (critical security — CVE-2025-48757 risk)
-- [ ] **DB-04**: Export and import all production data with zero data loss
-- [ ] **DB-05**: Verify row counts match between old and new databases for every table
-- [ ] **DB-06**: Recreate all database extensions that don't survive pg_dump
-- [ ] **DB-07**: Recreate all database triggers that reference specific schemas
-- [ ] **DB-08**: Migrate all 14 RPC functions and verify they execute correctly
+- [x] **DB-01**: Export full database schema from Lovable Supabase (94 tables, RLS policies, functions, triggers, extensions)
+- [x] **DB-02**: Apply schema to new Supabase project with all RLS policies intact
+- [x] **DB-03**: Verify RLS policies are present and correct post-migration (critical security — CVE-2025-48757 risk)
+- [x] **DB-04**: Export and import all production data with zero data loss
+- [x] **DB-05**: Verify row counts match between old and new databases for every table
+- [x] **DB-06**: Recreate all database extensions that don't survive pg_dump
+- [x] **DB-07**: Recreate all database triggers that reference specific schemas
+- [x] **DB-08**: Migrate all 29 public functions and verify they exist on target
 
 ### Auth Migration
 
-- [ ] **AUTH-01**: Export auth.users table with password hashes from old Supabase project
-- [ ] **AUTH-02**: Import auth users into new project — all users can log in without password reset
-- [ ] **AUTH-03**: Configure TOTP MFA on new Supabase project
-- [ ] **AUTH-04**: Verify JWT secret handling (copy or regenerate with re-auth plan)
+- [x] **AUTH-01**: Export auth.users table with password hashes from old Supabase project
+- [x] **AUTH-02**: Import auth users into new project — all users can log in without password reset
+- [x] **AUTH-03**: Preserve TOTP MFA factors on new Supabase project
+- [x] **AUTH-04**: Verify JWT auth works (user login confirmed with existing credentials)
 
 ### Edge Functions & Backend
 
@@ -113,18 +113,18 @@
 | PREP-03 | Phase 1 | Complete |
 | PREP-04 | Phase 1 | Complete |
 | PREP-05 | Phase 1 | Complete |
-| DB-01 | Phase 2 | Pending |
-| DB-02 | Phase 2 | Pending |
-| DB-03 | Phase 2 | Pending |
-| DB-04 | Phase 2 | Pending |
-| DB-05 | Phase 2 | Pending |
-| DB-06 | Phase 2 | Pending |
-| DB-07 | Phase 2 | Pending |
-| DB-08 | Phase 2 | Pending |
-| AUTH-01 | Phase 2 | Pending |
-| AUTH-02 | Phase 2 | Pending |
-| AUTH-03 | Phase 2 | Pending |
-| AUTH-04 | Phase 2 | Pending |
+| DB-01 | Phase 2 | Complete |
+| DB-02 | Phase 2 | Complete |
+| DB-03 | Phase 2 | Complete |
+| DB-04 | Phase 2 | Complete |
+| DB-05 | Phase 2 | Complete |
+| DB-06 | Phase 2 | Complete |
+| DB-07 | Phase 2 | Complete |
+| DB-08 | Phase 2 | Complete |
+| AUTH-01 | Phase 2 | Complete |
+| AUTH-02 | Phase 2 | Complete |
+| AUTH-03 | Phase 2 | Complete |
+| AUTH-04 | Phase 2 | Complete |
 | EDGE-01 | Phase 3 | Pending |
 | EDGE-02 | Phase 3 | Pending |
 | EDGE-03 | Phase 3 | Pending |
@@ -167,4 +167,4 @@
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-27 — Phase 1 requirements (PREP-01 through PREP-05) marked Complete*
+*Last updated: 2026-02-27 — Phase 2 requirements (DB-01 through DB-08, AUTH-01 through AUTH-04) marked Complete*

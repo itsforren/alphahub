@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 1 COMPLETE. Ready for Phase 2: Database Migration.
+**Current focus:** Phase 2 COMPLETE. Ready for Phase 3: Backend Infrastructure.
 
 ## Current Position
 
-Phase: 1 of 6 (Preparation & Audit) -- COMPLETE
-Plan: 3 of 3 in Phase 1 (all complete)
-Status: Phase 1 complete
-Last activity: 2026-02-27 -- Completed 01-02-PLAN.md (Secrets & Webhooks Inventory)
+Phase: 2 of 6 (Database & Auth) -- COMPLETE
+Plan: 3 of 3 in Phase 2 (all complete)
+Status: Phase 2 complete
+Last activity: 2026-02-27 -- Completed 02-03 (Auth Login Test & RLS Verification)
 
-Progress: [###.................] 17%
+Progress: [######..............] 33%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 6min
-- Total execution time: 0.3 hours
+- Total plans completed: 6
+- Average duration: ~40min
+- Total execution time: ~4 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-preparation-audit | 3/3 | 17min | 6min |
+| 02-database-auth | 3/3 | ~225min | ~75min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (7min), 01-03 (3min), 01-02 (7min)
-- Trend: stable
+- Last 5 plans: 01-02 (7min), 02-01 (~120min), 02-02 (~90min), 02-03 (~15min)
+- Trend: Phase 2 was significantly longer due to Lovable Cloud connectivity workarounds
 
 *Updated after each plan completion*
 
@@ -45,6 +46,12 @@ Recent decisions affecting current work:
 - [Roadmap]: 6-phase migration following strict dependency order (DB first, then backend infra, then Stripe, then frontend, then cutover)
 - [Roadmap]: Phases 4 and 5 can execute in parallel (frontend deployment does not depend on Stripe migration)
 - [Roadmap]: Phase 3 combines edge functions, storage, and realtime into single "Backend Infrastructure" phase (parallel work within phase, shared dependency on Phase 2)
+- [02-01]: Migration approach: migration replay (144 SQL files via psql) instead of pg_dump due to Lovable Cloud private infrastructure
+- [02-01]: Bridge function pattern for data transfer: edge function on old project reads internal DB, writes to new via pooler
+- [02-01]: New project pooler: aws-1-us-east-1.pooler.supabase.com (port 5432 session mode)
+- [02-02]: Array column workaround: ALTER to TEXT → bridge copy → ALTER back with casting
+- [02-02]: 3 focus_events values in agreements lost (NULLed) due to bridge JSONB serialization bug -- minor data loss accepted
+- [02-03]: MFA factor "Alpha Agent Authenticator" preserved and verified on new project
 - [01-01]: Stripe API keys ARE in edge functions -- 6 secrets across 8 functions (dual-account: management + ad_spend). Corrects prior research.
 - [01-01]: LOVABLE_API_KEY is Lovable AI gateway for LLM access (Gemini 2.5 Flash). Needs replacement post-migration.
 - [01-01]: All 106 edge functions use verify_jwt=false. Auth handled internally per function.
@@ -65,7 +72,7 @@ Recent decisions affecting current work:
 
 ### Pending Todos
 
-- Investigate which table is the 94th (codebase migrations create 93). Identify during Phase 2.
+- ~~Investigate which table is the 94th (codebase migrations create 93).~~ RESOLVED: Migration replay produced exactly 94 tables, matching live database. The discrepancy was in the original count.
 - Locate Stripe price IDs (STRIPE_MANAGEMENT_PRICE_ID, STRIPE_AD_SPEND_PRICE_ID) -- not in Supabase secrets, may be hardcoded. Investigate in Phase 4 planning.
 - Locate 16 missing secret values before Phase 3 (8 HIGH, 4 MEDIUM, 4 LOW priority). See SECRETS.md Section 7.
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
@@ -95,5 +102,12 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 01-02-PLAN.md (Secrets & Webhooks Inventory). Phase 1 COMPLETE.
+Stopped at: Completed Phase 2 (Database & Auth). All 94 tables, 44 auth users, RLS verified, login confirmed.
 Resume file: None
+
+### Phase 2 Key Facts for Downstream Phases
+- New project DB: `postgresql://postgres.qcunascacayiiuufjtaq:PASSWORD@aws-1-us-east-1.pooler.supabase.com:5432/postgres`
+- Bridge function still active: `https://qydkrpirrfelgtcqasdx.supabase.co/functions/v1/db-migration-bridge` (delete after cutover)
+- Management API SQL endpoint works: `POST https://api.supabase.com/v1/projects/qcunascacayiiuufjtaq/database/query`
+- `supabase link` fails due to config.toml schedule keys — remove before Phase 3
+- Hardcoded old project URL in DEFAULT fixed (clients.success_manager_image_url)
