@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 3 of 6 (Backend Infrastructure)
-Plan: 1 of 5 in Phase 3 (config fix & CLI link complete)
+Plan: 2 of 5 in Phase 3 (LLM provider replacement complete)
 Status: In progress
-Last activity: 2026-02-27 -- Completed 03-01-PLAN.md (Config Fix & CLI Link)
+Last activity: 2026-02-27 -- Completed 03-02-PLAN.md (LLM Provider Replacement)
 
-Progress: [#######.............] 37%
+Progress: [##############......] 73%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: ~35min
-- Total execution time: ~4 hours
+- Total plans completed: 8
+- Average duration: ~30min
+- Total execution time: ~4.1 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [#######.............] 37%
 |-------|-------|-------|----------|
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
-| 03-backend-infrastructure | 1/5 | 2min | 2min |
+| 03-backend-infrastructure | 2/5 | 5min | 2.5min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (~120min), 02-02 (~90min), 02-03 (~15min), 03-01 (2min)
-- Trend: 03-01 was a quick config fix. Expect 03-02+ to be longer (secrets, function deployment)
+- Last 5 plans: 02-02 (~90min), 02-03 (~15min), 03-01 (2min), 03-02 (3min)
+- Trend: Phase 3 plans 01-02 were quick code-only changes. Expect 03-03+ to be longer (secrets, deployment)
 
 *Updated after each plan completion*
 
@@ -72,6 +72,9 @@ Recent decisions affecting current work:
 - [01-02]: 17 inbound webhook endpoints need URL updates across 8 external services during cutover.
 - [03-01]: Removed config.toml schedule keys -- cron handled by pg_cron SQL jobs, not CLI config
 - [03-01]: All 106 functions registered in config.toml with verify_jwt=false, ready for bulk deploy
+- [03-02]: 5 LLM functions converted from Lovable AI gateway to Anthropic Messages API with claude-sonnet-4-6
+- [03-02]: generate-dispute-evidence upgraded from openai/gpt-5.2 to claude-sonnet-4-6
+- [03-02]: verify-onboarding-live uses Anthropic tool calling (input_schema, tool_use response parsing)
 
 ### Pending Todos
 
@@ -85,7 +88,7 @@ Recent decisions affecting current work:
 - Research flagged storage migration script as LOW confidence (Supabase `seed buckets` in beta). May need custom Node.js script. Affects Phase 3 planning.
 - ~~Actual secret values for 42 edge function secrets need to be located before Phase 3.~~ RESOLVED: 23 of 41 have values available. 16 need investigation (prioritized in SECRETS.md).
 - ~~pg_cron jobs need authoritative list~~ RESOLVED: 6 cron jobs captured from Lovable extraction.
-- ~~LOVABLE_API_KEY needs replacement strategy~~ RESOLVED: Replace with direct LLM API (OpenAI/Google/OpenRouter). Standard OpenAI chat format, minimal code change.
+- ~~LOVABLE_API_KEY needs replacement strategy~~ RESOLVED: Replaced with Anthropic Messages API in 03-02. All 5 functions use LLM_API_KEY + claude-sonnet-4-6.
 - `stripe-webhook` and `dispute-webhook` lack signature verification -- security risk to address during migration.
 - `admin-set-password` uses hardcoded secret (`alpha-admin-2024`) -- should be moved to env var.
 - Stripe price IDs may be hardcoded in edge functions -- needs investigation before Phase 4.
@@ -105,7 +108,7 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 03-01 (Config Fix & CLI Link). config.toml fixed, CLI linked to qcunascacayiiuufjtaq.
+Stopped at: Completed 03-02 (LLM Provider Replacement). 5 functions converted to Anthropic API.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
