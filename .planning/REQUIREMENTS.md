@@ -108,63 +108,63 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PREP-01 | — | Pending |
-| PREP-02 | — | Pending |
-| PREP-03 | — | Pending |
-| PREP-04 | — | Pending |
-| PREP-05 | — | Pending |
-| DB-01 | — | Pending |
-| DB-02 | — | Pending |
-| DB-03 | — | Pending |
-| DB-04 | — | Pending |
-| DB-05 | — | Pending |
-| DB-06 | — | Pending |
-| DB-07 | — | Pending |
-| DB-08 | — | Pending |
-| AUTH-01 | — | Pending |
-| AUTH-02 | — | Pending |
-| AUTH-03 | — | Pending |
-| AUTH-04 | — | Pending |
-| EDGE-01 | — | Pending |
-| EDGE-02 | — | Pending |
-| EDGE-03 | — | Pending |
-| EDGE-04 | — | Pending |
-| EDGE-05 | — | Pending |
-| STRIPE-01 | — | Pending |
-| STRIPE-02 | — | Pending |
-| STRIPE-03 | — | Pending |
-| STRIPE-04 | — | Pending |
-| STRIPE-05 | — | Pending |
-| STRIPE-06 | — | Pending |
-| STRIPE-07 | — | Pending |
-| STORE-01 | — | Pending |
-| STORE-02 | — | Pending |
-| STORE-03 | — | Pending |
-| RT-01 | — | Pending |
-| RT-02 | — | Pending |
-| FE-01 | — | Pending |
-| FE-02 | — | Pending |
-| FE-03 | — | Pending |
-| FE-04 | — | Pending |
-| FE-05 | — | Pending |
-| CUT-01 | — | Pending |
-| CUT-02 | — | Pending |
-| CUT-03 | — | Pending |
-| CUT-04 | — | Pending |
-| CUT-05 | — | Pending |
-| CUT-06 | — | Pending |
-| CUT-07 | — | Pending |
-| CUT-08 | — | Pending |
-| CUT-09 | — | Pending |
-| CUT-10 | — | Pending |
-| CUT-11 | — | Pending |
-| CUT-12 | — | Pending |
+| PREP-01 | Phase 1 | Pending |
+| PREP-02 | Phase 1 | Pending |
+| PREP-03 | Phase 1 | Pending |
+| PREP-04 | Phase 1 | Pending |
+| PREP-05 | Phase 1 | Pending |
+| DB-01 | Phase 2 | Pending |
+| DB-02 | Phase 2 | Pending |
+| DB-03 | Phase 2 | Pending |
+| DB-04 | Phase 2 | Pending |
+| DB-05 | Phase 2 | Pending |
+| DB-06 | Phase 2 | Pending |
+| DB-07 | Phase 2 | Pending |
+| DB-08 | Phase 2 | Pending |
+| AUTH-01 | Phase 2 | Pending |
+| AUTH-02 | Phase 2 | Pending |
+| AUTH-03 | Phase 2 | Pending |
+| AUTH-04 | Phase 2 | Pending |
+| EDGE-01 | Phase 3 | Pending |
+| EDGE-02 | Phase 3 | Pending |
+| EDGE-03 | Phase 3 | Pending |
+| EDGE-04 | Phase 3 | Pending |
+| EDGE-05 | Phase 3 | Pending |
+| STRIPE-01 | Phase 4 | Pending |
+| STRIPE-02 | Phase 4 | Pending |
+| STRIPE-03 | Phase 4 | Pending |
+| STRIPE-04 | Phase 4 | Pending |
+| STRIPE-05 | Phase 4 | Pending |
+| STRIPE-06 | Phase 4 | Pending |
+| STRIPE-07 | Phase 4 | Pending |
+| STORE-01 | Phase 3 | Pending |
+| STORE-02 | Phase 3 | Pending |
+| STORE-03 | Phase 3 | Pending |
+| RT-01 | Phase 3 | Pending |
+| RT-02 | Phase 3 | Pending |
+| FE-01 | Phase 5 | Pending |
+| FE-02 | Phase 5 | Pending |
+| FE-03 | Phase 5 | Pending |
+| FE-04 | Phase 5 | Pending |
+| FE-05 | Phase 5 | Pending |
+| CUT-01 | Phase 6 | Pending |
+| CUT-02 | Phase 6 | Pending |
+| CUT-03 | Phase 6 | Pending |
+| CUT-04 | Phase 6 | Pending |
+| CUT-05 | Phase 6 | Pending |
+| CUT-06 | Phase 6 | Pending |
+| CUT-07 | Phase 6 | Pending |
+| CUT-08 | Phase 6 | Pending |
+| CUT-09 | Phase 6 | Pending |
+| CUT-10 | Phase 6 | Pending |
+| CUT-11 | Phase 6 | Pending |
+| CUT-12 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 47 total
-- Mapped to phases: 0
-- Unmapped: 47 (pending roadmap creation)
+- v1 requirements: 51 total
+- Mapped to phases: 51
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-26 after initial definition*
+*Last updated: 2026-02-26 after roadmap creation — all requirements mapped to phases*
