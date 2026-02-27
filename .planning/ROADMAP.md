@@ -60,18 +60,19 @@ Plans:
 **Depends on**: Phase 2
 **Requirements**: EDGE-01, EDGE-02, EDGE-03, EDGE-04, EDGE-05, STORE-01, STORE-02, STORE-03, RT-01, RT-02
 **Success Criteria** (what must be TRUE):
-  1. All 90+ edge functions are deployed and callable on the new project, with JWT verification config preserved (73 functions with `verify_jwt = false`)
-  2. All ~40+ secrets are configured in the new project vault and a spot-check of 5 critical functions (billing, MCP proxy, GHL bridge, Google Ads, Stripe webhook handlers) confirms they can access their required secrets
-  3. All cron jobs (auto-recharge-run, morning-review, billing-collections, prospect-inactivity-check, hourly-approval-reminder) are active and firing on schedule
-  4. All 3 storage buckets exist with correct access policies and all file objects are accessible (profile images render, agreement PDFs download, chat attachments load)
-  5. Realtime publications are enabled for all required tables and at least one Realtime component (e.g., chat) receives live updates when data changes
-**Plans**: TBD
+  1. All 106 edge functions are deployed and callable on the new project, with JWT verification config preserved (all 106 functions with `verify_jwt = false`)
+  2. All 41 secrets are configured in the new project vault and a spot-check of 5 critical functions (MCP proxy, Stripe webhook, check-automation-timeout, Google Ads sync, CRM OAuth) confirms they can access their required secrets
+  3. All 6 cron jobs (check-automation-timeout, auto-recharge-run, sync-all-google-ads, cleanup-archived-clients, check-lead-router-health, plaid-daily-refresh) are active and firing on schedule
+  4. All 3 storage buckets exist with correct access policies and all 317 file objects are accessible (profile images render, agreement PDFs download, chat attachments load)
+  5. Realtime publications are enabled for all 11 required tables
+**Plans**: 5 plans in 3 waves
 
 Plans:
-- [ ] 03-01: Deploy edge functions with secrets and verify JWT config
-- [ ] 03-02: Recreate cron jobs and verify schedules
-- [ ] 03-03: Migrate storage buckets and file objects
-- [ ] 03-04: Enable Realtime publications and verify subscriptions
+- [ ] 03-01-PLAN.md -- Fix config.toml and link project to new Supabase instance (Wave 1, autonomous)
+- [ ] 03-02-PLAN.md -- Convert 5 LLM functions from Lovable gateway to Anthropic API (Wave 1, autonomous)
+- [ ] 03-03-PLAN.md -- Migrate 3 storage buckets and 317 files (Wave 1, autonomous)
+- [ ] 03-04-PLAN.md -- Gather all secret values and build .env.secrets file (Wave 2, has checkpoint)
+- [ ] 03-05-PLAN.md -- Deploy all functions, set secrets, create cron jobs, enable Realtime (Wave 3, autonomous)
 
 ### Phase 4: Stripe Migration
 **Goal**: Both Stripe accounts (management fees and ad spend) have their webhook endpoints pointed at the new Supabase edge function URLs, signing secrets are configured, and billing events flow through the new backend correctly
@@ -133,11 +134,11 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 |-------|----------------|--------|-----------|
 | 1. Preparation & Audit | 3/3 | Complete ✓ | 2026-02-27 |
 | 2. Database & Auth | 3/3 | Complete ✓ | 2026-02-27 |
-| 3. Backend Infrastructure | 0/4 | Not started | - |
+| 3. Backend Infrastructure | 0/5 | Not started | - |
 | 4. Stripe Migration | 0/2 | Not started | - |
 | 5. Frontend Deployment | 0/2 | Not started | - |
 | 6. Cutover & Verification | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-02-27 — Phase 2 complete*
+*Last updated: 2026-02-27 -- Phase 3 planned (5 plans in 3 waves)*
