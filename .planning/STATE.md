@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-26)
 ## Current Position
 
 Phase: 3 of 6 (Backend Infrastructure)
-Plan: 2 of 5 in Phase 3 (LLM provider replacement complete)
+Plan: 3 of 5 in Phase 3 (Storage migration -- public buckets complete, agreements pending)
 Status: In progress
-Last activity: 2026-02-27 -- Completed 03-02-PLAN.md (LLM Provider Replacement)
+Last activity: 2026-02-27 -- Completed 03-03-PLAN.md (Storage Migration)
 
-Progress: [##############......] 73%
+Progress: [###############.....] 75%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: ~30min
-- Total execution time: ~4.1 hours
+- Total execution time: ~4.5 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [##############......] 73%
 |-------|-------|-------|----------|
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
-| 03-backend-infrastructure | 2/5 | 5min | 2.5min |
+| 03-backend-infrastructure | 3/5 | 32min | ~11min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (~90min), 02-03 (~15min), 03-01 (2min), 03-02 (3min)
-- Trend: Phase 3 plans 01-02 were quick code-only changes. Expect 03-03+ to be longer (secrets, deployment)
+- Last 5 plans: 02-03 (~15min), 03-01 (2min), 03-02 (3min), 03-03 (27min)
+- Trend: 03-03 involved live file migration across projects; 03-04/05 will need secrets + deployment
 
 *Updated after each plan completion*
 
@@ -50,7 +50,7 @@ Recent decisions affecting current work:
 - [02-01]: Migration approach: migration replay (144 SQL files via psql) instead of pg_dump due to Lovable Cloud private infrastructure
 - [02-01]: Bridge function pattern for data transfer: edge function on old project reads internal DB, writes to new via pooler
 - [02-01]: New project pooler: aws-1-us-east-1.pooler.supabase.com (port 5432 session mode)
-- [02-02]: Array column workaround: ALTER to TEXT → bridge copy → ALTER back with casting
+- [02-02]: Array column workaround: ALTER to TEXT -> bridge copy -> ALTER back with casting
 - [02-02]: 3 focus_events values in agreements lost (NULLed) due to bridge JSONB serialization bug -- minor data loss accepted
 - [02-03]: MFA factor "Alpha Agent Authenticator" preserved and verified on new project
 - [01-01]: Stripe API keys ARE in edge functions -- 6 secrets across 8 functions (dual-account: management + ad_spend). Corrects prior research.
@@ -75,6 +75,9 @@ Recent decisions affecting current work:
 - [03-02]: 5 LLM functions converted from Lovable AI gateway to Anthropic Messages API with claude-sonnet-4-6
 - [03-02]: generate-dispute-evidence upgraded from openai/gpt-5.2 to claude-sonnet-4-6
 - [03-02]: verify-onboarding-live uses Anthropic tool calling (input_schema, tool_use response parsing)
+- [03-03]: chat-attachments bucket kept as public per user decision (not changed to private)
+- [03-03]: Old project service role key inaccessible via Management API -- agreements migration deferred
+- [03-03]: 54.7 MB wav file exceeds free tier 50MB upload limit -- will migrate after Pro upgrade
 
 ### Pending Todos
 
@@ -82,18 +85,22 @@ Recent decisions affecting current work:
 - Locate Stripe price IDs (STRIPE_MANAGEMENT_PRICE_ID, STRIPE_AD_SPEND_PRICE_ID) -- not in Supabase secrets, may be hardcoded. Investigate in Phase 4 planning.
 - Locate 16 missing secret values before Phase 3 (8 HIGH, 4 MEDIUM, 4 LOW priority). See SECRETS.md Section 7.
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
+- **NEW**: Migrate agreements bucket files -- needs old project service role key from Supabase Dashboard or Lovable settings. Run: `OLD_SUPABASE_SERVICE_KEY="<key>" npx tsx scripts/migrate-storage.ts --bucket agreements`
+- **NEW**: Migrate oversized wav file (54.7 MB) after Pro tier upgrade. Path: media/lesson-files/1767150569935-0hry6b.wav
 
 ### Blockers/Concerns
 
-- Research flagged storage migration script as LOW confidence (Supabase `seed buckets` in beta). May need custom Node.js script. Affects Phase 3 planning.
+- ~~Research flagged storage migration script as LOW confidence (Supabase `seed buckets` in beta). May need custom Node.js script.~~ RESOLVED: Custom Node.js script created and working (scripts/migrate-storage.ts).
 - ~~Actual secret values for 42 edge function secrets need to be located before Phase 3.~~ RESOLVED: 23 of 41 have values available. 16 need investigation (prioritized in SECRETS.md).
 - ~~pg_cron jobs need authoritative list~~ RESOLVED: 6 cron jobs captured from Lovable extraction.
 - ~~LOVABLE_API_KEY needs replacement strategy~~ RESOLVED: Replaced with Anthropic Messages API in 03-02. All 5 functions use LLM_API_KEY + claude-sonnet-4-6.
 - `stripe-webhook` and `dispute-webhook` lack signature verification -- security risk to address during migration.
 - `admin-set-password` uses hardcoded secret (`alpha-admin-2024`) -- should be moved to env var.
 - Stripe price IDs may be hardcoded in edge functions -- needs investigation before Phase 4.
-- chat-attachments storage bucket is public (should be private) -- fix during Phase 3 migration.
+- ~~chat-attachments storage bucket is public (should be private) -- fix during Phase 3 migration.~~ RESOLVED: Kept as public per user decision.
 - ~~config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.~~ RESOLVED: Removed in 03-01. CLI link successful.
+- **NEW**: Agreements bucket (private) has 0 files on new project -- needs old service role key to migrate ~114 files. Only 20 are referenced by database records; rest may be old drafts/versions.
+- **NEW**: Temporary auth user `migration-temp@test.com` created on old project during investigation -- harmless but should be cleaned up during cutover/decommission.
 
 ## Phase 1 Inventory Files
 
@@ -108,7 +115,7 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-27
-Stopped at: Completed 03-02 (LLM Provider Replacement). 5 functions converted to Anthropic API.
+Stopped at: Completed 03-03 (Storage Migration). 204/~317 files migrated from public buckets. Agreements bucket pending.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -117,3 +124,11 @@ Resume file: None
 - Management API SQL endpoint works: `POST https://api.supabase.com/v1/projects/qcunascacayiiuufjtaq/database/query`
 - ~~`supabase link` fails due to config.toml schedule keys~~ RESOLVED in 03-01: schedule keys removed, link successful
 - Hardcoded old project URL in DEFAULT fixed (clients.success_manager_image_url)
+
+### Phase 3 Key Facts
+- Storage buckets created: media (public), agreements (private), chat-attachments (public)
+- Storage migration script: `scripts/migrate-storage.ts` (supports --bucket flag for partial reruns)
+- Public bucket files: 204 migrated (156 media + 48 chat-attachments)
+- Agreements bucket: 0 files -- needs OLD_SUPABASE_SERVICE_KEY to migrate
+- Old project anon key hardcoded in script (for public bucket access)
+- Database file URL references still point to old project -- URL rewriting needed during cutover
