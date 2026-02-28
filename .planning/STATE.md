@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 5 in progress (Frontend Deployment). Phase 4 (Stripe Migration) not yet started -- can run in parallel.
+**Current focus:** Phase 5 COMPLETE (Frontend Deployment). Phase 4 (Stripe Migration) not yet started -- can run in parallel. Supabase Pro upgrade done -- 6 remaining edge functions and wav file now unblocked.
 
 ## Current Position
 
-Phase: 5 of 6 (Frontend Deployment)
-Plan: 1 of 2 in Phase 5
-Status: In progress
-Last activity: 2026-02-28 -- Completed 05-01-PLAN.md (GitHub Repo Creation)
+Phase: 5 of 6 (Frontend Deployment) -- COMPLETE
+Plan: 2 of 2 in Phase 5
+Status: Phase complete
+Last activity: 2026-02-28 -- Completed 05-02-PLAN.md (Vercel Deployment)
 
-Progress: [██████████████████░░] 92% (12 of 13 defined plans complete)
+Progress: [████████████████████] 100% (13 of 13 defined plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12
-- Average duration: ~26min
-- Total execution time: ~5 hours
+- Total plans completed: 13
+- Average duration: ~27min
+- Total execution time: ~5.5 hours
 
 **By Phase:**
 
@@ -30,11 +30,11 @@ Progress: [██████████████████░░] 92% (12
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
-| 05-frontend-deployment | 1/2 | 2min | 2min |
+| 05-frontend-deployment | 2/2 | ~92min | ~46min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (27min), 03-04 (14min), 03-05 (9min), 05-01 (2min)
-- Trend: Infrastructure and deployment plans are fast
+- Last 5 plans: 03-04 (14min), 03-05 (9min), 05-01 (2min), 05-02 (~90min)
+- Trend: 05-02 longer due to user verification checkpoint and external service config (DNS, Supabase Auth)
 
 *Updated after each plan completion*
 
@@ -89,6 +89,11 @@ Recent decisions affecting current work:
 - [03-05]: Vault stores project_url and anon_key for pg_cron job auth to edge functions
 - [05-01]: GitHub repo itsforren/alphahub created (public) with 685 files from alphahub-v2 contents
 - [05-01]: tmp/ directory excluded from repo (debug logs and temp images, not source code)
+- [05-02]: Vercel (Hobby plan) selected as hosting platform -- zero-config Vite detection, git-connected deploys
+- [05-02]: hub.alphaagent.io configured via Hostinger DNS CNAME to Vercel
+- [05-02]: Supabase Pro upgrade completed -- unblocks 6 edge functions and 54.7MB wav file migration
+- [05-02]: User confirmed all 10 pages load correctly with real data from new backend
+- [05-02]: Data is migration snapshot -- delta sync planned for Phase 6 cutover
 
 ### Pending Todos
 
@@ -97,8 +102,8 @@ Recent decisions affecting current work:
 - Locate 16 missing secret values before Phase 3 (8 HIGH, 4 MEDIUM, 4 LOW priority). See SECRETS.md Section 7.
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
 - **NEW**: Migrate agreements bucket files -- needs old project service role key from Supabase Dashboard or Lovable settings. Run: `OLD_SUPABASE_SERVICE_KEY="<key>" npx tsx scripts/migrate-storage.ts --bucket agreements`
-- **NEW**: Migrate oversized wav file (54.7 MB) after Pro tier upgrade. Path: media/lesson-files/1767150569935-0hry6b.wav
-- **NEW**: Deploy remaining 6 edge functions after Pro tier upgrade: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
+- **UNBLOCKED**: Migrate oversized wav file (54.7 MB) -- Pro upgrade done. Path: media/lesson-files/1767150569935-0hry6b.wav
+- **UNBLOCKED**: Deploy remaining 6 edge functions -- Pro upgrade done: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
 
 ### Blockers/Concerns
 
@@ -113,7 +118,7 @@ Recent decisions affecting current work:
 - ~~config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.~~ RESOLVED: Removed in 03-01. CLI link successful.
 - **NEW**: Agreements bucket (private) has 0 files on new project -- needs old service role key to migrate ~114 files. Only 20 are referenced by database records; rest may be old drafts/versions.
 - **NEW**: Temporary auth user `migration-temp@test.com` created on old project during investigation -- harmless but should be cleaned up during cutover/decommission.
-- **NEW**: Free tier limits edge functions to 100. Need Pro upgrade ($25/mo) to deploy remaining 6 functions. Same upgrade resolves 50MB upload limit for wav file.
+- ~~Free tier limits edge functions to 100. Need Pro upgrade ($25/mo) to deploy remaining 6 functions. Same upgrade resolves 50MB upload limit for wav file.~~ RESOLVED: Supabase Pro upgrade completed. 6 functions and wav file can now be deployed/migrated.
 
 ## Phase 1 Inventory Files
 
@@ -127,8 +132,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-28T17:20:48Z
-Stopped at: Completed 05-01 (GitHub Repo Creation). Repo itsforren/alphahub live with 685 files, SPA routing, env docs.
+Last session: 2026-02-28T21:30:47Z
+Stopped at: Completed 05-02 (Vercel Deployment). Phase 5 COMPLETE. Frontend live at hub.alphaagent.io. Supabase Pro upgrade done.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -152,10 +157,17 @@ Resume file: None
 - Vault secrets: project_url and anon_key stored for cron auth
 - Missing functions: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
 
-### Phase 5 Key Facts
+### Phase 5 Key Facts (COMPLETE)
 - GitHub repo: https://github.com/itsforren/alphahub (public)
 - Repo root: /Users/forren/workspace/copy-alphahub/alphahub-v2/ (has its own .git)
 - vercel.json: SPA catch-all rewrite /(.*) -> /index.html
 - .env.example: 4 VITE_* vars documented (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_PROJECT_ID)
 - Build: npm run build succeeds in 7.18s (chunk size warning is non-blocking)
 - .env with old credentials exists locally but is gitignored -- NOT in repo
+- Vercel project: alphahub-v2 on team alpha-agent1, git-connected to itsforren/alphahub
+- Production URL: https://alphahub-v2.vercel.app
+- Custom domain: https://hub.alphaagent.io (HTTPS active, deep links work)
+- DNS: CNAME hub -> cname.vercel-dns.com at Hostinger
+- Supabase Auth: site_url = https://hub.alphaagent.io, redirects configured
+- All 10 pages verified by user (login, dashboard, clients, client detail, billing, command, sales, analytics, chat, settings)
+- Supabase Pro upgrade completed -- 6 remaining functions and wav file now unblocked
