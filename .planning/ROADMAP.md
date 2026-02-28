@@ -14,9 +14,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Preparation & Audit** - Clone source, create new Supabase project, inventory all secrets and external integrations
 - [x] **Phase 2: Database & Auth** - Migrate full schema, data, RLS policies, auth users with password hashes preserved
-- [ ] **Phase 3: Backend Infrastructure** - Deploy edge functions with secrets, migrate storage buckets, enable Realtime
+- [x] **Phase 3: Backend Infrastructure** - Deploy edge functions with secrets, migrate storage buckets, enable Realtime
 - [ ] **Phase 4: Stripe Migration** - Re-point both Stripe accounts' webhooks and verify billing flow end-to-end
-- [ ] **Phase 5: Frontend Deployment** - Export, clean, reconfigure, and deploy the frontend to independent hosting
+- [x] **Phase 5: Frontend Deployment** - Export, clean, reconfigure, and deploy the frontend to independent hosting
 - [ ] **Phase 6: Cutover & Verification** - Execute maintenance window: delta sync, DNS switch, verify all features, update MCP
 
 ## Phase Details
@@ -103,8 +103,8 @@ Plans:
 **Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 05-01-PLAN.md -- Create GitHub repo with gitignore fix, vercel.json, and .env.example (Wave 1, autonomous)
-- [ ] 05-02-PLAN.md -- Deploy to Vercel, configure domain and auth URLs, verify all pages (Wave 2, has checkpoint)
+- [x] 05-01-PLAN.md -- Create GitHub repo with gitignore fix, vercel.json, and .env.example (Wave 1, autonomous)
+- [x] 05-02-PLAN.md -- Deploy to Vercel, configure domain and auth URLs, verify all pages (Wave 2, has checkpoint)
 
 ### Phase 6: Cutover & Verification
 **Goal**: Production traffic is serving from the new infrastructure, all features are verified working, and the old Lovable deployment is decommissioned
@@ -136,9 +136,9 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 | 2. Database & Auth | 3/3 | Complete ✓ | 2026-02-27 |
 | 3. Backend Infrastructure | 5/5 | Complete ✓ | 2026-02-27 |
 | 4. Stripe Migration | 0/2 | Not started | - |
-| 5. Frontend Deployment | 0/2 | Not started | - |
+| 5. Frontend Deployment | 2/2 | Complete ✓ | 2026-02-28 |
 | 6. Cutover & Verification | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-02-27 -- Phase 3 complete (100/106 functions, 6 cron jobs, 11 Realtime tables, 33 secrets). Known gaps: 6 functions need Pro upgrade, agreements bucket needs old service key.*
+*Last updated: 2026-02-28 -- Phase 5 complete. Frontend deployed to Vercel at hub.alphaagent.io. All 10 pages verified. Supabase Pro upgrade done.*

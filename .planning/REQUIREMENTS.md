@@ -62,11 +62,11 @@
 
 ### Frontend
 
-- [ ] **FE-01**: Export codebase from alpha-agent-flow repo
-- [ ] **FE-02**: Remove Lovable-specific code (lovable-tagger dev dependency)
-- [ ] **FE-03**: Update Supabase client config to point at new project (URL + anon key)
-- [ ] **FE-04**: Deploy frontend to independent hosting (Netlify or similar)
-- [ ] **FE-05**: Verify all pages load and function correctly on new deployment
+- [x] **FE-01**: Export codebase from alpha-agent-flow repo
+- [x] **FE-02**: Remove Lovable-specific code (lovable-tagger dev dependency)
+- [x] **FE-03**: Update Supabase client config to point at new project (URL + anon key)
+- [x] **FE-04**: Deploy frontend to independent hosting (Vercel at hub.alphaagent.io)
+- [x] **FE-05**: Verify all pages load and function correctly on new deployment
 
 ### Cutover & Verification
 
@@ -142,11 +142,11 @@
 | STORE-03 | Phase 3 | Complete |
 | RT-01 | Phase 3 | Complete |
 | RT-02 | Phase 3 | Pending |
-| FE-01 | Phase 5 | Pending |
-| FE-02 | Phase 5 | Pending |
-| FE-03 | Phase 5 | Pending |
-| FE-04 | Phase 5 | Pending |
-| FE-05 | Phase 5 | Pending |
+| FE-01 | Phase 5 | Complete |
+| FE-02 | Phase 5 | Complete |
+| FE-03 | Phase 5 | Complete |
+| FE-04 | Phase 5 | Complete |
+| FE-05 | Phase 5 | Complete |
 | CUT-01 | Phase 6 | Pending |
 | CUT-02 | Phase 6 | Pending |
 | CUT-03 | Phase 6 | Pending |
@@ -167,4 +167,4 @@
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-27 — Phase 3 requirements (EDGE-01 through EDGE-05, STORE-01 through STORE-03, RT-01) marked Complete*
+*Last updated: 2026-02-28 — Phase 5 requirements (FE-01 through FE-05) marked Complete*
