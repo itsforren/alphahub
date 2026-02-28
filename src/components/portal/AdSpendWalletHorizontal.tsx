@@ -1,0 +1,384 @@
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
+import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Wallet, AlertTriangle, Settings, Loader2, Calendar, TrendingDown, DollarSign } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { format } from 'date-fns';
+
+interface AdSpendWalletHorizontalProps {
+  clientId: string;
+  mtdAdSpend?: number; // Kept for backward compatibility, but we now use computed spend
+  isAdmin?: boolean;
+}
+
+export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWalletHorizontalProps) {
+  const queryClient = useQueryClient();
+  const { data: wallet, isLoading: walletLoading } = useClientWallet(clientId);
+  const { 
+    totalDeposits, 
+    displayedSpend, 
+    remainingBalance, 
+    trackingStartDate, 
+    isLoading: computedLoading,
+    refetch: refetchComputedBalance
+  } = useComputedWalletBalance(clientId);
+  const createOrUpdateWallet = useCreateOrUpdateWallet();
+  
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [threshold, setThreshold] = useState('');
+  const [autoCharge, setAutoCharge] = useState('');
+  const [editTrackingDate, setEditTrackingDate] = useState('');
+  const [monthlyCap, setMonthlyCap] = useState('');
+  const [isSavingDate, setIsSavingDate] = useState(false);
+
+  const isLoading = walletLoading || computedLoading;
+  const lowThreshold = wallet?.low_balance_threshold ?? 150;
+  const isLowBalance = remainingBalance <= lowThreshold;
+  const isNegative = remainingBalance < 0;
+  const balancePercent = totalDeposits > 0 
+    ? Math.max(0, Math.min(100, (remainingBalance / totalDeposits) * 100)) 
+    : 0;
+
+  const handleSaveSettings = async () => {
+    try {
+      // Update threshold and auto-charge
+      await createOrUpdateWallet.mutateAsync({
+        client_id: clientId,
+        low_balance_threshold: parseFloat(threshold) || 150,
+        auto_charge_amount: autoCharge ? parseFloat(autoCharge) : null,
+        monthly_ad_spend_cap: monthlyCap ? parseFloat(monthlyCap) : null,
+      });
+
+      // Update tracking_start_date if changed
+      if (editTrackingDate && editTrackingDate !== trackingStartDate) {
+        setIsSavingDate(true);
+        const { error } = await supabase
+          .from('client_wallets')
+          .update({ tracking_start_date: editTrackingDate })
+          .eq('client_id', clientId);
+        
+        if (error) throw error;
+        
+        // Invalidate all wallet/spend related queries so UI updates immediately
+        queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
+        queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', clientId], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['ad-spend-daily', clientId] });
+        queryClient.invalidateQueries({ queryKey: ['campaigns'], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['command-center-stats'], exact: false });
+
+        // Also refetch computed balance directly
+        refetchComputedBalance();
+      }
+
+      toast.success('Wallet settings updated');
+      setSettingsModalOpen(false);
+    } catch (error) {
+      toast.error('Failed to update settings');
+    } finally {
+      setIsSavingDate(false);
+    }
+  };
+
+  const openSettings = () => {
+    setThreshold(wallet?.low_balance_threshold?.toString() || '150');
+    setAutoCharge(wallet?.auto_charge_amount?.toString() || '');
+    setMonthlyCap((wallet as any)?.monthly_ad_spend_cap?.toString() || '');
+    setEditTrackingDate(trackingStartDate || '');
+    setSettingsModalOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <Card className="frosted-card">
+        <div className="p-6">
+          <Skeleton className="h-20 w-full" />
+        </div>
+      </Card>
+    );
+  }
+
+  // If no tracking has started yet
+  if (!trackingStartDate) {
+    return (
+      <Card className="frosted-card overflow-hidden">
+        <div className="px-6 py-5 bg-gradient-to-r from-muted/50 via-muted/25 to-transparent">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Wallet className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">Ad Spend Wallet</p>
+              <p className="text-xs text-muted-foreground">
+                {isAdmin 
+                  ? 'Tracking starts when the first ad spend invoice is marked as paid'
+                  : 'Ad spend tracking has not started yet'}
+              </p>
+            </div>
+            {isAdmin && (
+              <Button variant="ghost" size="icon" onClick={openSettings} className="h-9 w-9">
+                <Settings className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Settings Modal */}
+        <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
+          <DialogContent className="sm:max-w-[400px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-primary" />
+                Wallet Settings
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Low Balance Threshold</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    value={threshold}
+                    onChange={(e) => setThreshold(e.target.value)}
+                    className="pl-7"
+                    placeholder="150"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Auto-Charge Amount (Optional)</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <Input
+                    type="number"
+                    step="1"
+                    value={autoCharge}
+                    onChange={(e) => setAutoCharge(e.target.value)}
+                    className="pl-7"
+                    placeholder="500"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Tracking Start Date (Optional)</Label>
+                <Input
+                  type="date"
+                  value={editTrackingDate}
+                  onChange={(e) => setEditTrackingDate(e.target.value)}
+                  placeholder="Set manually to start tracking"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Set this to manually start tracking from a specific date
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSettingsModalOpen(false)}>Cancel</Button>
+              <Button onClick={handleSaveSettings} disabled={createOrUpdateWallet.isPending || isSavingDate}>
+                {(createOrUpdateWallet.isPending || isSavingDate) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Save Settings
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <Card className={cn(
+        'frosted-card overflow-hidden',
+        isNegative && 'ring-2 ring-red-500/50',
+        isLowBalance && !isNegative && 'ring-2 ring-orange-500/50'
+      )}>
+        <div className={cn(
+          'px-6 py-5',
+          isNegative 
+            ? 'bg-gradient-to-r from-red-500/15 via-red-500/5 to-transparent'
+            : isLowBalance 
+              ? 'bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent'
+              : 'bg-gradient-to-r from-blue-500/10 via-cyan-500/5 to-transparent'
+        )}>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+            {/* Left: Icon + Balance */}
+            <div className="flex items-center gap-4 min-w-[220px]">
+              <div className={cn(
+                'w-12 h-12 rounded-xl flex items-center justify-center shrink-0',
+                isNegative ? 'bg-red-500/20' : isLowBalance ? 'bg-orange-500/20' : 'bg-blue-500/20'
+              )}>
+                <Wallet className={cn(
+                  'w-6 h-6', 
+                  isNegative ? 'text-red-400' : isLowBalance ? 'text-orange-400' : 'text-blue-400'
+                )} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Remaining Balance</p>
+                <div className={cn(
+                  'text-3xl font-bold',
+                  isNegative ? 'text-red-400' : isLowBalance ? 'text-orange-400' : 'text-foreground'
+                )}>
+                  {isNegative && '-'}${Math.abs(remainingBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                {isNegative && (
+                  <div className="flex items-center gap-1 text-red-400 text-xs mt-0.5">
+                    <TrendingDown className="w-3 h-3" />
+                    Needs deposit
+                  </div>
+                )}
+                {isLowBalance && !isNegative && (
+                  <div className="flex items-center gap-1 text-orange-400 text-xs mt-0.5">
+                    <AlertTriangle className="w-3 h-3" />
+                    Low balance
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Middle: Progress Bar + Tracking Info */}
+            <div className="flex-1 space-y-2">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <TrendingDown className="w-3 h-3" />
+                  Tracked Spend: ${displayedSpend.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+                <span className="flex items-center gap-1">
+                  <DollarSign className="w-3 h-3" />
+                  Deposited: ${totalDeposits.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <Progress 
+                value={isNegative ? 100 : balancePercent} 
+                className={cn(
+                  'h-3',
+                  isNegative ? '[&>div]:bg-red-500' : isLowBalance ? '[&>div]:bg-orange-500' : '[&>div]:bg-blue-500'
+                )}
+              />
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Calendar className="w-3 h-3" />
+                Tracking since: {format(new Date(trackingStartDate), 'MMM d, yyyy')}
+              </div>
+            </div>
+
+            {/* Right: Stats + Actions */}
+            <div className="flex items-center gap-4 lg:gap-6">
+              <div className="hidden sm:flex items-center gap-4">
+                <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
+                  <div className="text-lg font-semibold text-foreground">${displayedSpend.toFixed(0)}</div>
+                  <div className="text-xs text-muted-foreground">Spend</div>
+                </div>
+                <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
+                  <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
+                  <div className="text-xs text-muted-foreground">Threshold</div>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={openSettings}
+                    className="h-9 w-9"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Settings Modal */}
+      <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-primary" />
+              Wallet Settings
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Low Balance Threshold</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="1"
+                  value={threshold}
+                  onChange={(e) => setThreshold(e.target.value)}
+                  className="pl-7"
+                  placeholder="150"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Auto-Charge Amount (Optional)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="1"
+                  value={autoCharge}
+                  onChange={(e) => setAutoCharge(e.target.value)}
+                  className="pl-7"
+                  placeholder="500"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Monthly Ad Spend Cap (Optional)</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="100"
+                  value={monthlyCap}
+                  onChange={(e) => setMonthlyCap(e.target.value)}
+                  className="pl-7"
+                  placeholder="4000"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Max total ad spend charges per month. Leave empty for no cap.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Tracking Start Date</Label>
+              <Input
+                type="date"
+                value={editTrackingDate}
+                onChange={(e) => setEditTrackingDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Ad spend from this date forward counts against the wallet
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettingsModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveSettings} disabled={createOrUpdateWallet.isPending || isSavingDate}>
+              {(createOrUpdateWallet.isPending || isSavingDate) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

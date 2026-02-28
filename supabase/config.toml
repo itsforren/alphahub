@@ -1,0 +1,319 @@
+project_id = "qcunascacayiiuufjtaq"
+
+[functions.submit-webhook]
+verify_jwt = false
+
+[functions.lead-webhook]
+verify_jwt = false
+
+[functions.agent-onboarding-webhook]
+verify_jwt = false
+
+[functions.agent-update-webhook]
+verify_jwt = false
+
+[functions.check-automation-timeout]
+verify_jwt = false
+
+[functions.sync-google-ads]
+verify_jwt = false
+
+[functions.update-google-ads-budget]
+verify_jwt = false
+
+[functions.update-google-ads-targeting]
+verify_jwt = false
+
+[functions.sync-google-ads-targeting]
+verify_jwt = false
+
+[functions.chat-notification]
+verify_jwt = false
+
+[functions.create-google-ads-campaign]
+verify_jwt = false
+
+[functions.reset-user-password]
+verify_jwt = false
+
+[functions.check-client-email]
+verify_jwt = false
+
+[functions.check-low-balance]
+verify_jwt = false
+
+[functions.lead-status-webhook]
+verify_jwt = false
+
+[functions.crm-oauth-start]
+verify_jwt = false
+
+[functions.crm-oauth-callback]
+verify_jwt = false
+
+[functions.crm-location-token]
+verify_jwt = false
+
+[functions.crm-discovery-calendar]
+verify_jwt = false
+
+[functions.ghl-assign-user-to-all-calendars]
+verify_jwt = false
+
+[functions.inject-lead-to-ghl]
+verify_jwt = false
+
+[functions.retry-failed-lead-delivery]
+verify_jwt = false
+
+[functions.check-lead-discrepancy]
+verify_jwt = false
+
+[functions.send-test-lead]
+verify_jwt = false
+
+[functions.sync-all-google-ads]
+verify_jwt = false
+
+[functions.plaid-create-link-token]
+verify_jwt = false
+
+[functions.plaid-exchange-token]
+verify_jwt = false
+
+[functions.plaid-sync-transactions]
+verify_jwt = false
+
+[functions.plaid-get-balances]
+verify_jwt = false
+
+[functions.ghl-sync-custom-fields]
+verify_jwt = false
+
+[functions.set-client-password]
+verify_jwt = false
+
+[functions.send-auth-email]
+verify_jwt = false
+
+[functions.send-password-reset]
+verify_jwt = false
+
+[functions.ticket-notification]
+verify_jwt = false
+
+[functions.create-user-account]
+verify_jwt = false
+
+[functions.fetch-link-preview]
+verify_jwt = false
+
+[functions.billing-collections-run]
+verify_jwt = false
+
+[functions.track-event]
+verify_jwt = false
+
+[functions.tracking-script]
+verify_jwt = false
+
+[functions.cleanup-archived-clients]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.prospect-booking-webhook]
+verify_jwt = false
+
+[functions.fathom-webhook]
+verify_jwt = false
+
+[functions.ghl-stage-sync]
+verify_jwt = false
+
+[functions.lookup-ghl-contact]
+verify_jwt = false
+
+[functions.sync-ghl-appointments]
+verify_jwt = false
+
+[functions.sync-disposition-to-ghl]
+verify_jwt = false
+
+[functions.fetch-fathom-calls]
+verify_jwt = false
+
+[functions.analyze-prospect]
+verify_jwt = false
+
+[functions.verify-google-ads-campaign]
+verify_jwt = false
+
+[functions.check-lead-router-health]
+verify_jwt = false
+
+[functions.verify-lead-delivery]
+verify_jwt = false
+
+[functions.send-agreement-otp]
+verify_jwt = false
+
+[functions.verify-agreement-otp]
+verify_jwt = false
+
+[functions.process-referral-commission]
+verify_jwt = false
+
+[functions.generate-agent-bio]
+verify_jwt = false
+
+[functions.generate-dispute-evidence]
+verify_jwt = false
+
+[functions.nfia-create-agent]
+verify_jwt = false
+
+[functions.webflow-cms-create]
+verify_jwt = false
+
+[functions.webflow-cms-update]
+verify_jwt = false
+
+[functions.ghl-create-subaccount]
+verify_jwt = false
+
+[functions.ghl-create-user]
+verify_jwt = false
+
+[functions.verify-onboarding]
+verify_jwt = false
+
+[functions.verify-onboarding-live]
+verify_jwt = false
+
+[functions.run-full-onboarding]
+verify_jwt = false
+
+[functions.sync-a2p-status]
+verify_jwt = false
+
+[functions.sync-internal-google-ads]
+verify_jwt = false
+
+[functions.sync-meta-ads]
+verify_jwt = false
+
+[functions.prospect-contact-capture]
+verify_jwt = false
+
+[functions.prospect-qualification-submit]
+verify_jwt = false
+
+[functions.prospect-post-booking]
+verify_jwt = false
+
+[functions.prospect-inactivity-check]
+verify_jwt = false
+
+[functions.prospect-sync-custom-fields]
+verify_jwt = false
+
+[functions.slack-ads-actions]
+verify_jwt = false
+
+[functions.ads-manager-slack-test]
+verify_jwt = false
+
+[functions.refresh-stable-headshot]
+verify_jwt = false
+
+[functions.onboarding-bridge]
+verify_jwt = false
+
+[functions.google-ads-enhanced-conversion]
+verify_jwt = false
+
+[functions.create-setup-intent]
+verify_jwt = false
+
+[functions.save-payment-method]
+verify_jwt = false
+
+[functions.create-stripe-invoice]
+verify_jwt = false
+
+[functions.stripe-billing-webhook]
+verify_jwt = false
+
+[functions.auto-recharge-run]
+verify_jwt = false
+
+[functions.dispute-webhook]
+verify_jwt = false
+
+[functions.mcp-proxy]
+verify_jwt = false
+
+[functions.sync-stripe-cards]
+verify_jwt = false
+
+[functions.create-stripe-subscription]
+verify_jwt = false
+
+[functions.migrate-to-auto-billing]
+verify_jwt = false
+
+[functions.manual-wallet-refill]
+verify_jwt = false
+
+[functions.add-keywords-to-campaign]
+verify_jwt = false
+
+[functions.admin-delete-user]
+verify_jwt = false
+
+[functions.admin-reset-user]
+verify_jwt = false
+
+[functions.admin-set-password]
+verify_jwt = false
+
+[functions.aggregate-client-kpis]
+verify_jwt = false
+
+[functions.crm-snapshot-status]
+verify_jwt = false
+
+[functions.execute-proposal]
+verify_jwt = false
+
+[functions.get-stripe-config]
+verify_jwt = false
+
+[functions.ghl-inject-twilio]
+verify_jwt = false
+
+[functions.ghl-provision-phone]
+verify_jwt = false
+
+[functions.hourly-approval-reminder]
+verify_jwt = false
+
+[functions.morning-review-job]
+verify_jwt = false
+
+[functions.outcome-tracker-job]
+verify_jwt = false
+
+[functions.pause-google-ads-campaign]
+verify_jwt = false
+
+[functions.plaid-daily-refresh]
+verify_jwt = false
+
+[functions.prospect-abandoned-webhook]
+verify_jwt = false
+
+[functions.update-google-ads-url]
+verify_jwt = false

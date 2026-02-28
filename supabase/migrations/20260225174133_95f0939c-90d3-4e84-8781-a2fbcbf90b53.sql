@@ -1,0 +1,1 @@
+UPDATE clients SET npn = '20117133' WHERE id = '2d59c052-d8fe-45a7-814f-31f88348a55f';
