@@ -23,3 +23,12 @@ dist-ssr
 *.sln
 *.sw?
 supabase/.env.secrets
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Temp files
+tmp/
+.vercel
