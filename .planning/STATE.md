@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 3 complete. Ready for Phase 4 (Stripe Migration) and Phase 5 (Frontend Deployment) -- can run in parallel.
+**Current focus:** Phase 5 in progress (Frontend Deployment). Phase 4 (Stripe Migration) not yet started -- can run in parallel.
 
 ## Current Position
 
-Phase: 3 of 6 (Backend Infrastructure) -- COMPLETE
-Plan: 5 of 5 in Phase 3
-Status: Phase 3 complete
-Last activity: 2026-02-27 -- Completed 03-05-PLAN.md (Backend Deployment)
+Phase: 5 of 6 (Frontend Deployment)
+Plan: 1 of 2 in Phase 5
+Status: In progress
+Last activity: 2026-02-28 -- Completed 05-01-PLAN.md (GitHub Repo Creation)
 
-Progress: [██████████..........] 50% (3 of 6 phases complete)
+Progress: [██████████████████░░] 92% (12 of 13 defined plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: ~28min
+- Total plans completed: 12
+- Average duration: ~26min
 - Total execution time: ~5 hours
 
 **By Phase:**
@@ -30,10 +30,11 @@ Progress: [██████████..........] 50% (3 of 6 phases complete
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
+| 05-frontend-deployment | 1/2 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (2min), 03-02 (3min), 03-03 (27min), 03-04 (14min), 03-05 (9min)
-- Trend: Phase 3 was fast (infrastructure work, no complex data migration)
+- Last 5 plans: 03-03 (27min), 03-04 (14min), 03-05 (9min), 05-01 (2min)
+- Trend: Infrastructure and deployment plans are fast
 
 *Updated after each plan completion*
 
@@ -86,6 +87,8 @@ Recent decisions affecting current work:
 - [03-05]: Deployed functions one-by-one after bulk deploy hit free tier limit
 - [03-05]: Realtime tables were already configured by migration SQL -- no manual ADD TABLE needed
 - [03-05]: Vault stores project_url and anon_key for pg_cron job auth to edge functions
+- [05-01]: GitHub repo itsforren/alphahub created (public) with 685 files from alphahub-v2 contents
+- [05-01]: tmp/ directory excluded from repo (debug logs and temp images, not source code)
 
 ### Pending Todos
 
@@ -124,8 +127,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-27T18:19:01Z
-Stopped at: Completed 03-05 (Backend Deployment). Phase 3 complete. 100/106 functions deployed, 37 secrets, 6 cron jobs, 11 Realtime tables.
+Last session: 2026-02-28T17:20:48Z
+Stopped at: Completed 05-01 (GitHub Repo Creation). Repo itsforren/alphahub live with 685 files, SPA routing, env docs.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -148,3 +151,11 @@ Resume file: None
 - Realtime: 11 tables published (configured by migration SQL)
 - Vault secrets: project_url and anon_key stored for cron auth
 - Missing functions: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
+
+### Phase 5 Key Facts
+- GitHub repo: https://github.com/itsforren/alphahub (public)
+- Repo root: /Users/forren/workspace/copy-alphahub/alphahub-v2/ (has its own .git)
+- vercel.json: SPA catch-all rewrite /(.*) -> /index.html
+- .env.example: 4 VITE_* vars documented (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_SUPABASE_ANON_KEY, VITE_SUPABASE_PROJECT_ID)
+- Build: npm run build succeeds in 7.18s (chunk size warning is non-blocking)
+- .env with old credentials exists locally but is gitignored -- NOT in repo
