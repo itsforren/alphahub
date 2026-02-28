@@ -100,11 +100,11 @@ Plans:
   3. The frontend is deployed to Netlify (or equivalent) with a working preview URL
   4. All major pages load correctly on the new deployment: login, dashboard, client list, client detail, billing, wallets, campaigns, leads, communications
   5. CORS is configured correctly -- no cross-origin errors in browser console when interacting with edge functions
-**Plans**: TBD
+**Plans**: 2 plans in 2 waves
 
 Plans:
-- [ ] 05-01: Export, clean, and reconfigure frontend codebase
-- [ ] 05-02: Deploy to Netlify and verify all pages
+- [ ] 05-01-PLAN.md -- Create GitHub repo with gitignore fix, vercel.json, and .env.example (Wave 1, autonomous)
+- [ ] 05-02-PLAN.md -- Deploy to Vercel, configure domain and auth URLs, verify all pages (Wave 2, has checkpoint)
 
 ### Phase 6: Cutover & Verification
 **Goal**: Production traffic is serving from the new infrastructure, all features are verified working, and the old Lovable deployment is decommissioned
