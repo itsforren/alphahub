@@ -84,11 +84,12 @@ Plans:
   3. A test invoice created in the management account flows through the new backend and creates a billing record in the new database
   4. The auto-recharge wallet logic fires correctly when triggered -- a wallet deposit appears in the new database
   5. Webhook delivery logs in both Stripe dashboards show successful delivery (200 responses) for all registered event types
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 04-01: Register new webhook endpoints and configure signing secrets
-- [ ] 04-02: End-to-end billing and wallet tests with verification
+- [ ] 04-01-PLAN.md -- Deploy remaining 6 edge functions and fix admin-set-password hardcoded secret (Wave 1, autonomous)
+- [ ] 04-02-PLAN.md -- Create Stripe webhook endpoints, configure signing secrets, verify with test events (Wave 2, has checkpoint)
+- [ ] 04-03-PLAN.md -- End-to-end real transaction test and live event verification (Wave 3, has checkpoint)
 
 ### Phase 5: Frontend Deployment
 **Goal**: The AlphaHub frontend is deployed independently (not on Lovable), connected to the new Supabase backend, and all pages load correctly
@@ -132,13 +133,13 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Preparation & Audit | 3/3 | Complete ✓ | 2026-02-27 |
-| 2. Database & Auth | 3/3 | Complete ✓ | 2026-02-27 |
-| 3. Backend Infrastructure | 5/5 | Complete ✓ | 2026-02-27 |
-| 4. Stripe Migration | 0/2 | Not started | - |
-| 5. Frontend Deployment | 2/2 | Complete ✓ | 2026-02-28 |
+| 1. Preparation & Audit | 3/3 | Complete | 2026-02-27 |
+| 2. Database & Auth | 3/3 | Complete | 2026-02-27 |
+| 3. Backend Infrastructure | 5/5 | Complete | 2026-02-27 |
+| 4. Stripe Migration | 0/3 | Planned | - |
+| 5. Frontend Deployment | 2/2 | Complete | 2026-02-28 |
 | 6. Cutover & Verification | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-02-28 -- Phase 5 complete. Frontend deployed to Vercel at hub.alphaagent.io. All 10 pages verified. Supabase Pro upgrade done.*
+*Last updated: 2026-03-01 -- Phase 4 planned. 3 plans in 3 waves: deploy remaining functions, create Stripe endpoints, verify end-to-end.*
