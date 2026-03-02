@@ -119,7 +119,7 @@ const adminNavSections: NavSection[] = [
   },
   {
     title: 'Admin',
-    defaultOpen: false,
+    defaultOpen: true,
     items: [
       { to: '/hub/admin/courses', icon: BookOpen, label: 'Courses' },
       { to: '/hub/admin/settings', icon: Settings, label: 'Settings' },
