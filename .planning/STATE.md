@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 5 COMPLETE (Frontend Deployment). Phase 4 (Stripe Migration) not yet started -- can run in parallel. Supabase Pro upgrade done -- 6 remaining edge functions and wav file now unblocked.
+**Current focus:** Phase 4 (Stripe Migration) in progress. Plan 04-01 complete (106/106 functions deployed, admin-set-password secret fixed). Phase 5 COMPLETE. Remaining: Stripe webhook endpoints (04-02) and testing (04-03).
 
 ## Current Position
 
-Phase: 5 of 6 (Frontend Deployment) -- COMPLETE
-Plan: 2 of 2 in Phase 5
-Status: Phase complete
-Last activity: 2026-02-28 -- Completed 05-02-PLAN.md (Vercel Deployment)
+Phase: 4 of 6 (Stripe Migration)
+Plan: 1 of 3 in Phase 4
+Status: In progress
+Last activity: 2026-03-02 -- Completed 04-01-PLAN.md (Deploy Remaining Functions + Fix Hardcoded Secret)
 
-Progress: [████████████████████] 100% (13 of 13 defined plans complete)
+Progress: [██████████████████████████████] 100% (14 of 16 defined plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 13
-- Average duration: ~27min
+- Total plans completed: 14
+- Average duration: ~24min
 - Total execution time: ~5.5 hours
 
 **By Phase:**
@@ -32,9 +32,11 @@ Progress: [████████████████████] 100% (1
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
 | 05-frontend-deployment | 2/2 | ~92min | ~46min |
 
+| 04-stripe-migration | 1/3 | 1min | 1min |
+
 **Recent Trend:**
-- Last 5 plans: 03-04 (14min), 03-05 (9min), 05-01 (2min), 05-02 (~90min)
-- Trend: 05-02 longer due to user verification checkpoint and external service config (DNS, Supabase Auth)
+- Last 5 plans: 03-05 (9min), 05-01 (2min), 05-02 (~90min), 04-01 (1min)
+- Trend: 04-01 fast -- deployment-only + single file fix
 
 *Updated after each plan completion*
 
@@ -94,6 +96,8 @@ Recent decisions affecting current work:
 - [05-02]: Supabase Pro upgrade completed -- unblocks 6 edge functions and 54.7MB wav file migration
 - [05-02]: User confirmed all 10 pages load correctly with real data from new backend
 - [05-02]: Data is migration snapshot -- delta sync planned for Phase 6 cutover
+- [04-01]: admin-set-password secret moved to ADMIN_SET_PASSWORD_SECRET env var with defense-in-depth guard
+- [04-01]: Same secret value (alpha-admin-2024) used for continuity -- can be rotated after cutover
 
 ### Pending Todos
 
@@ -103,7 +107,7 @@ Recent decisions affecting current work:
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
 - **NEW**: Migrate agreements bucket files -- needs old project service role key from Supabase Dashboard or Lovable settings. Run: `OLD_SUPABASE_SERVICE_KEY="<key>" npx tsx scripts/migrate-storage.ts --bucket agreements`
 - **UNBLOCKED**: Migrate oversized wav file (54.7 MB) -- Pro upgrade done. Path: media/lesson-files/1767150569935-0hry6b.wav
-- **UNBLOCKED**: Deploy remaining 6 edge functions -- Pro upgrade done: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
+- ~~**UNBLOCKED**: Deploy remaining 6 edge functions -- Pro upgrade done: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update~~ RESOLVED: All 106/106 functions deployed in 04-01.
 
 ### Blockers/Concerns
 
@@ -112,7 +116,7 @@ Recent decisions affecting current work:
 - ~~pg_cron jobs need authoritative list~~ RESOLVED: 6 cron jobs captured from Lovable extraction.
 - ~~LOVABLE_API_KEY needs replacement strategy~~ RESOLVED: Replaced with Anthropic Messages API in 03-02. All 5 functions use LLM_API_KEY + claude-sonnet-4-6.
 - `stripe-webhook` and `dispute-webhook` lack signature verification -- security risk to address during migration.
-- `admin-set-password` uses hardcoded secret (`alpha-admin-2024`) -- should be moved to env var.
+- ~~`admin-set-password` uses hardcoded secret (`alpha-admin-2024`) -- should be moved to env var.~~ RESOLVED: Fixed in 04-01. Now uses ADMIN_SET_PASSWORD_SECRET env var.
 - Stripe price IDs may be hardcoded in edge functions -- needs investigation before Phase 4.
 - ~~chat-attachments storage bucket is public (should be private) -- fix during Phase 3 migration.~~ RESOLVED: Kept as public per user decision.
 - ~~config.toml `schedule` keys block `supabase link` -- must remove before Phase 3 function deployment.~~ RESOLVED: Removed in 03-01. CLI link successful.
@@ -132,8 +136,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-02-28T21:30:47Z
-Stopped at: Completed 05-02 (Vercel Deployment). Phase 5 COMPLETE. Frontend live at hub.alphaagent.io. Supabase Pro upgrade done.
+Last session: 2026-03-02T04:10:48Z
+Stopped at: Completed 04-01 (Deploy Remaining Functions + Fix Hardcoded Secret). 106/106 functions deployed. admin-set-password secret fixed.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -150,12 +154,11 @@ Resume file: None
 - Agreements bucket: 0 files -- needs OLD_SUPABASE_SERVICE_KEY to migrate
 - Old project anon key hardcoded in script (for public bucket access)
 - Database file URL references still point to old project -- URL rewriting needed during cutover
-- Edge functions: 100/106 deployed (free tier limit). 6 need Pro upgrade.
-- Secrets: 37 configured (33 manual + 4 auto-set SUPABASE_*)
+- Edge functions: 106/106 deployed (all complete as of 04-01)
+- Secrets: 38 configured (33 manual + 4 auto-set SUPABASE_* + 1 ADMIN_SET_PASSWORD_SECRET)
 - Cron jobs: 6 active via pg_cron + vault + net.http_post pattern
 - Realtime: 11 tables published (configured by migration SQL)
 - Vault secrets: project_url and anon_key stored for cron auth
-- Missing functions: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update
 
 ### Phase 5 Key Facts (COMPLETE)
 - GitHub repo: https://github.com/itsforren/alphahub (public)
