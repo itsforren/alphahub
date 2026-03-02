@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 4 (Stripe Migration) in progress. Plan 04-01 complete (106/106 functions deployed, admin-set-password secret fixed). Phase 5 COMPLETE. Remaining: Stripe webhook endpoints (04-02) and testing (04-03).
+**Current focus:** Phase 4 (Stripe Migration) in progress. Plans 04-01 and 04-02 complete. Phase 5 COMPLETE. Remaining: Stripe webhook testing (04-03).
 
 ## Current Position
 
 Phase: 4 of 6 (Stripe Migration)
-Plan: 1 of 3 in Phase 4
+Plan: 2 of 3 in Phase 4
 Status: In progress
-Last activity: 2026-03-02 -- Completed 04-01-PLAN.md (Deploy Remaining Functions + Fix Hardcoded Secret)
+Last activity: 2026-03-02 -- Completed 04-02-PLAN.md (Stripe Webhook Endpoints)
 
-Progress: [██████████████████████████████] 100% (14 of 16 defined plans complete)
+Progress: [██████████████████████████████] 100% (15 of 16 defined plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 14
-- Average duration: ~24min
+- Total plans completed: 15
+- Average duration: ~22min
 - Total execution time: ~5.5 hours
 
 **By Phase:**
@@ -32,11 +32,11 @@ Progress: [███████████████████████
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
 | 05-frontend-deployment | 2/2 | ~92min | ~46min |
 
-| 04-stripe-migration | 1/3 | 1min | 1min |
+| 04-stripe-migration | 2/3 | 3min | 1.5min |
 
 **Recent Trend:**
-- Last 5 plans: 03-05 (9min), 05-01 (2min), 05-02 (~90min), 04-01 (1min)
-- Trend: 04-01 fast -- deployment-only + single file fix
+- Last 5 plans: 05-01 (2min), 05-02 (~90min), 04-01 (1min), 04-02 (2min)
+- Trend: Phase 4 plans fast -- remote configuration, no code changes
 
 *Updated after each plan completion*
 
@@ -98,6 +98,11 @@ Recent decisions affecting current work:
 - [05-02]: Data is migration snapshot -- delta sync planned for Phase 6 cutover
 - [04-01]: admin-set-password secret moved to ADMIN_SET_PASSWORD_SECRET env var with defense-in-depth guard
 - [04-01]: Same secret value (alpha-admin-2024) used for continuity -- can be rotated after cutover
+- [04-02]: Stripe Event Destinations (new feature) used instead of legacy webhook endpoints -- creates Snapshot + Thin payload destinations
+- [04-02]: "Select all" events registered on both accounts (includes all 7 required billing types plus more)
+- [04-02]: Only Snapshot payload signing secrets configured -- handler uses full event data, not thin payloads
+- [04-02]: Old webhook endpoints left untouched on both Stripe accounts -- fallback for Phase 6 cutover
+- [04-02]: Dispute-webhook separate endpoint deferred to Phase 6 (dispute events included in "Select all" but handler ignores them)
 
 ### Pending Todos
 
@@ -136,8 +141,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-02T04:10:48Z
-Stopped at: Completed 04-01 (Deploy Remaining Functions + Fix Hardcoded Secret). 106/106 functions deployed. admin-set-password secret fixed.
+Last session: 2026-03-02T13:00:16Z
+Stopped at: Completed 04-02 (Stripe Webhook Endpoints). Both signing secrets configured. Function reachable and verifying signatures.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -155,10 +160,21 @@ Resume file: None
 - Old project anon key hardcoded in script (for public bucket access)
 - Database file URL references still point to old project -- URL rewriting needed during cutover
 - Edge functions: 106/106 deployed (all complete as of 04-01)
-- Secrets: 38 configured (33 manual + 4 auto-set SUPABASE_* + 1 ADMIN_SET_PASSWORD_SECRET)
+- Secrets: 40 configured (33 manual + 4 auto-set SUPABASE_* + 1 ADMIN_SET_PASSWORD_SECRET + 2 Stripe webhook secrets)
 - Cron jobs: 6 active via pg_cron + vault + net.http_post pattern
 - Realtime: 11 tables published (configured by migration SQL)
 - Vault secrets: project_url and anon_key stored for cron auth
+
+### Phase 4 Key Facts
+- Stripe webhook endpoint URL (both accounts): https://qcunascacayiiuufjtaq.supabase.co/functions/v1/stripe-billing-webhook
+- Management account: Snapshot webhook with STRIPE_MANAGEMENT_WEBHOOK_SECRET configured
+- Ad Spend account: Snapshot webhook with STRIPE_AD_SPEND_WEBHOOK_SECRET configured
+- Event types: "Select all" on both accounts (includes all 7 required billing events)
+- Stripe Event Destinations feature used (creates Snapshot + Thin payload pairs)
+- Thin payload secrets NOT configured (handler uses Snapshot payloads only)
+- Old webhook endpoints preserved on both accounts for Phase 6 fallback
+- Dispute-webhook separate endpoint deferred to Phase 6
+- stripe-billing-webhook dual-secret verification: tries management secret first, then ad_spend secret
 
 ### Phase 5 Key Facts (COMPLETE)
 - GitHub repo: https://github.com/itsforren/alphahub (public)
