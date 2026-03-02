@@ -5,22 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 4 (Stripe Migration) COMPLETE. All 3 plans done. Phase 5 COMPLETE. Remaining: Phase 6 (Cutover).
+**Current focus:** Phase 6 (Cutover & Verification) IN PROGRESS. Plan 1 of 3 complete. Remaining: 06-02 (External Webhook URLs), 06-03 (Final Cutover).
 
 ## Current Position
 
-Phase: 4 of 6 (Stripe Migration)
-Plan: 3 of 3 in Phase 4
-Status: Phase complete (pending user checkpoint approval for 04-03 Task 4)
-Last activity: 2026-03-02 -- Completed 04-03-PLAN.md (Live Transaction Verification)
+Phase: 6 of 6 (Cutover & Verification)
+Plan: 1 of 3 in Phase 6
+Status: In progress
+Last activity: 2026-03-02 -- Completed 06-01-PLAN.md (Edge Function URL Fix)
 
-Progress: [████████████████████████████████] 100% (16 of 16 defined plans complete)
+Progress: [█████████████████████████████░░░] 89% (17 of 19 plans complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 15
-- Average duration: ~22min
+- Total plans completed: 17
+- Average duration: ~21min
 - Total execution time: ~5.5 hours
 
 **By Phase:**
@@ -30,13 +30,13 @@ Progress: [███████████████████████
 | 01-preparation-audit | 3/3 | 17min | 6min |
 | 02-database-auth | 3/3 | ~225min | ~75min |
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
-| 05-frontend-deployment | 2/2 | ~92min | ~46min |
-
 | 04-stripe-migration | 3/3 | 8min | 2.7min |
+| 05-frontend-deployment | 2/2 | ~92min | ~46min |
+| 06-cutover-verification | 1/3 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (2min), 05-02 (~90min), 04-01 (1min), 04-02 (2min), 04-03 (5min)
-- Trend: Phase 4 plans fast -- remote configuration and verification, no code changes
+- Last 5 plans: 05-02 (~90min), 04-01 (1min), 04-02 (2min), 04-03 (5min), 06-01 (2min)
+- Trend: URL fix plan fast -- simple find-and-replace across 6 files + remote deploy
 
 *Updated after each plan completion*
 
@@ -107,6 +107,9 @@ Recent decisions affecting current work:
 - [04-03]: DB has 6 active subscriptions (migration snapshot), Stripe Dashboard has 17 -- DB will auto-populate via webhook events
 - [04-03]: 209 stale pending billing_records from cron running with wrong Stripe keys -- cleanup needed before cutover
 - [04-03]: create-stripe-invoice uses PaymentIntent for ad_spend (inline charge + wallet deposit), invoice flow for management
+- [06-01]: sierra@alphaagent.io left unchanged -- email address, not a URL
+- [06-01]: create-user-account: replaced dynamic .lovable.app URL construction with hardcoded hub.alphaagent.io
+- [06-01]: PUBLIC_APP_URL secret set on new project for morning-review-job runtime URL resolution
 
 ### Pending Todos
 
@@ -146,8 +149,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-02T13:45:13Z
-Stopped at: Completed 04-03 Tasks 1-3 (Live Transaction Verification). Paused at Task 4 checkpoint for user verification of Stripe Dashboard.
+Last session: 2026-03-02T15:06:26Z
+Stopped at: Completed 06-01-PLAN.md (Edge Function URL Fix). All 6 functions redeployed with hub.alphaagent.io URLs.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -200,3 +203,10 @@ Resume file: None
 - Supabase Auth: site_url = https://hub.alphaagent.io, redirects configured
 - All 10 pages verified by user (login, dashboard, clients, client detail, billing, command, sales, analytics, chat, settings)
 - Supabase Pro upgrade completed -- 6 remaining functions and wav file now unblocked
+
+### Phase 6 Key Facts
+- 06-01 COMPLETE: 8 hardcoded URLs fixed across 6 edge functions (send-password-reset, crm-oauth-callback, chat-notification, create-user-account, morning-review-job, ads-manager-slack-test)
+- PUBLIC_APP_URL secret set to https://hub.alphaagent.io on new project
+- All 6 updated functions redeployed and verified reachable (HTTP 400/500, not 404)
+- Secrets count: 41 configured (40 prior + PUBLIC_APP_URL)
+- No old-domain URLs remain in modified edge functions (sierra@alphaagent.io is email, not URL)
