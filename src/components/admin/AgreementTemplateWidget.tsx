@@ -56,8 +56,8 @@ export function AgreementTemplateWidget() {
 
       return {
         ...data,
-        key_terms: (data.key_terms as unknown as KeyTermCheckbox[]) || [],
-        initials_sections: (data.initials_sections as unknown as InitialsSection[]) || [],
+        key_terms: Array.isArray(data.key_terms) ? (data.key_terms as unknown as KeyTermCheckbox[]) : [],
+        initials_sections: Array.isArray(data.initials_sections) ? (data.initials_sections as unknown as InitialsSection[]) : [],
       } as AgreementTemplate;
     },
   });

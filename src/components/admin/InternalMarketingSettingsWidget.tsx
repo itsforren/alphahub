@@ -55,7 +55,7 @@ export default function InternalMarketingSettingsWidget() {
         setMetaConfig({
           access_token: (val.access_token as string) || '',
           ad_account_id: (val.ad_account_id as string) || '',
-          campaign_ids: (val.campaign_ids as string[]) || [],
+          campaign_ids: Array.isArray(val.campaign_ids) ? val.campaign_ids as string[] : [],
         });
       }
     }
@@ -91,11 +91,13 @@ export default function InternalMarketingSettingsWidget() {
     },
   });
 
+  const campaignIds = Array.isArray(metaConfig.campaign_ids) ? metaConfig.campaign_ids : [];
+
   const addCampaignId = () => {
-    if (newCampaignId && !metaConfig.campaign_ids.includes(newCampaignId)) {
+    if (newCampaignId && !campaignIds.includes(newCampaignId)) {
       setMetaConfig({
         ...metaConfig,
-        campaign_ids: [...metaConfig.campaign_ids, newCampaignId],
+        campaign_ids: [...campaignIds, newCampaignId],
       });
       setNewCampaignId('');
     }
@@ -104,7 +106,7 @@ export default function InternalMarketingSettingsWidget() {
   const removeCampaignId = (id: string) => {
     setMetaConfig({
       ...metaConfig,
-      campaign_ids: metaConfig.campaign_ids.filter(c => c !== id),
+      campaign_ids: campaignIds.filter(c => c !== id),
     });
   };
 
@@ -218,9 +220,9 @@ export default function InternalMarketingSettingsWidget() {
               />
               <Button variant="outline" onClick={addCampaignId}>Add</Button>
             </div>
-            {metaConfig.campaign_ids.length > 0 && (
+            {campaignIds.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
-                {metaConfig.campaign_ids.map(id => (
+                {campaignIds.map(id => (
                   <Badge 
                     key={id} 
                     variant="secondary"
