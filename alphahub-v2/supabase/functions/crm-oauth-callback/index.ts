@@ -156,7 +156,7 @@ serve(async (req) => {
     console.log('Tokens stored successfully, redirecting to admin');
 
     // Redirect to admin page on the main domain
-    const redirectUrl = 'https://alphaagent.io/hub/admin/ghl-bridge?success=true';
+    const redirectUrl = 'https://hub.alphaagent.io/hub/admin/ghl-bridge?success=true';
     
     return new Response(null, {
       status: 302,

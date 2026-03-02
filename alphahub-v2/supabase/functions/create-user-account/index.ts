@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
       type: 'recovery',
       email: normalizedEmail,
       options: {
-        redirectTo: `${Deno.env.get('SUPABASE_URL')?.replace('.supabase.co', '.lovable.app')}/auth/reset-password`
+        redirectTo: 'https://hub.alphaagent.io/auth/reset-password'
       }
     })
 
