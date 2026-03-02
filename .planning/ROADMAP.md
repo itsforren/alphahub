@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Preparation & Audit** - Clone source, create new Supabase project, inventory all secrets and external integrations
 - [x] **Phase 2: Database & Auth** - Migrate full schema, data, RLS policies, auth users with password hashes preserved
 - [x] **Phase 3: Backend Infrastructure** - Deploy edge functions with secrets, migrate storage buckets, enable Realtime
-- [ ] **Phase 4: Stripe Migration** - Re-point both Stripe accounts' webhooks and verify billing flow end-to-end
+- [x] **Phase 4: Stripe Migration** - Re-point both Stripe accounts' webhooks and verify billing flow end-to-end
 - [x] **Phase 5: Frontend Deployment** - Export, clean, reconfigure, and deploy the frontend to independent hosting
 - [ ] **Phase 6: Cutover & Verification** - Execute maintenance window: delta sync, DNS switch, verify all features, update MCP
 
@@ -87,9 +87,9 @@ Plans:
 **Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 04-01-PLAN.md -- Deploy remaining 6 edge functions and fix admin-set-password hardcoded secret (Wave 1, autonomous)
-- [ ] 04-02-PLAN.md -- Create Stripe webhook endpoints, configure signing secrets, verify with test events (Wave 2, has checkpoint)
-- [ ] 04-03-PLAN.md -- End-to-end real transaction test and live event verification (Wave 3, has checkpoint)
+- [x] 04-01-PLAN.md -- Deploy remaining 6 edge functions and fix admin-set-password hardcoded secret (Wave 1, autonomous)
+- [x] 04-02-PLAN.md -- Create Stripe webhook endpoints, configure signing secrets, verify with test events (Wave 2, has checkpoint)
+- [x] 04-03-PLAN.md -- End-to-end real transaction test and live event verification (Wave 3, has checkpoint)
 
 ### Phase 5: Frontend Deployment
 **Goal**: The AlphaHub frontend is deployed independently (not on Lovable), connected to the new Supabase backend, and all pages load correctly
@@ -136,10 +136,10 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 | 1. Preparation & Audit | 3/3 | Complete | 2026-02-27 |
 | 2. Database & Auth | 3/3 | Complete | 2026-02-27 |
 | 3. Backend Infrastructure | 5/5 | Complete | 2026-02-27 |
-| 4. Stripe Migration | 0/3 | Planned | - |
+| 4. Stripe Migration | 3/3 | Complete | 2026-03-02 |
 | 5. Frontend Deployment | 2/2 | Complete | 2026-02-28 |
 | 6. Cutover & Verification | 0/3 | Not started | - |
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-03-01 -- Phase 4 planned. 3 plans in 3 waves: deploy remaining functions, create Stripe endpoints, verify end-to-end.*
+*Last updated: 2026-03-02 -- Phase 4 complete. 3/3 plans executed: functions deployed, Stripe webhooks configured, real transaction verified end-to-end.*

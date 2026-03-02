@@ -41,13 +41,13 @@
 
 ### Stripe Migration
 
-- [ ] **STRIPE-01**: Update management account webhook endpoints to point at new Supabase edge function URLs
-- [ ] **STRIPE-02**: Update ad spend account webhook endpoints to point at new Supabase edge function URLs
-- [ ] **STRIPE-03**: Generate and configure new webhook signing secrets for both accounts
-- [ ] **STRIPE-04**: Verify all webhook event types are registered on new endpoints
-- [ ] **STRIPE-05**: End-to-end test: create test invoice, verify it flows through new backend correctly
-- [ ] **STRIPE-06**: End-to-end test: verify auto-recharge wallet logic fires correctly on new backend
-- [ ] **STRIPE-07**: Verify all 70+ active subscriptions are producing events to new endpoints
+- [x] **STRIPE-01**: Update management account webhook endpoints to point at new Supabase edge function URLs
+- [x] **STRIPE-02**: Update ad spend account webhook endpoints to point at new Supabase edge function URLs
+- [x] **STRIPE-03**: Generate and configure new webhook signing secrets for both accounts
+- [x] **STRIPE-04**: Verify all webhook event types are registered on new endpoints
+- [x] **STRIPE-05**: End-to-end test: create test invoice, verify it flows through new backend correctly
+- [x] **STRIPE-06**: End-to-end test: verify auto-recharge wallet logic fires correctly on new backend
+- [x] **STRIPE-07**: Verify all 17 active subscriptions are producing events to new endpoints
 
 ### Storage Migration
 
@@ -130,13 +130,13 @@
 | EDGE-03 | Phase 3 | Complete |
 | EDGE-04 | Phase 3 | Complete |
 | EDGE-05 | Phase 3 | Complete |
-| STRIPE-01 | Phase 4 | Pending |
-| STRIPE-02 | Phase 4 | Pending |
-| STRIPE-03 | Phase 4 | Pending |
-| STRIPE-04 | Phase 4 | Pending |
-| STRIPE-05 | Phase 4 | Pending |
-| STRIPE-06 | Phase 4 | Pending |
-| STRIPE-07 | Phase 4 | Pending |
+| STRIPE-01 | Phase 4 | Complete |
+| STRIPE-02 | Phase 4 | Complete |
+| STRIPE-03 | Phase 4 | Complete |
+| STRIPE-04 | Phase 4 | Complete |
+| STRIPE-05 | Phase 4 | Complete |
+| STRIPE-06 | Phase 4 | Complete |
+| STRIPE-07 | Phase 4 | Complete |
 | STORE-01 | Phase 3 | Complete |
 | STORE-02 | Phase 3 | Complete |
 | STORE-03 | Phase 3 | Complete |
@@ -167,4 +167,4 @@
 
 ---
 *Requirements defined: 2026-02-26*
-*Last updated: 2026-02-28 — Phase 5 requirements (FE-01 through FE-05) marked Complete*
+*Last updated: 2026-03-02 — Phase 4 requirements (STRIPE-01 through STRIPE-07) marked Complete*
