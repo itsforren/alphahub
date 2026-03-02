@@ -117,12 +117,12 @@ Plans:
   3. Old Stripe webhook endpoints are disabled and all billing events route exclusively through the new backend
   4. All 7 core features verified working: client management (list/search/detail), billing (invoicing/charges/credits), ad spend wallets (balances/burn rates/auto-recharge/alerts), campaign health (scores/safe mode/pace drift), lead pipeline (funnel/booked calls/CPL), communications (chat/tickets/SLA), and financial projections/alerts
   5. AlphaHub MCP server is updated to point at the new Supabase instance and all 52 tools respond correctly
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves
 
 Plans:
-- [ ] 06-01: Plan and execute cutover sequence (maintenance window, delta sync, DNS switch)
-- [ ] 06-02: Verify all features and disable old infrastructure
-- [ ] 06-03: Update MCP server and external integrations
+- [ ] 06-01-PLAN.md -- Fix hardcoded URLs in edge functions and set PUBLIC_APP_URL secret (Wave 1, autonomous)
+- [ ] 06-02-PLAN.md -- Full data re-sync, automated feature verification, webhook switchover (Wave 2, has checkpoint)
+- [ ] 06-03-PLAN.md -- Update MCP server config, verify all tools, clean up old project (Wave 3, has checkpoint)
 
 ## Progress
 
@@ -142,4 +142,4 @@ Note: Phases 4 and 5 can execute in parallel since frontend deployment depends o
 
 ---
 *Roadmap created: 2026-02-26*
-*Last updated: 2026-03-02 -- Phase 4 complete. 3/3 plans executed: functions deployed, Stripe webhooks configured, real transaction verified end-to-end.*
+*Last updated: 2026-03-02 -- Phase 6 planned. 3 plans in 3 waves: URL fixes, data re-sync + feature verification + webhook switchover, MCP update + cleanup.*
