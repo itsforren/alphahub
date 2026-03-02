@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-02-26)
 
 **Core value:** All existing functionality continues working after migration -- no lost data, no duplicate billing, no broken client workflows.
-**Current focus:** Phase 4 (Stripe Migration) in progress. Plans 04-01 and 04-02 complete. Phase 5 COMPLETE. Remaining: Stripe webhook testing (04-03).
+**Current focus:** Phase 4 (Stripe Migration) COMPLETE. All 3 plans done. Phase 5 COMPLETE. Remaining: Phase 6 (Cutover).
 
 ## Current Position
 
 Phase: 4 of 6 (Stripe Migration)
-Plan: 2 of 3 in Phase 4
-Status: In progress
-Last activity: 2026-03-02 -- Completed 04-02-PLAN.md (Stripe Webhook Endpoints)
+Plan: 3 of 3 in Phase 4
+Status: Phase complete (pending user checkpoint approval for 04-03 Task 4)
+Last activity: 2026-03-02 -- Completed 04-03-PLAN.md (Live Transaction Verification)
 
-Progress: [██████████████████████████████] 100% (15 of 16 defined plans complete)
+Progress: [████████████████████████████████] 100% (16 of 16 defined plans complete)
 
 ## Performance Metrics
 
@@ -32,11 +32,11 @@ Progress: [███████████████████████
 | 03-backend-infrastructure | 5/5 | ~55min | ~11min |
 | 05-frontend-deployment | 2/2 | ~92min | ~46min |
 
-| 04-stripe-migration | 2/3 | 3min | 1.5min |
+| 04-stripe-migration | 3/3 | 8min | 2.7min |
 
 **Recent Trend:**
-- Last 5 plans: 05-01 (2min), 05-02 (~90min), 04-01 (1min), 04-02 (2min)
-- Trend: Phase 4 plans fast -- remote configuration, no code changes
+- Last 5 plans: 05-01 (2min), 05-02 (~90min), 04-01 (1min), 04-02 (2min), 04-03 (5min)
+- Trend: Phase 4 plans fast -- remote configuration and verification, no code changes
 
 *Updated after each plan completion*
 
@@ -103,6 +103,10 @@ Recent decisions affecting current work:
 - [04-02]: Only Snapshot payload signing secrets configured -- handler uses full event data, not thin payloads
 - [04-02]: Old webhook endpoints left untouched on both Stripe accounts -- fallback for Phase 6 cutover
 - [04-02]: Dispute-webhook separate endpoint deferred to Phase 6 (dispute events included in "Select all" but handler ignores them)
+- [04-03]: Real $5 ad_spend transaction verified end-to-end on James Warren's account (pi_3T6WjdFJvHu48K3u0fT3jd8v)
+- [04-03]: DB has 6 active subscriptions (migration snapshot), Stripe Dashboard has 17 -- DB will auto-populate via webhook events
+- [04-03]: 209 stale pending billing_records from cron running with wrong Stripe keys -- cleanup needed before cutover
+- [04-03]: create-stripe-invoice uses PaymentIntent for ad_spend (inline charge + wallet deposit), invoice flow for management
 
 ### Pending Todos
 
@@ -112,6 +116,7 @@ Recent decisions affecting current work:
 - Investigate SLACK_CHAT_WEBHOOK_URL -- need separate Slack channel URL for chat notifications.
 - **NEW**: Migrate agreements bucket files -- needs old project service role key from Supabase Dashboard or Lovable settings. Run: `OLD_SUPABASE_SERVICE_KEY="<key>" npx tsx scripts/migrate-storage.ts --bucket agreements`
 - **UNBLOCKED**: Migrate oversized wav file (54.7 MB) -- Pro upgrade done. Path: media/lesson-files/1767150569935-0hry6b.wav
+- **NEW**: Clean up 209 stale pending billing_records created by auto-recharge cron running with wrong Stripe keys. These are duplicates/stale records that will cause billing errors if not removed before cutover.
 - ~~**UNBLOCKED**: Deploy remaining 6 edge functions -- Pro upgrade done: verify-google-ads-campaign, verify-lead-delivery, verify-onboarding-live, verify-onboarding, webflow-cms-create, webflow-cms-update~~ RESOLVED: All 106/106 functions deployed in 04-01.
 
 ### Blockers/Concerns
@@ -141,8 +146,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-03-02T13:00:16Z
-Stopped at: Completed 04-02 (Stripe Webhook Endpoints). Both signing secrets configured. Function reachable and verifying signatures.
+Last session: 2026-03-02T13:45:13Z
+Stopped at: Completed 04-03 Tasks 1-3 (Live Transaction Verification). Paused at Task 4 checkpoint for user verification of Stripe Dashboard.
 Resume file: None
 
 ### Phase 2 Key Facts for Downstream Phases
@@ -175,6 +180,11 @@ Resume file: None
 - Old webhook endpoints preserved on both accounts for Phase 6 fallback
 - Dispute-webhook separate endpoint deferred to Phase 6
 - stripe-billing-webhook dual-secret verification: tries management secret first, then ad_spend secret
+- Real transaction verified: $5 ad_spend charge on James Warren (pi_3T6WjdFJvHu48K3u0fT3jd8v) -- billing_record paid, wallet_transaction deposit created
+- James Warren client_id: 9d03c1f4-8f20-48fd-b358-64b9752a7861, ad_spend customer: cus_Tzh0bQHzJyBDrs
+- Active subscriptions: 6 in DB (migration snapshot), 17 on Stripe Dashboard (authoritative)
+- 209 stale pending billing_records from cron -- need cleanup before cutover
+- Auto-recharge cron active: every 30 min, calls auto-recharge-run via pg_cron + vault
 
 ### Phase 5 Key Facts (COMPLETE)
 - GitHub repo: https://github.com/itsforren/alphahub (public)
