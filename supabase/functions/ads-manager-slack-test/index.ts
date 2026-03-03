@@ -82,7 +82,7 @@ serve(async (req) => {
     const proposedBudget = proposal.proposed_daily_budget ?? null;
     const status = proposal.status;
 
-    const appUrl = "https://alpha-agent-flow.lovable.app";
+    const appUrl = "https://hub.alphaagent.io";
     const commandCenterUrl = `${appUrl}/hub/admin/command`;
 
     await postToSlack(webhookUrl, {
