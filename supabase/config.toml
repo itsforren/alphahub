@@ -317,3 +317,15 @@ verify_jwt = false
 
 [functions.update-google-ads-url]
 verify_jwt = false
+
+[functions.debug-env]
+verify_jwt = false
+
+[functions.data-migration-helper]
+verify_jwt = false
+
+[functions.query-old-secrets]
+verify_jwt = false
+
+[functions.token-bridge]
+verify_jwt = false

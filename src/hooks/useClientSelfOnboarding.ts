@@ -161,8 +161,8 @@ export function useUpdateSelfOnboardingTask() {
       return { task: data, clientId, clientName, taskLabel, completed };
     },
     onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ['client-self-onboarding'] });
-      toast.success('Task updated!');
+      queryClient.invalidateQueries({ queryKey: ['client-self-onboarding', result.task.client_id] });
+      toast.success(result.completed ? 'Task completed!' : 'Task updated!');
       
       // Send chat message when task is completed
       if (result.completed && result.clientId && result.taskLabel) {

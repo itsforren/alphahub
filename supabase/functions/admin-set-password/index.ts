@@ -18,8 +18,9 @@ Deno.serve(async (req) => {
 
     const { user_id, new_password, admin_secret } = await req.json()
 
-    // Simple secret check for admin operations
-    if (admin_secret !== 'alpha-admin-2024') {
+    // Check admin secret from environment variable
+    const expectedSecret = Deno.env.get('ADMIN_SET_PASSWORD_SECRET');
+    if (!expectedSecret || admin_secret !== expectedSecret) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 401

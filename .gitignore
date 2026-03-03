@@ -31,3 +31,4 @@ supabase/.env.secrets
 
 # Temp files
 tmp/
+.vercel
