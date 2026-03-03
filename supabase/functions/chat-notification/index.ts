@@ -182,7 +182,7 @@ serve(async (req) => {
 
     const client = conversation.clients;
     const clientId = client?.id;
-    const portalUrl = 'https://hub.alphaagent.io';
+    const portalUrl = 'https://alphaagent.io';
     
     // Direct URL to the specific conversation
     const directUrl = clientId 

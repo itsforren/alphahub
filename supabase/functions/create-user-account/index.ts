@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
       type: 'recovery',
       email: normalizedEmail,
       options: {
-        redirectTo: 'https://hub.alphaagent.io/auth/reset-password'
+        redirectTo: 'https://alphaagent.io/auth/reset-password'
       }
     })
 

@@ -1458,7 +1458,7 @@ serve(async (req) => {
                   {
                     type: 'button',
                     text: { type: 'plain_text', text: 'Open Command Center' },
-                    url: `${Deno.env.get('PUBLIC_APP_URL') || 'https://hub.alphaagent.io'}/hub/admin/command-center`,
+                    url: `${Deno.env.get('PUBLIC_APP_URL') || 'https://alphaagent.io'}/hub/admin/command-center`,
                   },
                 ],
               },
@@ -1532,7 +1532,7 @@ serve(async (req) => {
                     type: 'button',
                     text: { type: 'plain_text', text: 'Deny / Override (Command Center)' },
                     url:
-                      `${Deno.env.get('PUBLIC_APP_URL') || 'https://hub.alphaagent.io'}/hub/admin/command-center`,
+                      `${Deno.env.get('PUBLIC_APP_URL') || 'https://alphaagent.io'}/hub/admin/command-center`,
                   },
                 ],
               },
