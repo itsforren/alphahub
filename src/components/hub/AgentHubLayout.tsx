@@ -45,6 +45,7 @@ import {
 import { NavLink } from '@/components/NavLink';
 import { ChatBubble } from '@/components/portal/chat/ChatBubble';
 import { ClientPreviewBanner } from '@/components/hub/ClientPreviewBanner';
+import { MaintenanceBanner } from '@/components/hub/MaintenanceBanner';
 import { useUnreadCount } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
 
@@ -458,6 +459,7 @@ export default function AgentHubLayout() {
           collapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
         }`}
       >
+        <MaintenanceBanner />
         <ClientPreviewBanner />
         <Outlet />
       </main>
