@@ -83,6 +83,82 @@ async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) 
   }
 }
 
+// ── Helper: Ensure wallet deposit exists for ad_spend billing records ──
+async function ensureWalletDeposit(
+  supabase: any,
+  clientId: string,
+  billingRecordId: string,
+  amount: number,
+  trackingDate: string,
+  invoiceId: string
+) {
+  try {
+    const { data: existingWallet } = await supabase
+      .from('client_wallets')
+      .select('id, tracking_start_date')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    let walletId: string;
+
+    if (existingWallet) {
+      walletId = existingWallet.id;
+      if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
+        await supabase
+          .from('client_wallets')
+          .update({ tracking_start_date: trackingDate })
+          .eq('id', existingWallet.id);
+      }
+    } else {
+      const { data: newWallet } = await supabase
+        .from('client_wallets')
+        .insert({
+          client_id: clientId,
+          ad_spend_balance: 0,
+          tracking_start_date: trackingDate,
+        })
+        .select()
+        .single();
+
+      if (!newWallet) {
+        console.error(`Failed to create wallet for client ${clientId}`);
+        return;
+      }
+      walletId = newWallet.id;
+    }
+
+    // Dedup: only insert if no deposit exists for this billing record
+    const { data: existingDeposit } = await supabase
+      .from('wallet_transactions')
+      .select('id')
+      .eq('billing_record_id', billingRecordId)
+      .eq('transaction_type', 'deposit')
+      .maybeSingle();
+
+    if (!existingDeposit) {
+      await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: walletId,
+          client_id: clientId,
+          transaction_type: 'deposit',
+          amount,
+          balance_after: 0,
+          description: `Ad spend deposit - Invoice ${invoiceId?.slice(0, 12) || billingRecordId.slice(0, 8)}`,
+          billing_record_id: billingRecordId,
+        });
+      console.log(`Wallet deposit created for billing record ${billingRecordId}`);
+    } else {
+      console.log(`Wallet deposit already exists for billing record ${billingRecordId}`);
+    }
+
+    // Restore campaign budget if client was in safe mode
+    await restoreCampaignBudgetIfSafeMode(supabase, clientId);
+  } catch (err) {
+    console.error(`Error ensuring wallet deposit for client ${clientId}:`, err);
+  }
+}
+
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
@@ -294,6 +370,12 @@ async function handleSubscriptionInvoicePaid(
         })
         .eq('id', existingByInvoice.id);
     }
+
+    // Ensure wallet deposit exists for ad_spend subscriptions (even on dedup path)
+    if (localSub.billing_type === 'ad_spend') {
+      await ensureWalletDeposit(supabase, localSub.client_id, existingByInvoice.id, localSub.amount, periodStart, invoice.id);
+    }
+
     console.log('Subscription invoice already tracked:', existingByInvoice.id);
     return jsonResponse({ received: true, already_tracked: true });
   }
@@ -345,7 +427,7 @@ async function handleSubscriptionInvoicePaid(
         due_date: periodStart,
         recurrence_type: localSub.recurrence_type,
         is_recurring_parent: true,
-        notes: `Management fee - subscription`,
+        notes: localSub.billing_type === 'ad_spend' ? 'Ad spend - subscription' : 'Management fee - subscription',
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: invoice.payment_intent || null,
         stripe_subscription_id: subscriptionId,
@@ -386,6 +468,11 @@ async function handleSubscriptionInvoicePaid(
     } catch (err) {
       console.error('Error processing referral commission:', err);
     }
+  }
+
+  // Wallet deposit for ad_spend subscriptions
+  if (localSub.billing_type === 'ad_spend') {
+    await ensureWalletDeposit(supabase, localSub.client_id, recordId, localSub.amount, periodStart, invoice.id);
   }
 
   // Resolve any active collections
