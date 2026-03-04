@@ -101,10 +101,15 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
       {/* Mobile Card View */}
       <div className="block sm:hidden space-y-3">
         {filteredRecords.map((record) => (
-          <div key={record.id} className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <div key={record.id} className={`rounded-lg border bg-card p-4 space-y-3 ${record.is_duplicate ? 'border-amber-500/50 bg-amber-500/5' : 'border-border'}`}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <BillingTypeBadge type={record.billing_type} />
+                {record.stripe_invoice_id ? (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">Stripe</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">Manual</Badge>
+                )}
                 {record.recurrence_type !== 'one_time' && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-1">
                     {record.recurrence_type === 'bi_weekly' ? (
@@ -113,6 +118,11 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                       <><Repeat className="w-2.5 h-2.5" /> Mo</>
                     )}
                   </Badge>
+                )}
+                {record.is_duplicate && (
+                  <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
+                    <AlertTriangle className="w-3 h-3" /> Duplicate?
+                  </span>
                 )}
               </div>
               {isAdmin ? (
@@ -190,6 +200,12 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                 <span className="text-muted-foreground">Due:</span>
                 <span className="ml-1">{formatDate(record.due_date)}</span>
               </div>
+              {record.paid_at && (
+                <div className="col-span-2">
+                  <span className="text-muted-foreground">Paid:</span>
+                  <span className="ml-1 text-emerald-400">{formatDate(record.paid_at)}</span>
+                </div>
+              )}
             </div>
 
             {record.payment_link && record.status !== 'paid' && (
@@ -212,14 +228,15 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead>Date</TableHead>
+              <TableHead>Source</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Amount</TableHead>
-              <TableHead>Period</TableHead>
+              <TableHead>Period / Invoice Date</TableHead>
               <TableHead>Due</TableHead>
+              <TableHead>Paid</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Wallet</TableHead>
               <TableHead>Ref ID</TableHead>
-              <TableHead>Payment</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -229,6 +246,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                 key={record.id}
                 className={record.is_duplicate ? 'bg-amber-500/5 border-l-2 border-l-amber-500/50' : ''}
               >
+                {/* Date + duplicate flag */}
                 <TableCell className="text-sm whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
                     {formatDate(record.created_at)}
@@ -246,6 +264,21 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     )}
                   </div>
                 </TableCell>
+
+                {/* Source: Stripe or Manual */}
+                <TableCell>
+                  {record.stripe_invoice_id ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">
+                      Stripe
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">
+                      Manual
+                    </Badge>
+                  )}
+                </TableCell>
+
+                {/* Type + recurrence */}
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <BillingTypeBadge type={record.billing_type} />
@@ -260,6 +293,8 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     )}
                   </div>
                 </TableCell>
+
+                {/* Amount */}
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
                     <span>{formatCurrency(Number(record.amount))}</span>
@@ -270,14 +305,31 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     )}
                   </div>
                 </TableCell>
+
+                {/* Period: full range for subscriptions, single date for one-time */}
                 <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                  {record.billing_period_start && record.billing_period_end
-                    ? `${formatDate(record.billing_period_start)} - ${formatDate(record.billing_period_end)}`
-                    : '-'}
+                  {record.recurrence_type !== 'one_time'
+                    ? (record.billing_period_start && record.billing_period_end
+                        ? `${formatDate(record.billing_period_start)} – ${formatDate(record.billing_period_end)}`
+                        : record.billing_period_start ? formatDate(record.billing_period_start) : '—')
+                    : (record.billing_period_start ? formatDate(record.billing_period_start) : '—')}
                 </TableCell>
+
+                {/* Due date */}
                 <TableCell className="text-sm whitespace-nowrap">
                   {formatDate(record.due_date)}
                 </TableCell>
+
+                {/* Paid date */}
+                <TableCell className="text-sm whitespace-nowrap">
+                  {record.paid_at ? (
+                    <span className="text-emerald-400">{formatDate(record.paid_at)}</span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+
+                {/* Status */}
                 <TableCell>
                   {isAdmin ? (
                     <Select
@@ -298,6 +350,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     <BillingStatusBadge status={record.status} />
                   )}
                 </TableCell>
+
                 {/* Wallet deposit status */}
                 <TableCell>
                   {record.billing_type === 'ad_spend' && record.status === 'paid' ? (
@@ -329,6 +382,8 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     <span className="text-muted-foreground text-xs">—</span>
                   )}
                 </TableCell>
+
+                {/* Ref ID */}
                 <TableCell className="text-sm">
                   {record.stripe_invoice_id ? (
                     <span className="text-foreground font-mono text-xs bg-muted px-1.5 py-0.5 rounded" title={record.stripe_invoice_id}>
@@ -341,23 +396,11 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                         : record.payment_reference}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">-</span>
+                    <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell>
-                  {record.payment_link ? (
-                    <a
-                      href={record.payment_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline text-sm"
-                    >
-                      Pay <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground text-sm">-</span>
-                  )}
-                </TableCell>
+
+                {/* Actions dropdown */}
                 <TableCell>
                   {isAdmin ? (
                     <DropdownMenu>
@@ -371,11 +414,19 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                           <Eye className="w-4 h-4 mr-2" />
                           View Details
                         </DropdownMenuItem>
+                        {record.payment_link && record.status !== 'paid' && (
+                          <DropdownMenuItem asChild>
+                            <a href={record.payment_link} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="w-4 h-4 mr-2" />
+                              Pay Now
+                            </a>
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem onClick={() => onEdit?.(record)}>
                           <Pencil className="w-4 h-4 mr-2" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => setDeleteRecord(record)}
                           className="text-destructive focus:text-destructive"
                         >
@@ -385,9 +436,9 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       className="h-8 w-8"
                       onClick={() => setViewRecord(record)}
                     >
