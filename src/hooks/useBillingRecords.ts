@@ -29,6 +29,7 @@ export interface BillingRecord {
   credit_amount_used: number | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
   // Computed client-side
   has_wallet_deposit?: boolean;
   is_duplicate?: boolean;
@@ -80,9 +81,9 @@ function calculateNextDueDate(recurrenceType: RecurrenceType, currentDueDate: Da
   }
 }
 
-export function useBillingRecords(clientId?: string) {
+export function useBillingRecords(clientId?: string, showArchived = false) {
   return useQuery({
-    queryKey: ['billing-records', clientId],
+    queryKey: ['billing-records', clientId, showArchived],
     queryFn: async () => {
       let query = supabase
         .from('billing_records')
@@ -91,6 +92,12 @@ export function useBillingRecords(clientId?: string) {
 
       if (clientId) {
         query = query.eq('client_id', clientId);
+      }
+
+      if (showArchived) {
+        query = query.not('archived_at', 'is', null);
+      } else {
+        query = query.is('archived_at', null);
       }
 
       const { data, error } = await query;
@@ -648,6 +655,53 @@ export function useDeleteBillingRecord() {
       queryClient.invalidateQueries({ queryKey: ['billing-records'] });
       queryClient.invalidateQueries({ queryKey: ['wallet-transactions', data.clientId] });
       queryClient.invalidateQueries({ queryKey: ['client-wallet', data.clientId] });
+    },
+  });
+}
+
+export function useArchiveBillingRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, clientId, removeWalletDeposit }: { id: string; clientId: string; removeWalletDeposit: boolean }) => {
+      if (removeWalletDeposit) {
+        await supabase
+          .from('wallet_transactions')
+          .delete()
+          .eq('billing_record_id', id);
+      }
+
+      const { error } = await supabase
+        .from('billing_records')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) throw error;
+      return { id, clientId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['billing-records', data.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['client-wallet', data.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', data.clientId] });
+    },
+  });
+}
+
+export function useRestoreBillingRecord() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, clientId }: { id: string; clientId: string }) => {
+      const { error } = await supabase
+        .from('billing_records')
+        .update({ archived_at: null })
+        .eq('id', id);
+
+      if (error) throw error;
+      return { id, clientId };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['billing-records', data.clientId] });
     },
   });
 }

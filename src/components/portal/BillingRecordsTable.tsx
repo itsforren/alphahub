@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord, useAddToWallet } from '@/hooks/useBillingRecords';
+import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord, useAddToWallet, useArchiveBillingRecord, useRestoreBillingRecord } from '@/hooks/useBillingRecords';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { BillingTypeBadge } from './BillingTypeBadge';
 import { BillingStatusBadge } from './BillingStatusBadge';
 import { BillingDetailPopup } from './BillingDetailPopup';
-import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2, Archive, RotateCcw } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -19,14 +19,18 @@ interface BillingRecordsTableProps {
   onEdit?: (record: BillingRecord) => void;
   filterType?: 'all' | 'ad_spend' | 'management';
   filterStatus?: 'all' | BillingStatus;
+  isArchiveView?: boolean;
 }
 
-export function BillingRecordsTable({ records, onEdit, filterType = 'all', filterStatus = 'all' }: BillingRecordsTableProps) {
+export function BillingRecordsTable({ records, onEdit, filterType = 'all', filterStatus = 'all', isArchiveView = false }: BillingRecordsTableProps) {
   const isAdmin = !!onEdit;
   const [deleteRecord, setDeleteRecord] = useState<BillingRecord | null>(null);
+  const [archiveRecord, setArchiveRecord] = useState<BillingRecord | null>(null);
   const [viewRecord, setViewRecord] = useState<BillingRecord | null>(null);
   const updateMutation = useUpdateBillingRecord();
   const deleteMutation = useDeleteBillingRecord();
+  const archiveMutation = useArchiveBillingRecord();
+  const restoreMutation = useRestoreBillingRecord();
   const addToWalletMutation = useAddToWallet();
 
   const filteredRecords = records.filter(record => {
@@ -62,10 +66,34 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
     if (!deleteRecord) return;
     try {
       await deleteMutation.mutateAsync({ id: deleteRecord.id, clientId: deleteRecord.client_id });
-      toast.success('Record deleted');
+      toast.success('Record permanently deleted');
       setDeleteRecord(null);
     } catch (error) {
       toast.error('Failed to delete record');
+    }
+  };
+
+  const handleArchive = async (removeWalletDeposit: boolean) => {
+    if (!archiveRecord) return;
+    try {
+      await archiveMutation.mutateAsync({
+        id: archiveRecord.id,
+        clientId: archiveRecord.client_id,
+        removeWalletDeposit,
+      });
+      toast.success('Record archived');
+      setArchiveRecord(null);
+    } catch (error) {
+      toast.error('Failed to archive record');
+    }
+  };
+
+  const handleRestore = async (record: BillingRecord) => {
+    try {
+      await restoreMutation.mutateAsync({ id: record.id, clientId: record.client_id });
+      toast.success('Record restored');
+    } catch (error) {
+      toast.error('Failed to restore record');
     }
   };
 
@@ -137,17 +165,35 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                       <Eye className="w-4 h-4 mr-2" />
                       View Details
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit?.(record)}>
-                      <Pencil className="w-4 h-4 mr-2" />
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => setDeleteRecord(record)}
-                      className="text-destructive focus:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
+                    {!isArchiveView && (
+                      <DropdownMenuItem onClick={() => onEdit?.(record)}>
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Edit
+                      </DropdownMenuItem>
+                    )}
+                    {isArchiveView ? (
+                      <>
+                        <DropdownMenuItem onClick={() => handleRestore(record)}>
+                          <RotateCcw className="w-4 h-4 mr-2" />
+                          Restore
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setDeleteRecord(record)}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Permanently
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <DropdownMenuItem
+                        onClick={() => setArchiveRecord(record)}
+                        className="text-amber-500 focus:text-amber-500"
+                      >
+                        <Archive className="w-4 h-4 mr-2" />
+                        Archive
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
@@ -414,7 +460,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                           <Eye className="w-4 h-4 mr-2" />
                           View Details
                         </DropdownMenuItem>
-                        {record.payment_link && record.status !== 'paid' && (
+                        {!isArchiveView && record.payment_link && record.status !== 'paid' && (
                           <DropdownMenuItem asChild>
                             <a href={record.payment_link} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="w-4 h-4 mr-2" />
@@ -422,17 +468,35 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                             </a>
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem onClick={() => onEdit?.(record)}>
-                          <Pencil className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeleteRecord(record)}
-                          className="text-destructive focus:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
+                        {!isArchiveView && (
+                          <DropdownMenuItem onClick={() => onEdit?.(record)}>
+                            <Pencil className="w-4 h-4 mr-2" />
+                            Edit
+                          </DropdownMenuItem>
+                        )}
+                        {isArchiveView ? (
+                          <>
+                            <DropdownMenuItem onClick={() => handleRestore(record)}>
+                              <RotateCcw className="w-4 h-4 mr-2" />
+                              Restore
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteRecord(record)}
+                              className="text-destructive focus:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete Permanently
+                            </DropdownMenuItem>
+                          </>
+                        ) : (
+                          <DropdownMenuItem
+                            onClick={() => setArchiveRecord(record)}
+                            className="text-amber-500 focus:text-amber-500"
+                          >
+                            <Archive className="w-4 h-4 mr-2" />
+                            Archive
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   ) : (
@@ -452,18 +516,60 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
         </Table>
       </div>
 
+      {/* Archive dialog — with optional wallet removal for paid ad_spend */}
+      <AlertDialog open={!!archiveRecord} onOpenChange={() => setArchiveRecord(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive Billing Record</AlertDialogTitle>
+            <AlertDialogDescription>
+              This record will be hidden from the main view. You can restore it any time from "Show Archived".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {archiveRecord?.billing_type === 'ad_spend' && archiveRecord.status === 'paid' && archiveRecord.has_wallet_deposit && (
+            <div className="px-1 py-2 text-sm text-amber-400 bg-amber-500/10 rounded-lg border border-amber-500/20 mx-1">
+              This is a paid ad spend record with a wallet deposit. Do you also want to remove the ${Number(archiveRecord.amount).toLocaleString()} deposit from the wallet?
+            </div>
+          )}
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            {archiveRecord?.billing_type === 'ad_spend' && archiveRecord.status === 'paid' && archiveRecord.has_wallet_deposit ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => handleArchive(false)}
+                  className="sm:ml-auto"
+                >
+                  Archive, Keep Wallet
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => handleArchive(true)}
+                >
+                  Archive &amp; Remove from Wallet
+                </Button>
+              </>
+            ) : (
+              <AlertDialogAction onClick={() => handleArchive(false)} className="bg-amber-600 hover:bg-amber-700 text-white">
+                Archive
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Permanent delete dialog (only shown from archive view) */}
       <AlertDialog open={!!deleteRecord} onOpenChange={() => setDeleteRecord(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Billing Record</AlertDialogTitle>
+            <AlertDialogTitle>Permanently Delete Record</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this billing record? This action cannot be undone.
+              This cannot be undone. The record will be removed forever.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Delete
+              Delete Forever
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

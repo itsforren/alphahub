@@ -127,6 +127,23 @@ async function ensureWalletDeposit(
   return true;
 }
 
+// Search Stripe account for a customer by email; returns customer_id or null
+async function findStripeCustomerByEmail(stripeKey: string, email: string): Promise<string | null> {
+  try {
+    const url = new URL('https://api.stripe.com/v1/customers/search');
+    url.searchParams.set('query', `email:'${email}'`);
+    url.searchParams.set('limit', '1');
+    const res = await fetch(url.toString(), {
+      headers: { 'Authorization': `Bearer ${stripeKey}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.data?.[0]?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Per-client full sync: pull all Stripe invoices and reconcile ──
 async function syncClient(supabase: any, clientId: string) {
   const changes: any[] = [];
@@ -134,32 +151,57 @@ async function syncClient(supabase: any, clientId: string) {
   let updated = 0;
   let deposited = 0;
 
-  // 1. Get all Stripe customer records for this client
-  const { data: customers, error: custError } = await supabase
+  // 1. Fetch client info (name + email for Stripe lookup)
+  const { data: client } = await supabase
+    .from('clients')
+    .select('name, email')
+    .eq('id', clientId)
+    .maybeSingle();
+  const clientName = client?.name || null;
+  const clientEmail = client?.email || null;
+
+  // 2. Get linked Stripe customer records
+  const { data: existingCustomers, error: custError } = await supabase
     .from('client_stripe_customers')
     .select('stripe_customer_id, stripe_account')
     .eq('client_id', clientId);
 
   if (custError) throw custError;
-  if (!customers || customers.length === 0) {
+
+  // 3. Auto-discover missing Stripe accounts by searching by email
+  const linkedAccounts = new Set((existingCustomers || []).map((c: any) => c.stripe_account));
+  const allCustomers = [...(existingCustomers || [])];
+
+  if (clientEmail) {
+    for (const account of ['management', 'ad_spend'] as const) {
+      if (linkedAccounts.has(account)) continue;
+      const stripeKey = getStripeKey(account);
+      if (!stripeKey) continue;
+      const stripeCustomerId = await findStripeCustomerByEmail(stripeKey, clientEmail);
+      if (stripeCustomerId) {
+        // Save the link so future syncs don't need to search again
+        const { error: insertErr } = await supabase
+          .from('client_stripe_customers')
+          .insert({ client_id: clientId, stripe_account: account, stripe_customer_id: stripeCustomerId });
+        if (!insertErr) {
+          allCustomers.push({ stripe_customer_id: stripeCustomerId, stripe_account: account });
+          changes.push({ action: 'linked_stripe_customer', account, stripeCustomerId });
+        }
+      }
+    }
+  }
+
+  if (allCustomers.length === 0) {
     return { synced: 0, created: 0, updated: 0, deposited: 0, changes: [], message: 'No Stripe customer found' };
   }
 
-  // 2. Fetch client name
-  const { data: client } = await supabase
-    .from('clients')
-    .select('name')
-    .eq('id', clientId)
-    .maybeSingle();
-  const clientName = client?.name || null;
-
-  for (const customer of customers) {
+  for (const customer of allCustomers) {
     const stripeKey = getStripeKey(customer.stripe_account);
     if (!stripeKey) continue;
 
     const billingType = customer.stripe_account === 'management' ? 'management' : 'ad_spend';
 
-    // 3. Paginate through all Stripe invoices for this customer
+    // Paginate through all Stripe invoices for this customer
     let hasMore = true;
     let startingAfter: string | null = null;
     let pageCount = 0;

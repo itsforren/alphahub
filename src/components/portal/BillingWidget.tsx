@@ -26,10 +26,11 @@ export function BillingWidget({ clientId, isAdmin = true }: BillingWidgetProps) 
   const [editingRecord, setEditingRecord] = useState<BillingRecord | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'ad_spend' | 'management'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | BillingStatus>('all');
+  const [showArchived, setShowArchived] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const queryClient = useQueryClient();
-  const { data: records, isLoading, refetch } = useBillingRecords(clientId);
+  const { data: records, isLoading, refetch } = useBillingRecords(clientId, showArchived);
   const createMutation = useCreateBillingRecord();
   const updateMutation = useUpdateBillingRecord();
 
@@ -195,34 +196,47 @@ export function BillingWidget({ clientId, isAdmin = true }: BillingWidgetProps) 
           {/* Filters + Records */}
           <div className="flex flex-wrap items-center gap-2">
             <Filter className="w-4 h-4 text-muted-foreground" />
-            <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
-              <SelectTrigger className="w-[100px] sm:w-[120px] h-8 text-sm">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="ad_spend">Ad Spend</SelectItem>
-                <SelectItem value="management">Management</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
-              <SelectTrigger className="w-[100px] sm:w-[120px] h-8 text-sm">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            {!showArchived && (
+              <>
+                <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
+                  <SelectTrigger className="w-[100px] sm:w-[120px] h-8 text-sm">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="ad_spend">Ad Spend</SelectItem>
+                    <SelectItem value="management">Management</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as typeof filterStatus)}>
+                  <SelectTrigger className="w-[100px] sm:w-[120px] h-8 text-sm">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            <Button
+              size="sm"
+              variant={showArchived ? 'secondary' : 'ghost'}
+              onClick={() => setShowArchived(!showArchived)}
+              className="h-8 text-xs gap-1.5 ml-auto"
+            >
+              {showArchived ? 'Hide Archived' : 'Show Archived'}
+            </Button>
           </div>
           <BillingRecordsTable
             records={records || []}
             onEdit={isAdmin ? handleOpenModal : undefined}
-            filterType={filterType}
-            filterStatus={filterStatus}
+            filterType={showArchived ? 'all' : filterType}
+            filterStatus={showArchived ? 'all' : filterStatus}
+            isArchiveView={showArchived}
           />
         </CardContent>
       </Card>
