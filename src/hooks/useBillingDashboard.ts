@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { startOfMonth, endOfMonth, differenceInDays, parseISO, isValid } from 'date-fns';
+import { subDays, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
 
 export interface BillingDashboardStats {
   managementFeesCollected: number;
@@ -92,19 +92,29 @@ export function useBillingDashboardStats() {
     queryKey: ['billing-dashboard-stats'],
     queryFn: async (): Promise<BillingDashboardStats> => {
       const now = new Date();
-      const monthStart = startOfMonth(now).toISOString();
-      const monthEnd = endOfMonth(now).toISOString();
+      const thirtyDaysAgo = subDays(now, 30).toISOString();
+      const thirtyDaysAhead = addDays(now, 30).toISOString();
+      const nowIso = now.toISOString();
 
-      // Get all billing records for this month (based on due_date for expected)
-      const { data: billingRecords, error: billingError } = await supabase
+      // Collected in the last 30 days (paid_at within window)
+      const { data: collectedRecords, error: collectedError } = await supabase
         .from('billing_records')
-        .select('billing_type, amount, status, paid_at, due_date, charge_attempts, last_charge_error')
-        .or(`paid_at.gte.${monthStart},due_date.gte.${monthStart}`)
-        .or(`paid_at.lte.${monthEnd},due_date.lte.${monthEnd}`);
+        .select('billing_type, amount')
+        .eq('status', 'paid')
+        .gte('paid_at', thirtyDaysAgo)
+        .lte('paid_at', nowIso);
 
-      if (billingError) throw billingError;
+      if (collectedError) throw collectedError;
 
-      // Calculate stats
+      // Upcoming in the next 30 days (pending/overdue, due_date within window)
+      const { data: upcomingRecords, error: upcomingError } = await supabase
+        .from('billing_records')
+        .select('billing_type, amount, status, due_date, last_charge_error, charge_attempts')
+        .in('status', ['pending', 'overdue'])
+        .lte('due_date', thirtyDaysAhead);
+
+      if (upcomingError) throw upcomingError;
+
       let managementFeesCollected = 0;
       let managementFeesExpected = 0;
       let managementFeesPending = 0;
@@ -113,66 +123,48 @@ export function useBillingDashboardStats() {
       let adSpendPending = 0;
       let failedPaymentsCount = 0;
 
-      for (const record of billingRecords || []) {
-        const amount = record.amount || 0;
-        
-        // Check if paid this month
-        const paidThisMonth = record.paid_at && 
-          new Date(record.paid_at) >= new Date(monthStart) && 
-          new Date(record.paid_at) <= new Date(monthEnd);
-        
-        // Check if due this month (for expected)
-        const dueThisMonth = record.due_date && 
-          new Date(record.due_date) >= new Date(monthStart) && 
-          new Date(record.due_date) <= new Date(monthEnd);
-        
+      for (const record of collectedRecords || []) {
         if (record.billing_type === 'management') {
-          if (record.status === 'paid' && paidThisMonth) {
-            managementFeesCollected += amount;
-          }
-          if (dueThisMonth && (record.status === 'pending' || record.status === 'overdue')) {
-            managementFeesExpected += amount;
-            managementFeesPending += 1;
-          }
+          managementFeesCollected += record.amount || 0;
         } else if (record.billing_type === 'ad_spend') {
-          if (record.status === 'paid' && paidThisMonth) {
-            adSpendCollected += amount;
-          }
-          if (dueThisMonth && (record.status === 'pending' || record.status === 'overdue')) {
-            adSpendExpected += amount;
-            adSpendPending += 1;
-          }
+          adSpendCollected += record.amount || 0;
         }
-        
-        // Count failed payments (has error or multiple attempts)
+      }
+
+      for (const record of upcomingRecords || []) {
+        const amount = record.amount || 0;
+        if (record.billing_type === 'management') {
+          managementFeesExpected += amount;
+          managementFeesPending += 1;
+        } else if (record.billing_type === 'ad_spend') {
+          adSpendExpected += amount;
+          adSpendPending += 1;
+        }
         if (record.last_charge_error || (record.charge_attempts && record.charge_attempts > 1)) {
           failedPaymentsCount += 1;
         }
       }
 
-      // Get overdue count
+      // Overdue count (all time, not just 30 days)
       const { count: overdueCount } = await supabase
         .from('billing_records')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'overdue');
 
-      // Get low wallet count
-      const { data: lowWallets } = await supabase
-        .from('client_wallets')
-        .select('id, low_balance_threshold, client_id')
-        .not('tracking_start_date', 'is', null);
-
-      let lowWalletCount = 0;
-      // For now, just count wallets - actual balance check would need more logic
-      // This is a placeholder that can be enhanced later
-
-      // Get active disputes count
+      // Active disputes count
       const { count: disputesCount } = await supabase
         .from('disputes')
         .select('*', { count: 'exact', head: true })
-        .in('status', ['needs_response', 'under_review', 'warning_needs_response']);
+        .in('status', ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review']);
 
-      const clientsNeedingAttention = (overdueCount || 0) + failedPaymentsCount + (disputesCount || 0);
+      // Failed payments with errors (all time)
+      const { count: failedCount } = await supabase
+        .from('billing_records')
+        .select('*', { count: 'exact', head: true })
+        .not('last_charge_error', 'is', null);
+
+      const totalFailed = failedCount || 0;
+      const clientsNeedingAttention = (overdueCount || 0) + totalFailed + (disputesCount || 0);
 
       return {
         managementFeesCollected,
@@ -183,12 +175,12 @@ export function useBillingDashboardStats() {
         adSpendPending,
         clientsNeedingAttention,
         overdueCount: overdueCount || 0,
-        failedPaymentsCount,
-        lowWalletCount,
+        failedPaymentsCount: totalFailed,
+        lowWalletCount: 0,
         disputesCount: disputesCount || 0,
       };
     },
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
   });
 }
 
@@ -197,6 +189,8 @@ export function useUpcomingPayments() {
     queryKey: ['billing-dashboard-upcoming'],
     queryFn: async (): Promise<UpcomingPayment[]> => {
       // Get pending and overdue billing records with client info including client_name
+      const thirtyDaysAhead = addDays(new Date(), 30).toISOString();
+
       const { data, error } = await supabase
         .from('billing_records')
         .select(`
@@ -211,6 +205,7 @@ export function useUpcomingPayments() {
           recurrence_type
         `)
         .in('status', ['pending', 'overdue'])
+        .lte('due_date', thirtyDaysAhead)
         .order('due_date', { ascending: true })
         .limit(100);
 
