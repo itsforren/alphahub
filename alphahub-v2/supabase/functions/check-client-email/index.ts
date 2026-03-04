@@ -105,11 +105,26 @@ Deno.serve(async (req) => {
 
       // Client check
       if (!client) {
-        return new Response(JSON.stringify({ 
-          exists: false, 
-          hasAccount: false, 
+        return new Response(JSON.stringify({
+          exists: false,
+          hasAccount: false,
           isStaffMember: false,
-          clientName: null 
+          clientName: null
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+
+      // Block cancelled clients from logging in
+      if (client.status === 'cancelled') {
+        console.log(`Blocked login attempt for cancelled client: ${client.name} (${client.email})`)
+        return new Response(JSON.stringify({
+          exists: true,
+          hasAccount: false,
+          isStaffMember: false,
+          clientName: client.name,
+          blocked: true,
+          blockedReason: 'Your account has been cancelled. Please contact support if you believe this is an error.'
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
@@ -157,6 +172,15 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ error: 'Client not found' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 404
+        })
+      }
+
+      // Block cancelled clients from creating accounts
+      if (client.status === 'cancelled') {
+        console.log(`Blocked account creation for cancelled client: ${client.name} (${client.email})`)
+        return new Response(JSON.stringify({ error: 'Your account has been cancelled. Please contact support if you believe this is an error.' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403
         })
       }
 

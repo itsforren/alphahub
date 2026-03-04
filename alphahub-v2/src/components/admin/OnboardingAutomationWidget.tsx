@@ -216,12 +216,12 @@ export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomat
     }
   };
 
-  const stepsCompleted = automationRun?.steps_completed || [];
-  const stepsFailed = automationRun?.steps_failed || [];
+  const stepsCompleted = Array.isArray(automationRun?.steps_completed) ? automationRun.steps_completed : [];
+  const stepsFailed = Array.isArray(automationRun?.steps_failed) ? automationRun.steps_failed : [];
   const currentStep = automationRun?.current_step || 0;
   const status = automationRun?.status || 'pending';
   const stepData = automationRun?.step_data || {};
-  const errorLog = automationRun?.error_log || [];
+  const errorLog = Array.isArray(automationRun?.error_log) ? automationRun.error_log : [];
 
   // Some older/buggy runs can end up with status=failed but steps_failed empty.
   // In that case, fall back to current_step so the admin still has a retry path.

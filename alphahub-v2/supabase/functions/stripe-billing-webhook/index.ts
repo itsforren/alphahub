@@ -83,6 +83,82 @@ async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) 
   }
 }
 
+// ── Helper: Ensure wallet deposit exists for ad_spend billing records ──
+async function ensureWalletDeposit(
+  supabase: any,
+  clientId: string,
+  billingRecordId: string,
+  amount: number,
+  trackingDate: string,
+  invoiceId: string
+) {
+  try {
+    const { data: existingWallet } = await supabase
+      .from('client_wallets')
+      .select('id, tracking_start_date')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    let walletId: string;
+
+    if (existingWallet) {
+      walletId = existingWallet.id;
+      if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
+        await supabase
+          .from('client_wallets')
+          .update({ tracking_start_date: trackingDate })
+          .eq('id', existingWallet.id);
+      }
+    } else {
+      const { data: newWallet } = await supabase
+        .from('client_wallets')
+        .insert({
+          client_id: clientId,
+          ad_spend_balance: 0,
+          tracking_start_date: trackingDate,
+        })
+        .select()
+        .single();
+
+      if (!newWallet) {
+        console.error(`Failed to create wallet for client ${clientId}`);
+        return;
+      }
+      walletId = newWallet.id;
+    }
+
+    // Dedup: only insert if no deposit exists for this billing record
+    const { data: existingDeposit } = await supabase
+      .from('wallet_transactions')
+      .select('id')
+      .eq('billing_record_id', billingRecordId)
+      .eq('transaction_type', 'deposit')
+      .maybeSingle();
+
+    if (!existingDeposit) {
+      await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: walletId,
+          client_id: clientId,
+          transaction_type: 'deposit',
+          amount,
+          balance_after: 0,
+          description: `Ad spend deposit - Invoice ${invoiceId?.slice(0, 12) || billingRecordId.slice(0, 8)}`,
+          billing_record_id: billingRecordId,
+        });
+      console.log(`Wallet deposit created for billing record ${billingRecordId}`);
+    } else {
+      console.log(`Wallet deposit already exists for billing record ${billingRecordId}`);
+    }
+
+    // Restore campaign budget if client was in safe mode
+    await restoreCampaignBudgetIfSafeMode(supabase, clientId);
+  } catch (err) {
+    console.error(`Error ensuring wallet deposit for client ${clientId}:`, err);
+  }
+}
+
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
   result.setDate(result.getDate() + days);
@@ -198,6 +274,11 @@ Deno.serve(async (req) => {
       return await handlePaymentIntentSucceeded(supabase, obj, verifiedAccount);
     }
 
+    // ─── CHARGE.REFUNDED ───
+    if (event.type === 'charge.refunded') {
+      return await handleChargeRefunded(supabase, obj);
+    }
+
     return jsonResponse({ received: true });
 
   } catch (error) {
@@ -294,6 +375,12 @@ async function handleSubscriptionInvoicePaid(
         })
         .eq('id', existingByInvoice.id);
     }
+
+    // Ensure wallet deposit exists for ad_spend subscriptions (even on dedup path)
+    if (localSub.billing_type === 'ad_spend') {
+      await ensureWalletDeposit(supabase, localSub.client_id, existingByInvoice.id, localSub.amount, periodStart, invoice.id);
+    }
+
     console.log('Subscription invoice already tracked:', existingByInvoice.id);
     return jsonResponse({ received: true, already_tracked: true });
   }
@@ -345,7 +432,7 @@ async function handleSubscriptionInvoicePaid(
         due_date: periodStart,
         recurrence_type: localSub.recurrence_type,
         is_recurring_parent: true,
-        notes: `Management fee - subscription`,
+        notes: localSub.billing_type === 'ad_spend' ? 'Ad spend - subscription' : 'Management fee - subscription',
         stripe_invoice_id: invoice.id,
         stripe_payment_intent_id: invoice.payment_intent || null,
         stripe_subscription_id: subscriptionId,
@@ -386,6 +473,11 @@ async function handleSubscriptionInvoicePaid(
     } catch (err) {
       console.error('Error processing referral commission:', err);
     }
+  }
+
+  // Wallet deposit for ad_spend subscriptions
+  if (localSub.billing_type === 'ad_spend') {
+    await ensureWalletDeposit(supabase, localSub.client_id, recordId, localSub.amount, periodStart, invoice.id);
   }
 
   // Resolve any active collections
@@ -1007,6 +1099,71 @@ async function handlePaymentIntentSucceeded(supabase: any, pi: any, stripeAccoun
     billing_record_id: record.id,
     action: 'payment_intent_succeeded',
   });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHARGE.REFUNDED
+// ═══════════════════════════════════════════════════════════════
+async function handleChargeRefunded(supabase: any, charge: any) {
+  const paymentIntentId = charge.payment_intent;
+  // Get the latest individual refund (not cumulative)
+  const latestRefund = charge.refunds?.data?.[0];
+  if (!latestRefund) {
+    console.log('charge.refunded: no refund data, skipping');
+    return jsonResponse({ received: true });
+  }
+
+  const refundAmountDollars = latestRefund.amount / 100;
+  console.log(`charge.refunded: PI=${paymentIntentId}, amount=$${refundAmountDollars}`);
+
+  // Find billing record by payment_intent_id
+  let record: any = null;
+  if (paymentIntentId) {
+    const { data } = await supabase
+      .from('billing_records')
+      .select('id, client_id, amount, notes, billing_type')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .maybeSingle();
+    record = data;
+  }
+
+  if (!record) {
+    console.log(`charge.refunded: no billing record found for PI ${paymentIntentId}`);
+    return jsonResponse({ received: true });
+  }
+
+  // Only apply wallet adjustment for ad_spend billing (management fees are not wallet-based)
+  if (record.billing_type === 'ad_spend') {
+    const { data: wallet } = await supabase
+      .from('client_wallets')
+      .select('id')
+      .eq('client_id', record.client_id)
+      .maybeSingle();
+
+    if (wallet) {
+      await supabase.from('wallet_transactions').insert({
+        wallet_id: wallet.id,
+        client_id: record.client_id,
+        transaction_type: 'adjustment',
+        amount: -refundAmountDollars,
+        balance_after: 0,
+        description: `Stripe refund — $${refundAmountDollars.toFixed(2)} returned`,
+        billing_record_id: record.id,
+      });
+      console.log(`Refund adjustment recorded for client ${record.client_id}: -$${refundAmountDollars}`);
+    }
+  }
+
+  // Append refund note to billing record
+  const refundDate = new Date().toISOString().split('T')[0];
+  const existingNotes = record.notes || '';
+  const refundNote = `Refunded: $${refundAmountDollars.toFixed(2)} on ${refundDate} (Stripe refund ${latestRefund.id})`;
+  await supabase
+    .from('billing_records')
+    .update({ notes: existingNotes ? `${existingNotes}\n${refundNote}` : refundNote })
+    .eq('id', record.id);
+
+  return jsonResponse({ received: true, refund_recorded: true, amount: refundAmountDollars });
 }
 
 function jsonResponse(data: any, status = 200) {

@@ -17,6 +17,7 @@ import { AgreementTemplateWidget } from '@/components/admin/AgreementTemplateWid
 import InternalMarketingSettingsWidget from '@/components/admin/InternalMarketingSettingsWidget';
 import ProspectFieldMappingWidget from '@/components/admin/ProspectFieldMappingWidget';
 import EnhancedConversionsAdmin from '@/components/admin/EnhancedConversionsAdmin';
+import { GHLOAuthWidget } from '@/components/admin/GHLOAuthWidget';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -115,6 +116,9 @@ export default function PortalAdminSettings() {
 
       {/* Enhanced Conversions (Google Ads) */}
       <EnhancedConversionsAdmin />
+
+      {/* GHL OAuth Connection */}
+      <GHLOAuthWidget />
 
       {/* Lead Webhook Settings */}
       <WebhookSettingsWidget />

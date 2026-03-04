@@ -20,7 +20,7 @@ const passwordSchema = z.object({
   path: ["confirmPassword"],
 });
 
-type FlowStep = 'email' | 'login' | 'create-account' | 'not-found' | 'mfa' | 'set-password';
+type FlowStep = 'email' | 'login' | 'create-account' | 'not-found' | 'mfa' | 'set-password' | 'blocked';
 
 interface ClientStatus {
   exists: boolean;
@@ -31,6 +31,8 @@ interface ClientStatus {
   clientName: string | null;
   clientId?: string;
   userId?: string;
+  blocked?: boolean;
+  blockedReason?: string;
 }
 
 export default function Login() {
@@ -75,7 +77,9 @@ export default function Login() {
 
       setClientStatus(data);
 
-      if (!data.exists) {
+      if (data.blocked) {
+        setFlowStep('blocked');
+      } else if (!data.exists) {
         setFlowStep('not-found');
       } else if (data.needsPasswordSetup) {
         // User exists but needs to set their password (first login after webhook creation)
@@ -411,6 +415,44 @@ export default function Login() {
                     Try a different email
                   </Button>
                 </div>
+              </motion.div>
+            )}
+
+            {/* Step: Account Blocked (Cancelled) */}
+            {flowStep === 'blocked' && (
+              <motion.div
+                key="blocked-step"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="text-center"
+              >
+                <div className="mb-6">
+                  <XCircle className="w-16 h-16 mx-auto text-destructive mb-4" />
+                  <h1 className="text-2xl font-bold text-foreground mb-2">Account Cancelled</h1>
+                  <p className="text-muted-foreground">
+                    {clientStatus?.blockedReason || 'Your account has been cancelled.'}
+                  </p>
+                </div>
+
+                <div className="bg-secondary/30 border border-border rounded-lg p-4 mb-6">
+                  <p className="text-sm text-muted-foreground">
+                    If you believe this is an error, please contact us at{' '}
+                    <a href="mailto:support@alphaagent.io" className="text-primary hover:underline">
+                      support@alphaagent.io
+                    </a>
+                  </p>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={goBack}
+                  className="w-full"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Try a different email
+                </Button>
               </motion.div>
             )}
 

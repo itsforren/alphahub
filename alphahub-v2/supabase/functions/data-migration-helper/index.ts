@@ -143,7 +143,82 @@ serve(async (req) => {
       });
     }
 
-    return respond({ error: "Unknown action. Use: test_connection, list_tables, copy_table" }, 400);
+    // Copy leads that exist in old DB but not in new DB (by id)
+    if (action === "sync_missing_leads") {
+      const oldDb = postgres(OLD_DB_URL, { max: 1, idle_timeout: 10, connect_timeout: 30 });
+      const newDbUrl = Deno.env.get("SUPABASE_DB_URL") || "";
+      if (!newDbUrl) { await oldDb.end(); return respond({ error: "SUPABASE_DB_URL not set" }, 500); }
+      const newDb = postgres(newDbUrl, { max: 1, idle_timeout: 10, connect_timeout: 30 });
+
+      // Get all lead IDs from new DB
+      const newIds = await newDb.unsafe(`SELECT id FROM leads`);
+      const newIdSet = new Set(newIds.map((r: any) => r.id));
+
+      // Get all leads from old DB that are NOT in new DB
+      const oldLeads = await oldDb.unsafe(
+        `SELECT id::text, lead_id, agent_id, first_name, last_name, email, phone, state,
+                lead_date::text, lead_source, status, delivery_status, delivery_error,
+                ghl_contact_id, delivered_at::text, delivery_attempts,
+                last_delivery_attempt_at::text, webhook_payload::text, lead_data::text,
+                age, employment, interest, savings, investments, timezone,
+                utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+                gclid, fbclid, notes, created_at::text, updated_at::text
+         FROM leads
+         ORDER BY created_at DESC`
+      );
+
+      const missingLeads = oldLeads.filter((r: any) => !newIdSet.has(r.id));
+
+      if (missingLeads.length === 0) {
+        await oldDb.end();
+        await newDb.end();
+        return respond({ success: true, missing: 0, copied: 0 });
+      }
+
+      await newDb.unsafe(`SET session_replication_role = 'replica'`);
+      let copied = 0;
+      const errors: string[] = [];
+
+      for (const row of missingLeads) {
+        try {
+          await newDb.unsafe(
+            `INSERT INTO leads (id, lead_id, agent_id, first_name, last_name, email, phone, state,
+              lead_date, lead_source, status, delivery_status, delivery_error,
+              ghl_contact_id, delivered_at, delivery_attempts,
+              last_delivery_attempt_at, webhook_payload, lead_data,
+              age, employment, interest, savings, investments, timezone,
+              utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+              gclid, fbclid, notes, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19::jsonb,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
+             ON CONFLICT (id) DO NOTHING`,
+            [row.id, row.lead_id, row.agent_id, row.first_name, row.last_name, row.email,
+             row.phone, row.state, row.lead_date, row.lead_source, row.status,
+             row.delivery_status, row.delivery_error, row.ghl_contact_id, row.delivered_at,
+             row.delivery_attempts, row.last_delivery_attempt_at, row.webhook_payload || '{}',
+             row.lead_data || '{}', row.age, row.employment, row.interest, row.savings,
+             row.investments, row.timezone, row.utm_source, row.utm_medium, row.utm_campaign,
+             row.utm_content, row.utm_term, row.gclid, row.fbclid, row.notes,
+             row.created_at, row.updated_at]
+          );
+          copied++;
+        } catch (e: any) {
+          errors.push(`${row.id}: ${e.message.substring(0, 100)}`);
+        }
+      }
+
+      await oldDb.end();
+      await newDb.end();
+      return respond({
+        success: true,
+        missing: missingLeads.length,
+        copied,
+        error_count: missingLeads.length - copied,
+        errors: errors.slice(0, 10),
+        leads: missingLeads.map((r: any) => ({ id: r.id, agent_id: r.agent_id, name: `${r.first_name} ${r.last_name}`, created_at: r.created_at, delivery_status: r.delivery_status })),
+      });
+    }
+
+    return respond({ error: "Unknown action. Use: test_connection, list_tables, copy_table, sync_missing_leads" }, 400);
   } catch (e: any) {
     return respond({ error: e.message, stack: e.stack?.substring(0, 500) }, 500);
   }

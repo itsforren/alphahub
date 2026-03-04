@@ -123,6 +123,28 @@ Deno.serve(async (req) => {
       console.error('Error assigning role:', roleError)
     }
 
+    // Auto-enroll in all published courses
+    const { data: publishedCourses } = await supabaseAdmin
+      .from('courses')
+      .select('id')
+      .eq('status', 'published')
+
+    if (publishedCourses?.length) {
+      const enrollments = publishedCourses.map(course => ({
+        user_id: userId,
+        course_id: course.id,
+        granted_at: new Date().toISOString(),
+      }))
+      const { error: enrollError } = await supabaseAdmin
+        .from('enrollments')
+        .upsert(enrollments, { onConflict: 'user_id,course_id' })
+      if (enrollError) {
+        console.error('Error enrolling in courses:', enrollError)
+      } else {
+        console.log(`Enrolled user ${userId} in ${publishedCourses.length} course(s)`)
+      }
+    }
+
     // If this is a client, link to client record
     if (userType === 'client' && clientId) {
       const { error: linkError } = await supabaseAdmin
@@ -159,7 +181,7 @@ Deno.serve(async (req) => {
       type: 'recovery',
       email: normalizedEmail,
       options: {
-        redirectTo: 'https://hub.alphaagent.io/auth/reset-password'
+        redirectTo: 'https://alphaagent.io/auth/reset-password'
       }
     })
 

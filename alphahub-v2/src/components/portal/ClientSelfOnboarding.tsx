@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, Circle, HelpCircle, ExternalLink, Loader2, Clock, AlertTriangle, CreditCard } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -81,15 +81,17 @@ export function ClientSelfOnboarding({ clientId, hasSignedAgreement, clientCreat
     }
   }, [isLoading, tasks.length, clientId, initializeTasks]);
 
-  // Auto-complete sign_agreement task if agreement is signed
+  // Auto-complete sign_agreement task if agreement is signed (once only)
+  const autoCompletedRef = useRef(false);
   useEffect(() => {
-    if (hasSignedAgreement) {
+    if (hasSignedAgreement && !autoCompletedRef.current) {
       const signTask = tasks.find(t => t.task_key === 'sign_agreement' && !t.completed);
       if (signTask) {
+        autoCompletedRef.current = true;
         updateTask.mutate({ taskId: signTask.id, completed: true, clientId, clientName });
       }
     }
-  }, [hasSignedAgreement, tasks, updateTask, clientId, clientName]);
+  }, [hasSignedAgreement, tasks, clientId, clientName]);
 
   const handleToggleTask = (taskId: string, currentlyCompleted: boolean, taskLabel: string) => {
     updateTask.mutate({ 

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useRef } from 'react';
 import { usePerformancePercentage, applyPerformancePercentage } from '@/hooks/usePerformancePercentage';
@@ -17,6 +17,7 @@ export interface ComputedWalletBalance {
 const DEFAULT_LOW_BALANCE_THRESHOLD = 150;
 
 export function useComputedWalletBalance(clientId?: string) {
+  const queryClient = useQueryClient();
   // Track if we've already triggered the low balance check for this client
   const lowBalanceCheckedRef = useRef<string | null>(null);
 
@@ -51,7 +52,7 @@ export function useComputedWalletBalance(clientId?: string) {
         .from('wallet_transactions')
         .select('amount')
         .eq('client_id', clientId)
-        .eq('transaction_type', 'deposit');
+        .in('transaction_type', ['deposit', 'adjustment']);
 
       if (error) throw error;
       
@@ -121,6 +122,22 @@ export function useComputedWalletBalance(clientId?: string) {
       });
     }
   }, [clientId, remainingBalance, lowBalanceThreshold, totalDeposits, walletQuery.isLoading, depositsQuery.isLoading, spendQuery.isLoading, percentageLoading]);
+
+  // Realtime: refetch balance immediately when a new wallet transaction is inserted
+  useEffect(() => {
+    if (!clientId) return;
+    const channel = supabase
+      .channel(`wallet-tx-${clientId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'wallet_transactions', filter: `client_id=eq.${clientId}` },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId] });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [clientId, queryClient]);
 
   const refetch = () => {
     walletQuery.refetch();

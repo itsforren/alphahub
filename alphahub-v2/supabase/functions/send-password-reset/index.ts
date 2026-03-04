@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
       type: 'recovery',
       email: normalizedEmail,
       options: {
-        redirectTo: 'https://hub.alphaagent.io/reset-password'
+        redirectTo: 'https://alphaagent.io/reset-password'
       }
     })
 
@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     }
 
     // The link from generateLink contains token_hash, we need to build the proper URL
-    const resetLink = linkData.properties?.action_link || `https://hub.alphaagent.io/reset-password`
+    const resetLink = linkData.properties?.action_link || `https://alphaagent.io/reset-password`
 
     // Send branded email via Resend
     const resend = new Resend(resendApiKey)

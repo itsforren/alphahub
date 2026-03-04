@@ -107,6 +107,25 @@ async function refreshAgencyToken(supabase: any, tokenRecord: any, encryptionKey
   return tokenData.access_token;
 }
 
+// Temporary bridge: proxy to old project when local decryption fails
+// This will be removed once GHL OAuth is re-authenticated on the new project
+const OLD_PROJECT_URL = "https://qydkrpirrfelgtcqasdx.supabase.co";
+
+async function proxyToOldProject(companyId: string, locationId: string): Promise<Response> {
+  console.log('Proxying location token request to old project (bridge mode)');
+  const response = await fetch(`${OLD_PROJECT_URL}/functions/v1/crm-location-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ companyId, locationId }),
+  });
+
+  const data = await response.text();
+  return new Response(data, {
+    status: response.status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -119,7 +138,7 @@ serve(async (req) => {
 
   try {
     const { companyId, locationId } = await req.json();
-    
+
     if (!companyId || !locationId) {
       return new Response(
         JSON.stringify({ error: 'companyId and locationId are required' }),
@@ -136,82 +155,95 @@ serve(async (req) => {
       .maybeSingle();
 
     if (tokenError || !tokenRecord) {
-      console.error('No OAuth tokens found');
-      return new Response(
-        JSON.stringify({ error: 'OAuth not configured. Please complete OAuth flow first.' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      console.log('No local OAuth tokens, proxying to old project');
+      return await proxyToOldProject(companyId, locationId);
     }
 
-    // Check if token is expired or about to expire (within 5 minutes)
-    const expiresAt = new Date(tokenRecord.expires_at);
-    const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
-    
-    let agencyAccessToken: string;
-    
-    if (expiresAt <= fiveMinutesFromNow) {
-      console.log('Agency token expired or expiring soon, refreshing...');
-      agencyAccessToken = await refreshAgencyToken(supabase, tokenRecord, encryptionKey);
-    } else {
-      agencyAccessToken = await decryptToken(tokenRecord.access_token, encryptionKey);
-    }
+    // Try local decryption first
+    try {
+      // Check if token is expired or about to expire (within 5 minutes)
+      const expiresAt = new Date(tokenRecord.expires_at);
+      const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
 
-    // Exchange agency token for location token
-    const locationTokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/locationToken', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'Authorization': `Bearer ${agencyAccessToken}`,
-        'Version': '2021-07-28',
-      },
-      body: new URLSearchParams({
-        companyId: companyId,
-        locationId: locationId,
-      }),
-    });
+      let agencyAccessToken: string;
 
-    if (!locationTokenResponse.ok) {
-      const errorText = await locationTokenResponse.text();
-      console.error('Location token exchange failed:', errorText);
-      
+      if (expiresAt <= fiveMinutesFromNow) {
+        console.log('Agency token expired or expiring soon, refreshing...');
+        agencyAccessToken = await refreshAgencyToken(supabase, tokenRecord, encryptionKey);
+      } else {
+        agencyAccessToken = await decryptToken(tokenRecord.access_token, encryptionKey);
+      }
+
+      // Exchange agency token for location token
+      const locationTokenResponse = await fetch('https://services.leadconnectorhq.com/oauth/locationToken', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${agencyAccessToken}`,
+          'Version': '2021-07-28',
+        },
+        body: new URLSearchParams({
+          companyId: companyId,
+          locationId: locationId,
+        }),
+      });
+
+      if (!locationTokenResponse.ok) {
+        const errorText = await locationTokenResponse.text();
+        console.error('Location token exchange failed:', errorText);
+
+        await supabase.from('ghl_api_logs').insert({
+          request_type: 'location_token',
+          company_id: companyId,
+          location_id: locationId,
+          status: 'error',
+          error_message: errorText,
+        });
+
+        // Fall back to old project on GHL API error too
+        console.log('GHL API error, falling back to old project proxy');
+        return await proxyToOldProject(companyId, locationId);
+      }
+
+      const locationTokenData = await locationTokenResponse.json();
+
       await supabase.from('ghl_api_logs').insert({
         request_type: 'location_token',
         company_id: companyId,
         location_id: locationId,
-        status: 'error',
-        error_message: errorText,
+        status: 'success',
+        response_data: { expires_in: locationTokenData.expires_in, source: 'local' },
       });
-      
+
+      console.log('Location token obtained successfully (local)');
+
       return new Response(
-        JSON.stringify({ error: 'Failed to get location token', details: errorText }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          locationAccessToken: locationTokenData.access_token,
+          expiresIn: locationTokenData.expires_in,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    } catch (localError: unknown) {
+      // Local decryption/refresh failed — proxy to old project as fallback
+      const msg = localError instanceof Error ? localError.message : 'Unknown';
+      console.log(`Local token handling failed (${msg}), proxying to old project`);
+
+      await supabase.from('ghl_api_logs').insert({
+        request_type: 'location_token',
+        company_id: companyId,
+        location_id: locationId,
+        status: 'fallback',
+        error_message: `Local failed: ${msg}, using old project proxy`,
+      });
+
+      return await proxyToOldProject(companyId, locationId);
     }
-
-    const locationTokenData = await locationTokenResponse.json();
-    
-    await supabase.from('ghl_api_logs').insert({
-      request_type: 'location_token',
-      company_id: companyId,
-      location_id: locationId,
-      status: 'success',
-      response_data: { expires_in: locationTokenData.expires_in },
-    });
-
-    console.log('Location token obtained successfully');
-
-    return new Response(
-      JSON.stringify({
-        locationAccessToken: locationTokenData.access_token,
-        expiresIn: locationTokenData.expires_in,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error in crm-location-token:', message);
-    
+
     return new Response(
       JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

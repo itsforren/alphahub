@@ -699,19 +699,27 @@ function AdSpendForm({
             className="space-y-4 overflow-hidden"
           >
             {/* Existing Balance Notice */}
-            {existingBalance > 0 && (
+            {shouldSkipInitialCharge ? (
+              <div className="rounded-xl border-2 border-emerald-500/40 bg-emerald-500/10 p-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-400">You will not be charged upfront</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Your current wallet balance (<strong className="text-emerald-400">${existingBalance.toFixed(2)}</strong>) is above the ${LOW_BALANCE_THRESHOLD} threshold.
+                      Your card will only be charged when your balance drops below ${LOW_BALANCE_THRESHOLD}.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : existingBalance > 0 ? (
               <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
                 <div className="flex items-center gap-2 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                   <span>Current balance: <strong className="text-emerald-500">${existingBalance.toFixed(2)}</strong></span>
                 </div>
-                {shouldSkipInitialCharge && (
-                  <p className="text-xs text-muted-foreground mt-1 pl-6">
-                    No initial charge — your balance is above ${LOW_BALANCE_THRESHOLD}.
-                  </p>
-                )}
               </div>
-            )}
+            ) : null}
 
             <div className="space-y-2">
               <Label className="text-sm font-medium">Monthly Ad Spend Cap</Label>
@@ -1092,7 +1100,7 @@ export function OnboardingPaymentFlow({
 
       {/* Full-screen wizard dialog */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-[520px] p-0 gap-0 border-primary/20 bg-gradient-to-b from-background to-muted/20 overflow-hidden [&>button]:hidden">
+        <DialogContent className="sm:max-w-[520px] p-0 gap-0 border-primary/20 bg-gradient-to-b from-background to-muted/20 flex flex-col max-h-[90vh] [&>button]:hidden">
           {/* Header */}
           <div className="px-6 pt-6 pb-2">
             <div className="text-center mb-2">
@@ -1107,7 +1115,7 @@ export function OnboardingPaymentFlow({
           </div>
 
           {/* Body */}
-          <div className="px-6 pb-6">
+          <div className="px-6 pb-6 overflow-y-auto flex-1 min-h-0">
             <AnimatePresence mode="wait">
               {wizardStep === 'mgmt' && (
                 <Elements key="mgmt-elements" stripe={managementStripePromise}>

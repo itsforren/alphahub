@@ -40,8 +40,10 @@ const REQUIRED_SCOPES = [
   'oauth.readonly',
   'oauth.write',
   // SaaS (for V2 enablement)
-  'saas.readonly',
-  'saas.write',
+  'saas/company.read',
+  'saas/company.write',
+  'saas/location.read',
+  'saas/location.write',
 ];
 
 serve(async (req) => {

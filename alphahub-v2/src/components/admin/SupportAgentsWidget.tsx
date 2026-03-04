@@ -88,7 +88,7 @@ export function SupportAgentsWidget() {
     setFormData({
       name: agent.name,
       email: agent.email,
-      categories: agent.categories,
+      categories: Array.isArray(agent.categories) ? agent.categories : [],
       is_default: agent.is_default,
     });
   };
@@ -261,12 +261,12 @@ export function SupportAgentsWidget() {
                       </div>
                       <p className="text-sm text-muted-foreground mb-2">{agent.email}</p>
                       <div className="flex flex-wrap gap-1">
-                        {agent.categories.map((cat) => (
+                        {(Array.isArray(agent.categories) ? agent.categories : []).map((cat) => (
                           <Badge key={cat} variant="outline" className="text-xs">
                             {CATEGORIES.find(c => c.id === cat)?.label || cat}
                           </Badge>
                         ))}
-                        {agent.categories.length === 0 && (
+                        {(!agent.categories || (Array.isArray(agent.categories) && agent.categories.length === 0)) && (
                           <span className="text-xs text-muted-foreground">No categories assigned</span>
                         )}
                       </div>

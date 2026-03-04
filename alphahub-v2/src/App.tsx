@@ -10,6 +10,7 @@ import { ClientPreviewProvider } from "@/contexts/ClientPreviewContext";
 import { BrowserNotificationProvider } from "@/components/BrowserNotificationProvider";
 import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Public pages
 import Index from "./pages/Index";
@@ -96,6 +97,7 @@ const App = () => (
                 <ClientPreviewProvider>
                   <Toaster />
                   <Sonner />
+                <ErrorBoundary>
                 <Suspense fallback={<LoadingFallback />}>
                   <Routes>
                   {/* Public routes */}
@@ -303,6 +305,7 @@ const App = () => (
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                   </Suspense>
+                </ErrorBoundary>
                 </ClientPreviewProvider>
               </BrowserRouter>
             </BrowserNotificationProvider>
