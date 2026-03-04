@@ -23,18 +23,19 @@ interface CampaignInfo {
 }
 
 // Google Ads geo target constant IDs to US state abbreviations
+// Canonical mapping — must match sync-google-ads-targeting/index.ts
 const GEO_CONSTANT_TO_STATE: Record<string, string> = {
-  '21132': 'AL', '21133': 'AK', '21134': 'AZ', '21135': 'AR', '21136': 'CA',
-  '21137': 'CO', '21138': 'CT', '21139': 'DE', '21140': 'DC', '21141': 'FL',
-  '21142': 'GA', '21143': 'HI', '21144': 'ID', '21145': 'IL', '21146': 'IN',
-  '21147': 'IA', '21148': 'KS', '21149': 'KY', '21150': 'LA', '21151': 'ME',
-  '21152': 'MD', '21153': 'MA', '21154': 'MI', '21155': 'MN', '21156': 'MS',
-  '21157': 'MO', '21158': 'MT', '21159': 'NE', '21160': 'NV', '21161': 'NH',
-  '21162': 'NJ', '21163': 'NM', '21164': 'NY', '21165': 'NC', '21166': 'ND',
-  '21167': 'OH', '21168': 'OK', '21169': 'OR', '21170': 'PA', '21171': 'RI',
-  '21172': 'SC', '21173': 'SD', '21174': 'TN', '21175': 'TX', '21176': 'UT',
-  '21177': 'VT', '21178': 'VA', '21179': 'WA', '21180': 'WV', '21181': 'WI',
-  '21182': 'WY', '21183': 'PR',
+  '21132': 'AK', '21133': 'AL', '21135': 'AR', '21136': 'AZ', '21137': 'CA',
+  '21138': 'CO', '21139': 'CT', '21140': 'DC', '21141': 'DE', '21142': 'FL',
+  '21143': 'GA', '21144': 'HI', '21145': 'IA', '21146': 'ID', '21147': 'IL',
+  '21148': 'IN', '21149': 'KS', '21150': 'KY', '21151': 'LA', '21152': 'MA',
+  '21153': 'MD', '21154': 'ME', '21155': 'MI', '21156': 'MN', '21157': 'MO',
+  '21158': 'MS', '21159': 'MT', '21160': 'NC', '21161': 'ND', '21162': 'NE',
+  '21163': 'NH', '21164': 'NJ', '21165': 'NM', '21166': 'NV', '21167': 'NY',
+  '21168': 'OH', '21169': 'OK', '21170': 'OR', '21171': 'PA', '21172': 'RI',
+  '21173': 'SC', '21174': 'SD', '21175': 'TN', '21176': 'TX', '21177': 'UT',
+  '21178': 'VA', '21179': 'VT', '21180': 'WA', '21182': 'WI', '21183': 'WV',
+  '21184': 'WY', '2630': 'PR',
 };
 
 function geoConstantToState(geoConstant: string): string | null {
@@ -449,10 +450,9 @@ serve(async (req) => {
       updatePayload.target_daily_spend = campaignInfo.dailyBudget;
     }
 
-    // Add target states if fetched
-    if (campaignInfo.targetStates.length > 0) {
-      updatePayload.states = campaignInfo.targetStates.join(', ');
-    }
+    // NOTE: States are NOT synced here. Use the dedicated sync-google-ads-targeting
+    // function (triggered from the StateSelector "Sync from Google Ads" button or
+    // the main refresh button) to avoid overwriting states with incorrect mappings.
 
     const { error: updateError } = await supabase
       .from('clients')

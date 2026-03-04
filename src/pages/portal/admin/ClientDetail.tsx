@@ -224,27 +224,51 @@ export default function PortalAdminClientDetail() {
           return Math.min(Math.max(daysDiff + 1, 7), 90);
         })();
 
-        const { data: syncData, error: syncError } = await supabase.functions.invoke('sync-google-ads', {
-          body: { clientId: client.id, daysBack },
-        });
+        // Sync ad spend data and state targeting in parallel
+        const [adsResult, targetingResult] = await Promise.allSettled([
+          supabase.functions.invoke('sync-google-ads', {
+            body: { clientId: client.id, daysBack },
+          }),
+          supabase.functions.invoke('sync-google-ads-targeting', {
+            body: { clientId: client.id },
+          }),
+        ]);
 
-        if (syncError) {
-          console.error('sync-google-ads error:', syncError);
-          toast.error('Ads sync failed', { description: syncError.message });
-        } else if (!syncData?.success) {
-          const msg = syncData?.error || 'Sync failed';
-          console.error('sync-google-ads failed:', syncData);
-          toast.error('Ads sync failed', { description: msg });
+        // Handle ad spend sync result
+        if (adsResult.status === 'fulfilled') {
+          const { data: syncData, error: syncError } = adsResult.value;
+          if (syncError) {
+            console.error('sync-google-ads error:', syncError);
+            toast.error('Ads sync failed', { description: syncError.message });
+          } else if (!syncData?.success) {
+            const msg = syncData?.error || 'Sync failed';
+            console.error('sync-google-ads failed:', syncData);
+            toast.error('Ads sync failed', { description: msg });
+          }
         } else {
-          // Force UI refresh (wallet is based on these queries)
-          queryClient.invalidateQueries({ queryKey: ['ad-spend-daily', client.id] });
-          queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', client.id], exact: false });
-          queryClient.invalidateQueries({ queryKey: ['wallet-deposits', client.id], exact: false });
-          queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', client.id], exact: false });
-          queryClient.invalidateQueries({ queryKey: ['campaigns'], exact: false });
-          queryClient.invalidateQueries({ queryKey: ['command-center-stats'], exact: false });
-          refetchWalletBalance?.();
+          console.error('sync-google-ads error:', adsResult.reason);
         }
+
+        // Handle targeting sync result (silent - states update in DB)
+        if (targetingResult.status === 'fulfilled') {
+          const { data: targetData, error: targetError } = targetingResult.value;
+          if (targetError) {
+            console.error('sync-google-ads-targeting error:', targetError);
+          } else if (targetData?.success) {
+            console.log('States synced from Google Ads:', targetData.syncedStates?.join(', '));
+          }
+        } else {
+          console.error('sync-google-ads-targeting error:', targetingResult.reason);
+        }
+
+        // Force UI refresh (wallet is based on these queries)
+        queryClient.invalidateQueries({ queryKey: ['ad-spend-daily', client.id] });
+        queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', client.id], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['wallet-deposits', client.id], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', client.id], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['campaigns'], exact: false });
+        queryClient.invalidateQueries({ queryKey: ['command-center-stats'], exact: false });
+        refetchWalletBalance?.();
       }
 
       await refetch();
