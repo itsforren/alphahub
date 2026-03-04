@@ -270,10 +270,14 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                   )}
                 </TableCell>
                 <TableCell className="text-sm">
-                  {record.payment_reference ? (
+                  {record.stripe_invoice_id ? (
+                    <span className="text-foreground font-mono text-xs bg-muted px-1.5 py-0.5 rounded" title={record.stripe_invoice_id}>
+                      {record.stripe_invoice_id.slice(0, 14)}…
+                    </span>
+                  ) : record.payment_reference ? (
                     <span className="text-foreground font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
-                      {record.payment_reference.length > 12 
-                        ? `${record.payment_reference.slice(0, 12)}...` 
+                      {record.payment_reference.length > 12
+                        ? `${record.payment_reference.slice(0, 12)}...`
                         : record.payment_reference}
                     </span>
                   ) : (

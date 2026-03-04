@@ -69,7 +69,9 @@ export function BillingWidget({ clientId, isAdmin = true }: BillingWidgetProps) 
         body: { clientId },
       });
       if (error) {
-        toast.error('Sync failed');
+        const msg = (error as any)?.message || (error as any)?.context?.message || JSON.stringify(error);
+        console.error('Sync error:', error);
+        toast.error(`Sync failed: ${msg}`);
       } else {
         const { created = 0, updated = 0, deposited = 0 } = data || {};
         const parts = [
@@ -81,6 +83,8 @@ export function BillingWidget({ clientId, isAdmin = true }: BillingWidgetProps) 
         refetch();
         queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
         queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        queryClient.invalidateQueries({ queryKey: ['client-wallet'] });
       }
     } finally {
       setIsSyncing(false);
