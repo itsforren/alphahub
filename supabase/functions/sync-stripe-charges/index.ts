@@ -19,17 +19,6 @@ function getStripeKey(stripeAccount: string): string {
   return Deno.env.get('STRIPE_AD_SPEND_SECRET_KEY') || '';
 }
 
-async function fetchStripe(path: string, stripeKey: string): Promise<any> {
-  const res = await fetch(`https://api.stripe.com/v1${path}`, {
-    headers: { 'Authorization': `Bearer ${stripeKey}` },
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Stripe ${path} failed (${res.status}): ${err}`);
-  }
-  return res.json();
-}
-
 function mapInvoiceToAlphaHub(invoice: any): { status: string; paidAt: string | null; lastError: string | null } {
   const stripeStatus = invoice.status;
   const pastDue = invoice.due_date && invoice.due_date * 1000 < Date.now();
@@ -48,7 +37,6 @@ function mapInvoiceToAlphaHub(invoice: any): { status: string; paidAt: string | 
   if (stripeStatus === 'uncollectible' || (stripeStatus === 'open' && pastDue)) {
     return { status: 'overdue', paidAt: null, lastError: invoice.last_payment_error?.message || null };
   }
-  // open but not past due = pending
   return { status: 'pending', paidAt: null, lastError: null };
 }
 
@@ -66,11 +54,80 @@ function mapPaymentIntentToAlphaHub(pi: any): { status: string; paidAt: string |
   return { status: 'pending', paidAt: null, lastError: null };
 }
 
-// ── Per-client full sync: update existing + create missing from Stripe ──
+// Creates a wallet deposit for a paid ad_spend billing record (idempotent)
+async function ensureWalletDeposit(
+  supabase: any,
+  billingRecordId: string,
+  clientId: string,
+  amount: number,
+  paidAt: string
+) {
+  // Idempotency check — skip if deposit already exists for this billing record
+  const { data: existingTx } = await supabase
+    .from('wallet_transactions')
+    .select('id')
+    .eq('billing_record_id', billingRecordId)
+    .maybeSingle();
+
+  if (existingTx) return; // Already deposited, nothing to do
+
+  // Get or create the client wallet
+  let { data: wallet } = await supabase
+    .from('client_wallets')
+    .select('id, tracking_start_date')
+    .eq('client_id', clientId)
+    .maybeSingle();
+
+  const paidDate = paidAt.split('T')[0];
+
+  if (!wallet) {
+    const { data: newWallet, error: walletErr } = await supabase
+      .from('client_wallets')
+      .insert({
+        client_id: clientId,
+        tracking_start_date: paidDate,
+      })
+      .select('id, tracking_start_date')
+      .single();
+
+    if (walletErr) {
+      console.error(`Failed to create wallet for client ${clientId}:`, walletErr);
+      return;
+    }
+    wallet = newWallet;
+  } else if (!wallet.tracking_start_date) {
+    // Wallet exists but tracking never started — set it now
+    await supabase
+      .from('client_wallets')
+      .update({ tracking_start_date: paidDate })
+      .eq('id', wallet.id);
+  }
+
+  if (!wallet?.id) return;
+
+  // Create the deposit entry
+  const { error: txErr } = await supabase
+    .from('wallet_transactions')
+    .insert({
+      wallet_id: wallet.id,
+      client_id: clientId,
+      transaction_type: 'deposit',
+      amount,
+      description: `Ad spend deposit (Stripe sync) — ${paidDate}`,
+      billing_record_id: billingRecordId,
+    });
+
+  if (txErr) {
+    console.error(`Failed to create wallet deposit for billing record ${billingRecordId}:`, txErr);
+  }
+}
+
+// ── Per-client full sync: pull all Stripe invoices and reconcile ──
 async function syncClient(supabase: any, clientId: string) {
   const changes: any[] = [];
   let created = 0;
   let updated = 0;
+  let deposited = 0;
 
   // 1. Get all Stripe customer records for this client
   const { data: customers, error: custError } = await supabase
@@ -80,10 +137,10 @@ async function syncClient(supabase: any, clientId: string) {
 
   if (custError) throw custError;
   if (!customers || customers.length === 0) {
-    return { synced: 0, created: 0, updated: 0, changes: [], message: 'No Stripe customer found' };
+    return { synced: 0, created: 0, updated: 0, deposited: 0, changes: [], message: 'No Stripe customer found' };
   }
 
-  // 2. Fetch client name for billing record creation
+  // 2. Fetch client name
   const { data: client } = await supabase
     .from('clients')
     .select('name')
@@ -95,12 +152,14 @@ async function syncClient(supabase: any, clientId: string) {
     const stripeKey = getStripeKey(customer.stripe_account);
     if (!stripeKey) continue;
 
-    // 3. Fetch all invoices from Stripe for this customer
+    const billingType = customer.stripe_account === 'management' ? 'management' : 'ad_spend';
+
+    // 3. Paginate through all Stripe invoices for this customer
     let hasMore = true;
     let startingAfter: string | null = null;
     let pageCount = 0;
 
-    while (hasMore && pageCount < 3) {
+    while (hasMore && pageCount < 5) { // up to 250 invoices
       const url = new URL('https://api.stripe.com/v1/invoices');
       url.searchParams.set('customer', customer.stripe_customer_id);
       url.searchParams.set('limit', '50');
@@ -115,13 +174,14 @@ async function syncClient(supabase: any, clientId: string) {
         invoiceData = await res.json();
         hasMore = invoiceData.has_more || false;
         pageCount++;
+        if (invoiceData.data?.length > 0) {
+          startingAfter = invoiceData.data[invoiceData.data.length - 1].id;
+        }
       } catch {
         break;
       }
 
       for (const invoice of invoiceData.data || []) {
-        if (hasMore) startingAfter = invoice.id;
-
         // Skip drafts — not real charges
         if (invoice.status === 'draft') continue;
 
@@ -141,16 +201,24 @@ async function syncClient(supabase: any, clientId: string) {
         // 4. Look up existing billing_record by stripe_invoice_id
         const { data: existing } = await supabase
           .from('billing_records')
-          .select('id, status, last_charge_error')
+          .select('id, status, billing_type, amount, last_charge_error')
           .eq('stripe_invoice_id', invoice.id)
           .maybeSingle();
 
+        let recordId: string;
+
         if (existing) {
+          recordId = existing.id;
+
           // Update status if different
-          if (existing.status !== newStatus || (lastError && existing.last_charge_error !== lastError)) {
+          const statusChanged = existing.status !== newStatus;
+          const errorChanged = lastError && existing.last_charge_error !== lastError;
+
+          if (statusChanged || errorChanged) {
             const updateData: any = { status: newStatus };
             if (paidAt) updateData.paid_at = paidAt;
             if (lastError !== null) updateData.last_charge_error = lastError;
+            else updateData.last_charge_error = null; // clear error on success
 
             await supabase
               .from('billing_records')
@@ -162,10 +230,9 @@ async function syncClient(supabase: any, clientId: string) {
           }
         } else {
           // 5. No matching record — create one from Stripe data
-          const billingType = customer.stripe_account === 'management' ? 'management' : 'ad_spend';
           const description = invoice.description
             || invoice.lines?.data?.[0]?.description
-            || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} - ${invoiceDate}`;
+            || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} — ${invoiceDate}`;
 
           const newRecord: any = {
             client_id: clientId,
@@ -187,15 +254,41 @@ async function syncClient(supabase: any, clientId: string) {
           if (invoice.subscription) newRecord.stripe_subscription_id = invoice.subscription;
           if (lastError) newRecord.last_charge_error = lastError;
 
-          const { error: insertErr } = await supabase
+          const { data: insertedRecord, error: insertErr } = await supabase
             .from('billing_records')
-            .insert(newRecord);
+            .insert(newRecord)
+            .select('id')
+            .single();
 
-          if (!insertErr) {
+          if (!insertErr && insertedRecord) {
+            recordId = insertedRecord.id;
             created++;
-            changes.push({ stripeInvoiceId: invoice.id, action: 'created', status: newStatus, amount });
+            changes.push({ stripeInvoiceId: invoice.id, action: 'created', status: newStatus, amount, billingType });
           } else {
             console.error(`Failed to create billing record for invoice ${invoice.id}:`, insertErr);
+            continue;
+          }
+        }
+
+        // 6. For paid ad_spend records, ensure wallet deposit exists
+        if (newStatus === 'paid' && billingType === 'ad_spend' && paidAt && amount > 0) {
+          const existingAmount = existing?.amount ?? amount;
+          const depositAmount = existing ? existingAmount : amount;
+
+          const txCountBefore = await supabase
+            .from('wallet_transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('billing_record_id', recordId);
+
+          await ensureWalletDeposit(supabase, recordId, clientId, depositAmount, paidAt);
+
+          const txCountAfter = await supabase
+            .from('wallet_transactions')
+            .select('id', { count: 'exact', head: true })
+            .eq('billing_record_id', recordId);
+
+          if ((txCountAfter.count || 0) > (txCountBefore.count || 0)) {
+            deposited++;
           }
         }
       }
@@ -206,26 +299,27 @@ async function syncClient(supabase: any, clientId: string) {
     synced: customers.length,
     created,
     updated,
+    deposited,
     changes,
   };
 }
 
-// ── Global sync: update existing records that already have Stripe IDs ──
+// ── Global reconciliation: fix statuses on existing records that have Stripe IDs ──
 async function syncGlobal(supabase: any) {
   const { data: records, error: fetchError } = await supabase
     .from('billing_records')
-    .select('id, billing_type, status, stripe_invoice_id, stripe_payment_intent_id, client_name, client_id, stripe_account')
+    .select('id, billing_type, status, stripe_invoice_id, stripe_payment_intent_id, client_name, client_id, stripe_account, amount')
     .in('status', ['pending', 'overdue'])
     .or('stripe_invoice_id.not.is.null,stripe_payment_intent_id.not.is.null');
 
   if (fetchError) throw fetchError;
-  if (!records || records.length === 0) return { synced: 0, updated: 0, changes: [] };
+  if (!records || records.length === 0) return { synced: 0, updated: 0, deposited: 0, changes: [] };
 
   const changes: any[] = [];
   let updated = 0;
+  let deposited = 0;
 
   await Promise.all(records.map(async (record: any) => {
-    // Use stripe_account field if available, fallback to billing_type
     const account = record.stripe_account || record.billing_type;
     const stripeKey = getStripeKey(account);
     if (!stripeKey) return;
@@ -236,10 +330,18 @@ async function syncGlobal(supabase: any) {
 
     try {
       if (record.stripe_invoice_id) {
-        const invoice = await fetchStripe(`/invoices/${record.stripe_invoice_id}`, stripeKey);
+        const res = await fetch(`https://api.stripe.com/v1/invoices/${record.stripe_invoice_id}`, {
+          headers: { 'Authorization': `Bearer ${stripeKey}` },
+        });
+        if (!res.ok) return;
+        const invoice = await res.json();
         ({ status: newStatus, paidAt, lastError } = mapInvoiceToAlphaHub(invoice));
       } else if (record.stripe_payment_intent_id) {
-        const pi = await fetchStripe(`/payment_intents/${record.stripe_payment_intent_id}`, stripeKey);
+        const res = await fetch(`https://api.stripe.com/v1/payment_intents/${record.stripe_payment_intent_id}`, {
+          headers: { 'Authorization': `Bearer ${stripeKey}` },
+        });
+        if (!res.ok) return;
+        const pi = await res.json();
         ({ status: newStatus, paidAt, lastError } = mapPaymentIntentToAlphaHub(pi));
       } else {
         return;
@@ -253,6 +355,7 @@ async function syncGlobal(supabase: any) {
       const updateData: any = { status: newStatus };
       if (paidAt) updateData.paid_at = paidAt;
       if (lastError !== null) updateData.last_charge_error = lastError;
+      else updateData.last_charge_error = null;
 
       const { error: updateError } = await supabase
         .from('billing_records')
@@ -267,11 +370,17 @@ async function syncGlobal(supabase: any) {
           from: record.status,
           to: newStatus,
         });
+
+        // Ensure wallet deposit for newly-paid ad_spend records
+        if (newStatus === 'paid' && record.billing_type === 'ad_spend' && paidAt && record.amount > 0) {
+          await ensureWalletDeposit(supabase, record.id, record.client_id, record.amount, paidAt);
+          deposited++;
+        }
       }
     }
   }));
 
-  return { synced: records.length, updated, changes };
+  return { synced: records.length, updated, deposited, changes };
 }
 
 Deno.serve(async (req) => {
@@ -281,15 +390,32 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, serviceKey);
 
-  // Auth check — require service role Bearer or be a scheduled invocation (no body auth for cron)
+  // Auth: accept service role key (cron) OR a logged-in admin user's JWT
   const authHeader = req.headers.get('Authorization') || '';
   const isCron = req.headers.get('x-cron-invoke') === 'true';
-  if (!isCron && authHeader.slice(7) !== serviceKey) {
-    return jsonResponse({ error: 'Unauthorized' }, 401);
-  }
+  const bearerToken = authHeader.replace('Bearer ', '');
+  const isServiceRole = bearerToken === serviceKey;
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  if (!isCron && !isServiceRole) {
+    // Verify the caller is a logged-in admin
+    const { data: { user }, error: userErr } = await supabase.auth.getUser(bearerToken);
+    if (userErr || !user) {
+      return jsonResponse({ error: 'Unauthorized' }, 401);
+    }
+
+    const { data: roleData } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'admin')
+      .maybeSingle();
+
+    if (!roleData) {
+      return jsonResponse({ error: 'Admin access required' }, 403);
+    }
+  }
 
   try {
     let body: any = {};
@@ -299,10 +425,8 @@ Deno.serve(async (req) => {
 
     let result: any;
     if (clientId) {
-      // Per-client full sync (from UI Sync button)
       result = await syncClient(supabase, clientId);
     } else {
-      // Global reconciliation (cron or manual trigger without clientId)
       result = await syncGlobal(supabase);
     }
 
