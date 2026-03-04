@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord } from '@/hooks/useBillingRecords';
+import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord, useAddToWallet } from '@/hooks/useBillingRecords';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BillingTypeBadge } from './BillingTypeBadge';
 import { BillingStatusBadge } from './BillingStatusBadge';
 import { BillingDetailPopup } from './BillingDetailPopup';
-import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye } from 'lucide-react';
+import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -26,6 +27,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
   const [viewRecord, setViewRecord] = useState<BillingRecord | null>(null);
   const updateMutation = useUpdateBillingRecord();
   const deleteMutation = useDeleteBillingRecord();
+  const addToWalletMutation = useAddToWallet();
 
   const filteredRecords = records.filter(record => {
     if (filterType !== 'all' && record.billing_type !== filterType) return false;
@@ -36,7 +38,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
   const handleStatusChange = async (record: BillingRecord, newStatus: BillingStatus) => {
     try {
       await updateMutation.mutateAsync({ id: record.id, status: newStatus });
-      
+
       if (newStatus === 'paid' && record.billing_type === 'ad_spend') {
         toast.success('Payment recorded & added to wallet');
       } else {
@@ -44,6 +46,15 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
       }
     } catch (error) {
       toast.error('Failed to update status');
+    }
+  };
+
+  const handleAddToWallet = async (record: BillingRecord) => {
+    try {
+      await addToWalletMutation.mutateAsync(record);
+      toast.success(`$${Number(record.amount).toLocaleString()} added to wallet`);
+    } catch (error: any) {
+      toast.error(`Failed to add to wallet: ${error?.message || String(error)}`);
     }
   };
 
@@ -206,6 +217,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
               <TableHead>Period</TableHead>
               <TableHead>Due</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Wallet</TableHead>
               <TableHead>Ref ID</TableHead>
               <TableHead>Payment</TableHead>
               <TableHead className="w-[50px]"></TableHead>
@@ -213,9 +225,26 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
           </TableHeader>
           <TableBody>
             {filteredRecords.map((record) => (
-              <TableRow key={record.id}>
+              <TableRow
+                key={record.id}
+                className={record.is_duplicate ? 'bg-amber-500/5 border-l-2 border-l-amber-500/50' : ''}
+              >
                 <TableCell className="text-sm whitespace-nowrap">
-                  {formatDate(record.created_at)}
+                  <div className="flex items-center gap-1.5">
+                    {formatDate(record.created_at)}
+                    {record.is_duplicate && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Possible duplicate — same amount, type, and period as another record</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -267,6 +296,37 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                     </Select>
                   ) : (
                     <BillingStatusBadge status={record.status} />
+                  )}
+                </TableCell>
+                {/* Wallet deposit status */}
+                <TableCell>
+                  {record.billing_type === 'ad_spend' && record.status === 'paid' ? (
+                    record.has_wallet_deposit ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center gap-1 text-emerald-400 text-xs">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> In Wallet
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent><p>Deposit recorded in wallet</p></TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : isAdmin ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
+                        disabled={addToWalletMutation.isPending}
+                        onClick={() => handleAddToWallet(record)}
+                      >
+                        <Wallet className="w-3 h-3" /> Add
+                      </Button>
+                    ) : (
+                      <span className="text-amber-400 text-xs">Not in wallet</span>
+                    )
+                  ) : (
+                    <span className="text-muted-foreground text-xs">—</span>
                   )}
                 </TableCell>
                 <TableCell className="text-sm">

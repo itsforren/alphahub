@@ -29,6 +29,9 @@ export interface BillingRecord {
   credit_amount_used: number | null;
   created_at: string;
   updated_at: string;
+  // Computed client-side
+  has_wallet_deposit?: boolean;
+  is_duplicate?: boolean;
 }
 
 export interface CreateBillingRecordInput {
@@ -91,11 +94,99 @@ export function useBillingRecords(clientId?: string) {
       }
 
       const { data, error } = await query;
-
       if (error) throw error;
-      return data as BillingRecord[];
+
+      const records = data as BillingRecord[];
+
+      // Fetch which billing_record_ids have wallet deposits
+      const depositedIds = new Set<string>();
+      if (clientId && records.length > 0) {
+        const { data: txRows } = await supabase
+          .from('wallet_transactions')
+          .select('billing_record_id')
+          .eq('client_id', clientId)
+          .eq('transaction_type', 'deposit')
+          .not('billing_record_id', 'is', null);
+
+        (txRows || []).forEach((tx: any) => {
+          if (tx.billing_record_id) depositedIds.add(tx.billing_record_id);
+        });
+      }
+
+      // Detect duplicates: same billing_type + amount + billing_period_start
+      const seenKeys = new Map<string, number>();
+      records.forEach(r => {
+        if (r.billing_period_start) {
+          const key = `${r.billing_type}|${r.amount}|${r.billing_period_start}`;
+          seenKeys.set(key, (seenKeys.get(key) || 0) + 1);
+        }
+      });
+
+      return records.map(r => ({
+        ...r,
+        has_wallet_deposit: depositedIds.has(r.id),
+        is_duplicate: r.billing_period_start
+          ? (seenKeys.get(`${r.billing_type}|${r.amount}|${r.billing_period_start}`) || 0) > 1
+          : false,
+      }));
     },
     enabled: !!clientId,
+  });
+}
+
+export function useAddToWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (record: BillingRecord) => {
+      if (record.status !== 'paid' || record.billing_type !== 'ad_spend') {
+        throw new Error('Only paid ad_spend records can be added to wallet');
+      }
+
+      const trackingDate = record.billing_period_start || record.paid_at?.split('T')[0] || new Date().toISOString().split('T')[0];
+
+      // Get or create wallet
+      let { data: wallet } = await supabase
+        .from('client_wallets')
+        .select('id, tracking_start_date')
+        .eq('client_id', record.client_id)
+        .maybeSingle();
+
+      if (!wallet) {
+        const { data: newWallet, error } = await supabase
+          .from('client_wallets')
+          .insert({ client_id: record.client_id, tracking_start_date: trackingDate })
+          .select('id, tracking_start_date')
+          .single();
+        if (error) throw error;
+        wallet = newWallet;
+      } else if (!wallet.tracking_start_date || trackingDate < wallet.tracking_start_date) {
+        await supabase
+          .from('client_wallets')
+          .update({ tracking_start_date: trackingDate })
+          .eq('id', wallet.id);
+      }
+
+      const { error: txError } = await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: wallet.id,
+          client_id: record.client_id,
+          transaction_type: 'deposit',
+          amount: record.amount,
+          balance_after: 0,
+          description: `Ad spend deposit - Invoice ${record.id.slice(0, 8)}`,
+          billing_record_id: record.id,
+        });
+
+      if (txError) throw txError;
+      return record;
+    },
+    onSuccess: (record) => {
+      queryClient.invalidateQueries({ queryKey: ['billing-records', record.client_id] });
+      queryClient.invalidateQueries({ queryKey: ['client-wallet', record.client_id] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', record.client_id] });
+    },
   });
 }
 

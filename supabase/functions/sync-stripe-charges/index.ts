@@ -115,6 +115,7 @@ async function ensureWalletDeposit(
       client_id: clientId,
       transaction_type: 'deposit',
       amount,
+      balance_after: 0,
       description: `Ad spend deposit (Stripe sync) — ${paidDate}`,
       billing_record_id: billingRecordId,
     });
