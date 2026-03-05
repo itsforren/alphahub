@@ -19,14 +19,36 @@ const ResetPassword = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check if user arrived via recovery link
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('Invalid or expired reset link. Please request a new password reset.');
+    let recovered = false;
+
+    // onAuthStateChange correctly handles the async URL hash processing.
+    // PASSWORD_RECOVERY fires after Supabase verifies the recovery token from the hash.
+    // getSession() alone races against this and incorrectly returns null on fresh loads.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        recovered = true;
+        setError(null);
+      } else if (event === 'SIGNED_IN' && session) {
+        // Already authenticated (e.g., page refresh while session still valid)
+        recovered = true;
+        setError(null);
       }
+    });
+
+    // Fallback: if no recovery event fires within 2s, check session directly
+    const timeout = setTimeout(async () => {
+      if (!recovered) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setError('Invalid or expired reset link. Please request a new password reset.');
+        }
+      }
+    }, 2000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
     };
-    checkSession();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
