@@ -998,8 +998,11 @@ Deno.serve(async (req) => {
         .eq('id', clientId);
     } else {
       // Create new campaign with unique suffix to avoid DUPLICATE_CAMPAIGN_NAME error
-      const uniqueSuffix = internalAgentId ? ` (${internalAgentId.slice(0, 8)})` : ` (${Date.now()})`;
-      const newCampaignName = `IUL | TFWP OG | SEARCH | ${agentName}${uniqueSuffix}`;
+      const agentSuffix = internalAgentId ? internalAgentId.slice(0, 8) : String(Date.now());
+      const templateSuffix = templateType === 'secondary' ? ' REVAMP' : '';
+      // If this is a second campaign (forceNewCampaign), add "C2" to guarantee uniqueness
+      const campaignNumber = forceNewCampaign && existingCampaignId ? ' C2' : '';
+      const newCampaignName = `IUL | TFWP OG | SEARCH${templateSuffix}${campaignNumber} | ${agentName} (${agentSuffix})`;
       const dailyBudgetMicros = dailyBudget && dailyBudget > 0 
         ? Math.round(dailyBudget * 1000000) 
         : 50000000;
