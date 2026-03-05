@@ -19,14 +19,18 @@ interface EditBudgetDialogProps {
   clientId: string;
   currentBudget: number | null | undefined;
   googleCampaignId: string | null | undefined;
+  campaignRowId?: string | null;
+  campaignLabel?: string;
   onSuccess: () => void;
 }
 
-export function EditBudgetDialog({ 
-  clientId, 
-  currentBudget, 
+export function EditBudgetDialog({
+  clientId,
+  currentBudget,
   googleCampaignId,
-  onSuccess 
+  campaignRowId,
+  campaignLabel,
+  onSuccess
 }: EditBudgetDialogProps) {
   const [open, setOpen] = useState(false);
   const [budget, setBudget] = useState(currentBudget?.toString() || '');
@@ -46,7 +50,7 @@ export function EditBudgetDialog({
       if (googleCampaignId) {
         // Update Google Ads budget
         const { data, error } = await supabase.functions.invoke('update-google-ads-budget', {
-          body: { clientId, newDailyBudget: newBudget },
+          body: { clientId, campaignRowId, newDailyBudget: newBudget },
         });
 
         if (error) throw error;
@@ -83,7 +87,7 @@ export function EditBudgetDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader>
-          <DialogTitle>Edit Daily Budget</DialogTitle>
+          <DialogTitle>{campaignLabel ? `Edit Budget — ${campaignLabel}` : 'Edit Daily Budget'}</DialogTitle>
           <DialogDescription>
             {googleCampaignId 
               ? 'This will update the daily budget in Google Ads and sync locally.'

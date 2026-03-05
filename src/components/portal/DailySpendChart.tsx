@@ -1,8 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   LineChart,
   Line,
@@ -17,28 +24,45 @@ import {
 import { format, subDays } from 'date-fns';
 import { usePerformancePercentage, applyPerformancePercentage } from '@/hooks/usePerformancePercentage';
 
+interface CampaignOption {
+  id: string;
+  google_campaign_id: string;
+  label: string;
+}
+
 interface DailySpendChartProps {
   clientId: string;
   targetDailySpend?: number | null;
+  campaigns?: CampaignOption[];
 }
 
-export function DailySpendChart({ clientId, targetDailySpend }: DailySpendChartProps) {
+export function DailySpendChart({ clientId, targetDailySpend, campaigns }: DailySpendChartProps) {
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('all');
   // Fetch performance percentage to apply to all spend figures
   const { data: performancePercentage, isLoading: performanceLoading } = usePerformancePercentage();
   const perfPct = performancePercentage ?? 0;
 
   const { data: dailyData, isLoading } = useQuery({
-    queryKey: ['ad-spend-daily', clientId],
+    queryKey: ['ad-spend-daily', clientId, selectedCampaignId],
     queryFn: async () => {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString().split('T')[0];
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('ad_spend_daily')
         .select('spend_date, cost, clicks, impressions, conversions, ctr, cpc')
         .eq('client_id', clientId)
         .gte('spend_date', thirtyDaysAgo)
         .order('spend_date', { ascending: true });
 
+      // Filter by specific campaign's Google campaign ID
+      if (selectedCampaignId !== 'all') {
+        const selectedCampaign = campaigns?.find(c => c.id === selectedCampaignId);
+        if (selectedCampaign) {
+          query = query.eq('campaign_id', selectedCampaign.google_campaign_id);
+        }
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data || [];
     },
@@ -133,7 +157,22 @@ export function DailySpendChart({ clientId, targetDailySpend }: DailySpendChartP
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Daily Ad Spend (Last 30 Days)</CardTitle>
+          <div className="flex items-center gap-3">
+            <CardTitle className="text-base">Daily Ad Spend (Last 30 Days)</CardTitle>
+            {campaigns && campaigns.length > 1 && (
+              <Select value={selectedCampaignId} onValueChange={setSelectedCampaignId}>
+                <SelectTrigger className="h-7 w-[160px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Campaigns</SelectItem>
+                  {campaigns.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <span>Avg: <span className="font-medium text-foreground">${avgSpend.toFixed(2)}/day</span></span>
             {targetDailySpend && (

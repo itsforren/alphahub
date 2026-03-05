@@ -222,7 +222,7 @@ serve(async (req) => {
   }
 
   try {
-    const { clientId, states } = await req.json();
+    const { clientId, campaignRowId, states } = await req.json();
 
     if (!clientId) {
       throw new Error('clientId is required');
@@ -232,39 +232,54 @@ serve(async (req) => {
       throw new Error('states array is required');
     }
 
-    console.log(`Updating Google Ads targeting for client ${clientId} to states: ${states.join(', ')}`);
+    console.log(`Updating Google Ads targeting for client ${clientId}, campaignRowId: ${campaignRowId || 'primary'}, states: ${states.join(', ')}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get client's Google Campaign ID
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('id, google_campaign_id')
-      .eq('id', clientId)
-      .single();
-
-    if (clientError || !client) {
-      throw new Error(`Client not found: ${clientError?.message}`);
-    }
-
-    if (!client.google_campaign_id) {
-      throw new Error('Client does not have a Google Campaign ID configured');
-    }
-
-    // Parse google_campaign_id
-    const rawCampaignField = String(client.google_campaign_id).trim();
     let customerId: string;
     let campaignId: string;
 
-    if (rawCampaignField.includes(':')) {
+    if (campaignRowId) {
+      // Look up campaign from campaigns table
+      const { data: campaignRow, error: campaignRowError } = await supabase
+        .from('campaigns')
+        .select('google_customer_id, google_campaign_id')
+        .eq('id', campaignRowId)
+        .single();
+
+      if (campaignRowError || !campaignRow) {
+        throw new Error(`Campaign row not found: ${campaignRowError?.message}`);
+      }
+
+      customerId = campaignRow.google_customer_id;
+      campaignId = campaignRow.google_campaign_id;
+    } else {
+      // Fallback: use clients.google_campaign_id
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, google_campaign_id')
+        .eq('id', clientId)
+        .single();
+
+      if (clientError || !client) {
+        throw new Error(`Client not found: ${clientError?.message}`);
+      }
+
+      if (!client.google_campaign_id) {
+        throw new Error('Client does not have a Google Campaign ID configured');
+      }
+
+      const rawCampaignField = String(client.google_campaign_id).trim();
+      if (!rawCampaignField.includes(':')) {
+        throw new Error('google_campaign_id must be in format customerId:campaignId');
+      }
+
       const [customerPart, campaignPart] = rawCampaignField.split(':');
       customerId = customerPart.replace(/\D/g, '');
       campaignId = campaignPart.replace(/\D/g, '');
-    } else {
-      throw new Error('google_campaign_id must be in format customerId:campaignId');
     }
 
     console.log(`Parsed => customerId=${customerId}, campaignId=${campaignId}`);
@@ -285,14 +300,45 @@ serve(async (req) => {
       states
     );
 
-    // Update client's states field in database
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({ states: states.join(', ') })
-      .eq('id', clientId);
+    // Update campaign's states if campaignRowId provided
+    if (campaignRowId) {
+      const { error: campaignUpdateError } = await supabase
+        .from('campaigns')
+        .update({ states: states.join(', '), updated_at: new Date().toISOString() })
+        .eq('id', campaignRowId);
 
-    if (updateError) {
-      console.error('Error updating client states:', updateError);
+      if (campaignUpdateError) {
+        console.error('Error updating campaign states:', campaignUpdateError);
+      }
+
+      // Also update clients.states as union of all campaign states
+      const { data: allCampaigns } = await supabase
+        .from('campaigns')
+        .select('states')
+        .eq('client_id', clientId);
+      if (allCampaigns) {
+        const allStates = new Set<string>();
+        for (const c of allCampaigns) {
+          if (c.states) {
+            c.states.split(',').map((s: string) => s.trim()).filter(Boolean).forEach((s: string) => allStates.add(s));
+          }
+        }
+        const unionStates = Array.from(allStates).sort().join(', ');
+        await supabase
+          .from('clients')
+          .update({ states: unionStates })
+          .eq('id', clientId);
+      }
+    } else {
+      // Fallback: update client states directly
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({ states: states.join(', ') })
+        .eq('id', clientId);
+
+      if (updateError) {
+        console.error('Error updating client states:', updateError);
+      }
     }
 
     const result = {

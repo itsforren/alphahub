@@ -72,9 +72,10 @@ interface StateSelectorProps {
   disabled?: boolean;
   clientId?: string;
   googleCampaignId?: string | null;
+  campaignRowId?: string | null;
 }
 
-export function StateSelector({ value, onSave, disabled, clientId, googleCampaignId }: StateSelectorProps) {
+export function StateSelector({ value, onSave, disabled, clientId, googleCampaignId, campaignRowId }: StateSelectorProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -120,7 +121,7 @@ export function StateSelector({ value, onSave, disabled, clientId, googleCampaig
     setSyncing(true);
     try {
       const { data, error } = await supabase.functions.invoke('sync-google-ads-targeting', {
-        body: { clientId },
+        body: { clientId, campaignRowId },
       });
 
       if (error) {
@@ -154,7 +155,7 @@ export function StateSelector({ value, onSave, disabled, clientId, googleCampaig
       // If we have a clientId and googleCampaignId, update Google Ads targeting
       if (clientId && googleCampaignId) {
         const { data, error } = await supabase.functions.invoke('update-google-ads-targeting', {
-          body: { clientId, states: selectedStates },
+          body: { clientId, campaignRowId, states: selectedStates },
         });
 
         if (error) {

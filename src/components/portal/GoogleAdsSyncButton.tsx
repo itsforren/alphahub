@@ -15,14 +15,16 @@ interface GoogleAdsSyncButtonProps {
   clientId: string;
   googleCampaignId: string | null;
   trackingStartDate?: string | null;
+  campaignRowId?: string | null;
   onSyncComplete?: () => void;
 }
 
-export function GoogleAdsSyncButton({ 
-  clientId, 
+export function GoogleAdsSyncButton({
+  clientId,
   googleCampaignId,
   trackingStartDate,
-  onSyncComplete 
+  campaignRowId,
+  onSyncComplete
 }: GoogleAdsSyncButtonProps) {
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing] = useState(false);
@@ -51,7 +53,7 @@ export function GoogleAdsSyncButton({
     try {
       // Sync ads data
       const { data, error } = await supabase.functions.invoke('sync-google-ads', {
-        body: { clientId, daysBack },
+        body: { clientId, campaignRowId, daysBack },
       });
 
       if (error) {

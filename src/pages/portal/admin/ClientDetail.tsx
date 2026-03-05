@@ -38,6 +38,8 @@ import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { DailySpendChart } from '@/components/portal/DailySpendChart';
 import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
+import { CampaignPanel } from '@/components/portal/CampaignPanel';
+import { useCampaigns } from '@/hooks/useCampaigns';
 import EditableField from '@/components/portal/EditableField';
 import { CreateTicketFromChat } from '@/components/portal/chat/CreateTicketFromChat';
 import { GHLFieldMappingWidget } from '@/components/portal/GHLFieldMappingWidget';
@@ -181,6 +183,9 @@ export default function PortalAdminClientDetail() {
   
   // Use computed wallet balance for consistent spend display
   const { displayedSpend: displayedMtdSpend, trackingStartDate: walletTrackingStartDate, refetch: refetchWalletBalance } = useComputedWalletBalance(isClientView ? client?.id : id);
+
+  // Fetch campaigns for dual-campaign support
+  const { data: campaigns = [] } = useCampaigns(client?.id);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -996,37 +1001,52 @@ export default function PortalAdminClientDetail() {
 
         {/* Client Details Summary Bar (admin only) */}
         {!isClientView && (
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-1">
+          <div className="space-y-3">
             {client.team && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-sm px-1">
                 <span className="text-muted-foreground">Team:</span>
                 <span className="text-foreground font-medium">{client.team}</span>
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Daily Budget:</span>
-              <span className="text-foreground font-medium">
-                {client.target_daily_spend ? `$${client.target_daily_spend}` : '—'}
-              </span>
-              <EditBudgetDialog
+            {campaigns.length > 0 ? (
+              <CampaignPanel
                 clientId={client.id}
-                currentBudget={client.target_daily_spend}
-                googleCampaignId={(client as any).google_campaign_id}
-                onSuccess={handleRefresh}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">States:</span>
-              <StateSelector
-                value={client.states}
-                clientId={client.id}
-                googleCampaignId={(client as any).google_campaign_id}
-                onSave={async (states) => {
+                campaigns={campaigns as any}
+                trackingStartDate={walletTrackingStartDate}
+                onRefresh={handleRefresh}
+                onUpdateStates={async (states) => {
                   if (!id) return;
                   await updateClient.mutateAsync({ clientId: id, updates: { states } });
                 }}
               />
-            </div>
+            ) : (
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Daily Budget:</span>
+                  <span className="text-foreground font-medium">
+                    {client.target_daily_spend ? `$${client.target_daily_spend}` : '—'}
+                  </span>
+                  <EditBudgetDialog
+                    clientId={client.id}
+                    currentBudget={client.target_daily_spend}
+                    googleCampaignId={(client as any).google_campaign_id}
+                    onSuccess={handleRefresh}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">States:</span>
+                  <StateSelector
+                    value={client.states}
+                    clientId={client.id}
+                    googleCampaignId={(client as any).google_campaign_id}
+                    onSave={async (states) => {
+                      if (!id) return;
+                      await updateClient.mutateAsync({ clientId: id, updates: { states } });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1131,9 +1151,14 @@ export default function PortalAdminClientDetail() {
 
             {/* Daily Spend Chart */}
             {showPerformance && (
-              <DailySpendChart 
-                clientId={client.id} 
+              <DailySpendChart
+                clientId={client.id}
                 targetDailySpend={client.target_daily_spend}
+                campaigns={campaigns.length > 1 ? campaigns.map(c => ({
+                  id: c.id,
+                  google_campaign_id: c.google_campaign_id,
+                  label: c.label || 'Campaign',
+                })) : undefined}
               />
             )}
 

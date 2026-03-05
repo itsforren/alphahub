@@ -34,6 +34,7 @@ export function OnboardingSettingsWidget() {
   const [urlParamsFormat, setUrlParamsFormat] = useState('');
   const [defaultCustomerId, setDefaultCustomerId] = useState('');
   const [autoCreateCampaigns, setAutoCreateCampaigns] = useState(true);
+  const [secondaryTemplateCampaignId, setSecondaryTemplateCampaignId] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -60,6 +61,7 @@ export function OnboardingSettingsWidget() {
       setUrlParamsFormat(settingsMap['url_params_format']?.setting_value || '');
       setDefaultCustomerId(settingsMap['default_customer_id']?.setting_value || '');
       setAutoCreateCampaigns(settingsMap['auto_create_campaigns']?.setting_value === 'true');
+      setSecondaryTemplateCampaignId(settingsMap['template_campaign_id_secondary']?.setting_value || '');
     } catch (error) {
       console.error('Error fetching onboarding settings:', error);
       toast.error('Failed to load onboarding settings');
@@ -82,6 +84,7 @@ export function OnboardingSettingsWidget() {
         { key: 'url_params_format', value: urlParamsFormat },
         { key: 'default_customer_id', value: defaultCustomerId },
         { key: 'auto_create_campaigns', value: autoCreateCampaigns ? 'true' : 'false' },
+        { key: 'template_campaign_id_secondary', value: secondaryTemplateCampaignId },
       ];
 
       for (const { key, value } of updates) {
@@ -183,6 +186,35 @@ export function OnboardingSettingsWidget() {
           />
           <p className="text-xs text-muted-foreground">
             Format: customerId:campaignId — Find this in your Google Ads account
+          </p>
+        </div>
+
+        {/* Secondary Template Campaign ID */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="secondaryTemplateCampaignId">Secondary Template Campaign ID</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>
+                    Optional secondary campaign template (e.g., revamped campaign with different ads/sitelinks).
+                    Used when building a second campaign for a client.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Input
+            id="secondaryTemplateCampaignId"
+            placeholder="6551751244:21234567890"
+            value={secondaryTemplateCampaignId}
+            onChange={(e) => handleFieldChange(setSecondaryTemplateCampaignId, e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Optional — for dual-campaign clients. Leave blank if using single campaigns only.
           </p>
         </div>
 

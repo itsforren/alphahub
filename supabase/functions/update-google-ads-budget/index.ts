@@ -38,7 +38,7 @@ serve(async (req) => {
   }
 
   try {
-    const { clientId, newDailyBudget } = await req.json();
+    const { clientId, campaignRowId, newDailyBudget } = await req.json();
 
     if (!clientId) {
       throw new Error('clientId is required');
@@ -48,38 +48,55 @@ serve(async (req) => {
       throw new Error('newDailyBudget must be a positive number');
     }
 
-    console.log(`Updating daily budget to $${newDailyBudget} for client ${clientId}`);
+    console.log(`Updating daily budget to $${newDailyBudget} for client ${clientId}, campaignRowId: ${campaignRowId || 'primary'}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get client's Google Campaign ID
-    const { data: client, error: clientError } = await supabase
-      .from('clients')
-      .select('id, name, google_campaign_id')
-      .eq('id', clientId)
-      .single();
+    let customerId: string;
+    let campaignId: string;
 
-    if (clientError || !client) {
-      throw new Error(`Client not found: ${clientError?.message}`);
+    if (campaignRowId) {
+      // Look up campaign from campaigns table
+      const { data: campaignRow, error: campaignRowError } = await supabase
+        .from('campaigns')
+        .select('google_customer_id, google_campaign_id')
+        .eq('id', campaignRowId)
+        .single();
+
+      if (campaignRowError || !campaignRow) {
+        throw new Error(`Campaign row not found: ${campaignRowError?.message}`);
+      }
+
+      customerId = campaignRow.google_customer_id;
+      campaignId = campaignRow.google_campaign_id;
+    } else {
+      // Fallback: use clients.google_campaign_id
+      const { data: client, error: clientError } = await supabase
+        .from('clients')
+        .select('id, name, google_campaign_id')
+        .eq('id', clientId)
+        .single();
+
+      if (clientError || !client) {
+        throw new Error(`Client not found: ${clientError?.message}`);
+      }
+
+      if (!client.google_campaign_id) {
+        throw new Error('Client does not have a Google Campaign ID configured');
+      }
+
+      const rawCampaignField = String(client.google_campaign_id).trim();
+      if (!rawCampaignField.includes(':')) {
+        throw new Error('google_campaign_id must be in format customerAccountId:campaignId');
+      }
+
+      const [customerPart, campaignPart] = rawCampaignField.split(':');
+      customerId = customerPart.replace(/\D/g, '');
+      campaignId = campaignPart.replace(/\D/g, '');
     }
-
-    if (!client.google_campaign_id) {
-      throw new Error('Client does not have a Google Campaign ID configured');
-    }
-
-    // Parse google_campaign_id - format: "customerId:campaignId"
-    const rawCampaignField = String(client.google_campaign_id).trim();
-
-    if (!rawCampaignField.includes(':')) {
-      throw new Error('google_campaign_id must be in format customerAccountId:campaignId');
-    }
-
-    const [customerPart, campaignPart] = rawCampaignField.split(':');
-    const customerId = customerPart.replace(/\D/g, '');
-    const campaignId = campaignPart.replace(/\D/g, '');
 
     if (!customerId || !campaignId) {
       throw new Error('Invalid google_campaign_id value');
@@ -163,17 +180,45 @@ serve(async (req) => {
     const mutateData = await mutateResponse.json();
     console.log('Budget updated successfully:', mutateData);
 
-    // Update local database
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({ 
-        target_daily_spend: newDailyBudget,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', clientId);
+    // Update local database — campaigns table if campaignRowId, also always update clients
+    if (campaignRowId) {
+      const { error: campaignUpdateError } = await supabase
+        .from('campaigns')
+        .update({
+          current_daily_budget: newDailyBudget,
+          last_budget_change_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', campaignRowId);
 
-    if (updateError) {
-      console.error('Error updating local client:', updateError);
+      if (campaignUpdateError) {
+        console.error('Error updating campaign budget:', campaignUpdateError);
+      }
+
+      // Also update clients.target_daily_spend as sum of all campaign budgets
+      const { data: allCampaigns } = await supabase
+        .from('campaigns')
+        .select('current_daily_budget')
+        .eq('client_id', clientId);
+      if (allCampaigns) {
+        const totalBudget = allCampaigns.reduce((sum: number, c: any) => sum + (Number(c.current_daily_budget) || 0), 0);
+        await supabase
+          .from('clients')
+          .update({ target_daily_spend: totalBudget, updated_at: new Date().toISOString() })
+          .eq('id', clientId);
+      }
+    } else {
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({
+          target_daily_spend: newDailyBudget,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', clientId);
+
+      if (updateError) {
+        console.error('Error updating local client:', updateError);
+      }
     }
 
     return new Response(JSON.stringify({

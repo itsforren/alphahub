@@ -874,7 +874,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { clientId, states, budget, agentId, agentName, landingPage, retryStep } = await req.json();
+    const { clientId, states, budget, agentId, agentName, landingPage, retryStep, templateType } = await req.json();
 
     // Calculate daily budget from monthly budget
     const dailyBudget = budget ? Math.round(budget / 30) : 0;
@@ -925,7 +925,10 @@ Deno.serve(async (req) => {
     // Fetch onboarding settings
     const settings = await getOnboardingSettings(supabase);
 
-    const templateCampaignId = settings['template_campaign_id'];
+    // Select template based on templateType param (defaults to primary)
+    const templateKey = templateType === 'secondary' ? 'template_campaign_id_secondary' : 'template_campaign_id';
+    const templateCampaignId = settings[templateKey] || settings['template_campaign_id'];
+    console.log(`Using template: ${templateKey} = ${templateCampaignId}`);
     const landingPageBaseUrl = settings['landing_page_base_url'];
     const defaultCustomerId = settings['default_customer_id'];
 
@@ -1114,20 +1117,64 @@ Deno.serve(async (req) => {
     // Save campaign ID to client record
     const campaignIdToSave = `${customerId}:${newCampaignId}`;
     const finalParsedStates = states ? parseStates(states) : [];
-    
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({ 
-        google_campaign_id: campaignIdToSave,
-        states: finalParsedStates.join(', '),
-        gads_creation_error: null, // Clear any error on success
-      })
-      .eq('id', clientId);
 
-    if (updateError) {
-      console.error('Error updating client with campaign ID:', updateError);
+    // Check if client already has a primary campaign
+    const { data: existingCampaigns } = await supabase
+      .from('campaigns')
+      .select('id')
+      .eq('client_id', clientId);
+
+    const isFirstCampaign = !existingCampaigns || existingCampaigns.length === 0;
+    const campaignLabel = isFirstCampaign
+      ? 'Campaign 1'
+      : templateType === 'secondary'
+        ? 'Campaign 2 — Revamp'
+        : 'Campaign 2';
+
+    // Insert into campaigns table
+    const { error: campaignInsertError } = await supabase
+      .from('campaigns')
+      .upsert({
+        client_id: clientId,
+        google_customer_id: customerId,
+        google_campaign_id: newCampaignId,
+        is_primary: isFirstCampaign,
+        label: campaignLabel,
+        states: finalParsedStates.join(', '),
+        current_daily_budget: dailyBudget || null,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'google_customer_id,google_campaign_id',
+      });
+
+    if (campaignInsertError) {
+      console.error('Error inserting into campaigns table:', campaignInsertError);
     } else {
-      console.log(`Saved campaign ID ${campaignIdToSave} to client ${clientId}`);
+      console.log(`Inserted campaign record: ${campaignLabel} (${campaignIdToSave})`);
+    }
+
+    // Only update clients.google_campaign_id if this is the first campaign
+    if (isFirstCampaign) {
+      const { error: updateError } = await supabase
+        .from('clients')
+        .update({
+          google_campaign_id: campaignIdToSave,
+          states: finalParsedStates.join(', '),
+          gads_creation_error: null,
+        })
+        .eq('id', clientId);
+
+      if (updateError) {
+        console.error('Error updating client with campaign ID:', updateError);
+      } else {
+        console.log(`Saved campaign ID ${campaignIdToSave} to client ${clientId}`);
+      }
+    } else {
+      // Just clear the error for secondary campaigns
+      await supabase
+        .from('clients')
+        .update({ gads_creation_error: null })
+        .eq('id', clientId);
     }
 
     // Mark onboarding task as complete
