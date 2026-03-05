@@ -159,8 +159,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Create billing record and charge ──
+        // ── Deduplication: skip if a recharge record was already created today ──
         const today = now.toISOString().split('T')[0];
+        const { data: existingToday } = await supabase
+          .from('billing_records')
+          .select('id, status')
+          .eq('client_id', clientId)
+          .eq('billing_type', 'ad_spend')
+          .eq('billing_period_start', today)
+          .in('status', ['pending', 'paid'])
+          .maybeSingle();
+
+        if (existingToday) {
+          console.log(`${client.name}: recharge record already exists today (${existingToday.id}, status=${existingToday.status}), skipping`);
+          results.push({ client: client.name, action: 'skipped', reason: 'already_recharged_today' });
+          continue;
+        }
+
+        // ── Create billing record and charge ──
         const { data: newRecord, error: insertError } = await supabase
           .from('billing_records')
           .insert({

@@ -133,8 +133,10 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 flex-wrap">
                 <BillingTypeBadge type={record.billing_type} />
-                {record.stripe_invoice_id ? (
+                {record.stripe_invoice_id || record.stripe_payment_intent_id ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">Stripe</Badge>
+                ) : record.notes?.includes('Auto-recharge') || record.notes?.includes('auto-recharge') ? (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-violet-500/40 text-violet-400">Auto</Badge>
                 ) : (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">Manual</Badge>
                 )}
@@ -211,7 +213,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-lg font-semibold">{formatCurrency(Number(record.amount))}</div>
-                {(record.credit_amount_used && Number(record.credit_amount_used) > 0) && (
+                {Number(record.credit_amount_used) > 0 && (
                   <span className="text-xs text-amber-400">
                     -{formatCurrency(Number(record.credit_amount_used))} credit
                   </span>
@@ -311,11 +313,15 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                   </div>
                 </TableCell>
 
-                {/* Source: Stripe or Manual */}
+                {/* Source: Stripe, Auto, or Manual */}
                 <TableCell>
-                  {record.stripe_invoice_id ? (
+                  {record.stripe_invoice_id || record.stripe_payment_intent_id ? (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">
                       Stripe
+                    </Badge>
+                  ) : record.notes?.includes('Auto-recharge') || record.notes?.includes('auto-recharge') ? (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-violet-500/40 text-violet-400">
+                      Auto
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">
@@ -344,7 +350,7 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
                     <span>{formatCurrency(Number(record.amount))}</span>
-                    {(record.credit_amount_used && Number(record.credit_amount_used) > 0) && (
+                    {Number(record.credit_amount_used) > 0 && (
                       <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
                         -{formatCurrency(Number(record.credit_amount_used))} credit
                       </span>

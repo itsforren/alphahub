@@ -17,6 +17,7 @@ export interface BillingRecord {
   status: BillingStatus;
   payment_link: string | null;
   stripe_invoice_id: string | null;
+  stripe_payment_intent_id: string | null;
   stripe_account: string | null;
   paid_at: string | null;
   notes: string | null;
