@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { subDays, addDays, differenceInDays, parseISO, isValid, format, getDaysInMonth, startOfMonth, subMonths } from 'date-fns';
+import {
+  subDays,
+  addDays,
+  differenceInDays,
+  parseISO,
+  isValid,
+  format,
+  getDaysInMonth,
+  startOfMonth,
+  subMonths,
+} from 'date-fns';
 
 export interface BillingDashboardStats {
   managementFeesCollected: number;
@@ -27,16 +37,17 @@ export interface WalletPipelineItem {
 }
 
 export interface RevenueIntelligence {
-  // Month-to-date actuals
+  // Period actuals (current month MTD or selected past month)
   mtdAdSpend: number;
   mtdManagementFees: number;
-  // Last month actuals (for comparison)
+  // Previous period actuals (for comparison)
   lastMonthAdSpend: number;
   lastMonthManagementFees: number;
-  // Monthly ceiling from wallet thresholds (structural max per month)
+  // Monthly ceiling from wallet thresholds (structural max per cycle)
   monthlyAdSpendCeiling: number;
-  // Projected management fees = ceiling × (performancePct / 100)
+  // Subscription-based management fee projection (current active subs)
   projectedManagementFees: number;
+  activeSubscriptionCount: number;
   // MTD run-rate projection = (MTD / days_elapsed) × days_in_month
   runRateAdSpend: number;
   runRateManagementFees: number;
@@ -46,6 +57,9 @@ export interface RevenueIntelligence {
   currentMonth: string; // e.g. "March 2026"
   daysElapsed: number;
   daysInMonth: number;
+  overdueCount: number;
+  failedPaymentsCount: number;
+  disputesCount: number;
 }
 
 export interface UpcomingPayment {
@@ -60,6 +74,43 @@ export interface UpcomingPayment {
   recurrenceType: string | null;
   daysUntilDue: number;
   statusColor: 'green' | 'yellow' | 'red' | 'gray';
+}
+
+export interface OverdueBillingRecord {
+  id: string;
+  clientId: string;
+  clientName: string;
+  dueDate: string;
+  billingType: 'ad_spend' | 'management';
+  amount: number;
+  status: 'pending' | 'overdue';
+  notes: string | null;
+  recurrenceType: string | null;
+  daysOverdue: number;
+}
+
+export interface UpcomingBillingRecord {
+  id: string;
+  clientId: string;
+  clientName: string;
+  dueDate: string;
+  billingType: 'ad_spend' | 'management';
+  amount: number;
+  notes: string | null;
+  recurrenceType: string | null;
+  daysUntilDue: number;
+}
+
+export interface PaidBillingRecord {
+  id: string;
+  clientId: string;
+  clientName: string;
+  paidAt: string;
+  dueDate: string | null;
+  billingType: 'ad_spend' | 'management';
+  amount: number;
+  notes: string | null;
+  recurrenceType: string | null;
 }
 
 export interface FailedPayment {
@@ -87,36 +138,61 @@ export interface Dispute {
 function getStatusColor(dueDate: string | null, status: string): 'green' | 'yellow' | 'red' | 'gray' {
   if (status === 'cancelled' || status === 'paid') return 'gray';
   if (status === 'overdue') return 'red';
-  
+
   if (!dueDate) return 'gray';
-  
+
   const parsedDate = parseISO(dueDate);
   if (!isValid(parsedDate)) return 'gray';
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueDateObj = new Date(parsedDate);
   dueDateObj.setHours(0, 0, 0, 0);
-  
+
   const daysUntil = differenceInDays(dueDateObj, today);
-  
-  if (daysUntil < 0) return 'red'; // Overdue
-  if (daysUntil <= 2) return 'red'; // 0-2 days
-  if (daysUntil <= 7) return 'yellow'; // 3-7 days
-  return 'green'; // 8+ days
+
+  if (daysUntil < 0) return 'red';
+  if (daysUntil <= 2) return 'red';
+  if (daysUntil <= 7) return 'yellow';
+  return 'green';
 }
 
 function getDaysUntilDue(dueDate: string | null): number {
   if (!dueDate) return 0;
   const parsedDate = parseISO(dueDate);
   if (!isValid(parsedDate)) return 0;
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const dueDateObj = new Date(parsedDate);
   dueDateObj.setHours(0, 0, 0, 0);
-  
+
   return differenceInDays(dueDateObj, today);
+}
+
+// Fetch paid billing records using two-query union (handles paid_at IS NULL edge case)
+async function fetchPaidRecords(
+  selectFields: string,
+  windowStart: string,
+  windowEnd: string,
+) {
+  const [withPaidAt, withoutPaidAt] = await Promise.all([
+    supabase
+      .from('billing_records')
+      .select(selectFields)
+      .eq('status', 'paid')
+      .not('paid_at', 'is', null)
+      .gte('paid_at', windowStart)
+      .lte('paid_at', windowEnd),
+    supabase
+      .from('billing_records')
+      .select(selectFields + ', updated_at')
+      .eq('status', 'paid')
+      .is('paid_at', null)
+      .gte('updated_at', windowStart)
+      .lte('updated_at', windowEnd),
+  ]);
+  return [...(withPaidAt.data || []), ...(withoutPaidAt.data || [])];
 }
 
 export function useBillingDashboardStats() {
@@ -124,19 +200,12 @@ export function useBillingDashboardStats() {
     queryKey: ['billing-dashboard-stats'],
     queryFn: async (): Promise<BillingDashboardStats> => {
       const now = new Date();
-      const mtdStart = startOfMonth(now).toISOString(); // First of current month
+      const mtdStart = startOfMonth(now).toISOString();
       const thirtyDaysAhead = addDays(now, 30).toISOString();
       const nowIso = now.toISOString();
 
-      // Collected month-to-date (paid_at since start of current month)
-      const { data: collectedRecords, error: collectedError } = await supabase
-        .from('billing_records')
-        .select('billing_type, amount')
-        .eq('status', 'paid')
-        .gte('paid_at', mtdStart)
-        .lte('paid_at', nowIso);
-
-      if (collectedError) throw collectedError;
+      // Collected month-to-date — two-query union handles paid_at IS NULL edge case
+      const collectedRecords = await fetchPaidRecords('billing_type, amount', mtdStart, nowIso);
 
       // Upcoming in the next 30 days (pending/overdue, due_date within window)
       const { data: upcomingRecords, error: upcomingError } = await supabase
@@ -152,7 +221,7 @@ export function useBillingDashboardStats() {
       let managementFeesPending = 0;
       let adSpendCollected = 0;
 
-      for (const record of collectedRecords || []) {
+      for (const record of collectedRecords) {
         if (record.billing_type === 'management') {
           managementFeesCollected += record.amount || 0;
         } else if (record.billing_type === 'ad_spend') {
@@ -166,12 +235,9 @@ export function useBillingDashboardStats() {
           managementFeesExpected += amount;
           managementFeesPending += 1;
         }
-        // Ad spend pending records are not meaningful (charge-first flow — records only
-        // exist after charge fires). Pipeline is calculated from wallet thresholds below.
       }
 
-      // Ad spend pipeline: sum of recharge amounts for all auto-billing clients.
-      // This is the true "expected" ad spend revenue — what will come in as clients spend down.
+      // Ad spend pipeline: sum of recharge amounts for all auto-billing clients
       const { data: autoWallets } = await supabase
         .from('client_wallets')
         .select('low_balance_threshold, auto_charge_amount, auto_billing_enabled')
@@ -242,45 +308,33 @@ export function useBillingDashboardStats() {
   });
 }
 
+// Legacy hook — kept for any existing usage; use useOverdueBillingRecords + useUpcomingBillingRecords instead
 export function useUpcomingPayments() {
   return useQuery({
     queryKey: ['billing-dashboard-upcoming'],
     queryFn: async (): Promise<UpcomingPayment[]> => {
-      // Get pending and overdue billing records with client info including client_name
-      const thirtyDaysAhead = addDays(new Date(), 30).toISOString();
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const thirtyDaysAhead = addDays(now, 30).toISOString();
 
       const { data, error } = await supabase
         .from('billing_records')
-        .select(`
-          id,
-          client_id,
-          client_name,
-          billing_type,
-          amount,
-          status,
-          due_date,
-          notes,
-          recurrence_type
-        `)
-        .in('status', ['pending', 'overdue'])
+        .select('id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type')
+        .eq('status', 'pending')
+        .gte('due_date', todayStr)
         .lte('due_date', thirtyDaysAhead)
+        .is('archived_at', null)
         .order('due_date', { ascending: true })
         .limit(100);
 
       if (error) throw error;
 
-      // Fetch all clients for fallback lookup
-      const { data: clients } = await supabase
-        .from('clients')
-        .select('id, name');
-
-      // Create map using string comparison
+      const { data: clients } = await supabase.from('clients').select('id, name');
       const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
 
       return (data || []).map(record => {
         const daysUntilDue = getDaysUntilDue(record.due_date);
-        // Priority: client_name column > client lookup > fallback
-        const clientName = record.client_name || clientMap.get(record.client_id) || 'Deleted Client';
+        const clientName = record.client_name || clientMap.get(record.client_id) || 'Former Client';
         return {
           id: record.id,
           clientId: record.client_id,
@@ -300,39 +354,182 @@ export function useUpcomingPayments() {
   });
 }
 
+// All overdue records — past-due pending + explicit overdue status, no date cap
+export function useOverdueBillingRecords() {
+  return useQuery({
+    queryKey: ['billing-overdue'],
+    queryFn: async (): Promise<OverdueBillingRecord[]> => {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+
+      const [overdueStatus, pendingPastDue] = await Promise.all([
+        supabase
+          .from('billing_records')
+          .select('id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type')
+          .eq('status', 'overdue')
+          .is('archived_at', null)
+          .order('due_date', { ascending: true })
+          .limit(200),
+        supabase
+          .from('billing_records')
+          .select('id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type')
+          .eq('status', 'pending')
+          .lt('due_date', todayStr)
+          .is('archived_at', null)
+          .order('due_date', { ascending: true })
+          .limit(200),
+      ]);
+
+      const { data: clients } = await supabase.from('clients').select('id, name');
+      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+
+      const combined = [...(overdueStatus.data || []), ...(pendingPastDue.data || [])];
+      // Deduplicate by id (shouldn't overlap, but be safe)
+      const seen = new Set<string>();
+      const unique = combined.filter(r => {
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
+      // Sort oldest first
+      unique.sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+
+      return unique.map(r => {
+        const clientName = r.client_name || clientMap.get(r.client_id) || 'Former Client';
+        const daysOverdue = r.due_date
+          ? Math.max(0, differenceInDays(now, parseISO(r.due_date)))
+          : 0;
+        return {
+          id: r.id,
+          clientId: r.client_id,
+          clientName,
+          dueDate: r.due_date || '',
+          billingType: r.billing_type as 'ad_spend' | 'management',
+          amount: r.amount || 0,
+          status: r.status as 'pending' | 'overdue',
+          notes: r.notes,
+          recurrenceType: r.recurrence_type,
+          daysOverdue,
+        };
+      });
+    },
+    refetchInterval: 60000,
+  });
+}
+
+// Upcoming — only future-pending records in the next 30 days
+export function useUpcomingBillingRecords() {
+  return useQuery({
+    queryKey: ['billing-upcoming'],
+    queryFn: async (): Promise<UpcomingBillingRecord[]> => {
+      const now = new Date();
+      const todayStr = now.toISOString().split('T')[0];
+      const thirtyDaysAhead = addDays(now, 30).toISOString();
+
+      const { data, error } = await supabase
+        .from('billing_records')
+        .select('id, client_id, client_name, billing_type, amount, due_date, notes, recurrence_type')
+        .eq('status', 'pending')
+        .gte('due_date', todayStr)
+        .lte('due_date', thirtyDaysAhead)
+        .is('archived_at', null)
+        .order('due_date', { ascending: true })
+        .limit(100);
+
+      if (error) throw error;
+
+      const { data: clients } = await supabase.from('clients').select('id, name');
+      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+
+      return (data || []).map(r => ({
+        id: r.id,
+        clientId: r.client_id,
+        clientName: r.client_name || clientMap.get(r.client_id) || 'Former Client',
+        dueDate: r.due_date || '',
+        billingType: r.billing_type as 'ad_spend' | 'management',
+        amount: r.amount || 0,
+        notes: r.notes,
+        recurrenceType: r.recurrence_type,
+        daysUntilDue: getDaysUntilDue(r.due_date),
+      }));
+    },
+    refetchInterval: 60000,
+  });
+}
+
+// Paid records in a given date window (two-query union for paid_at fallback)
+export function usePaidBillingRecords(startIso: string, endIso: string) {
+  return useQuery({
+    queryKey: ['billing-paid', startIso, endIso],
+    queryFn: async (): Promise<PaidBillingRecord[]> => {
+      const fields = 'id, client_id, client_name, billing_type, amount, paid_at, due_date, notes, recurrence_type';
+
+      const [withPaidAt, withoutPaidAt] = await Promise.all([
+        supabase
+          .from('billing_records')
+          .select(fields)
+          .eq('status', 'paid')
+          .not('paid_at', 'is', null)
+          .gte('paid_at', startIso)
+          .lte('paid_at', endIso)
+          .order('paid_at', { ascending: false })
+          .limit(200),
+        supabase
+          .from('billing_records')
+          .select(fields + ', updated_at')
+          .eq('status', 'paid')
+          .is('paid_at', null)
+          .gte('updated_at', startIso)
+          .lte('updated_at', endIso)
+          .order('updated_at', { ascending: false })
+          .limit(200),
+      ]);
+
+      const { data: clients } = await supabase.from('clients').select('id, name');
+      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+
+      const combined = [
+        ...(withPaidAt.data || []).map((r: any) => ({ ...r, effectiveDate: r.paid_at as string })),
+        ...(withoutPaidAt.data || []).map((r: any) => ({ ...r, effectiveDate: r.updated_at as string })),
+      ];
+      combined.sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+
+      return combined.map(r => ({
+        id: r.id,
+        clientId: r.client_id,
+        clientName: r.client_name || clientMap.get(r.client_id) || 'Former Client',
+        paidAt: r.effectiveDate,
+        dueDate: r.due_date,
+        billingType: r.billing_type as 'ad_spend' | 'management',
+        amount: r.amount || 0,
+        notes: r.notes,
+        recurrenceType: r.recurrence_type,
+      }));
+    },
+    refetchInterval: 60000,
+  });
+}
+
 export function useFailedPayments() {
   return useQuery({
     queryKey: ['billing-dashboard-failed'],
     queryFn: async (): Promise<FailedPayment[]> => {
       const { data, error } = await supabase
         .from('billing_records')
-        .select(`
-          id,
-          client_id,
-          client_name,
-          billing_type,
-          amount,
-          due_date,
-          charge_attempts,
-          last_charge_error
-        `)
+        .select('id, client_id, client_name, billing_type, amount, due_date, charge_attempts, last_charge_error')
         .not('last_charge_error', 'is', null)
         .order('created_at', { ascending: false })
         .limit(20);
 
       if (error) throw error;
 
-      // Fetch all clients for fallback lookup
-      const { data: clients } = await supabase
-        .from('clients')
-        .select('id, name');
-
+      const { data: clients } = await supabase.from('clients').select('id, name');
       const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
 
       return (data || []).map(record => ({
         id: record.id,
         clientId: record.client_id,
-        clientName: record.client_name || clientMap.get(record.client_id) || 'Deleted Client',
+        clientName: record.client_name || clientMap.get(record.client_id) || 'Former Client',
         amount: record.amount || 0,
         billingType: record.billing_type as 'ad_spend' | 'management',
         lastError: record.last_charge_error,
@@ -350,33 +547,21 @@ export function useActiveDisputes() {
     queryFn: async (): Promise<Dispute[]> => {
       const { data, error } = await supabase
         .from('disputes')
-        .select(`
-          id,
-          client_id,
-          amount,
-          status,
-          reason,
-          evidence_due_by,
-          created_at
-        `)
+        .select('id, client_id, amount, status, reason, evidence_due_by, created_at')
         .in('status', ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review'])
         .order('evidence_due_by', { ascending: true })
         .limit(20);
 
       if (error) throw error;
 
-      // Fetch all clients and filter in memory since client_id may be text
-      const { data: clients } = await supabase
-        .from('clients')
-        .select('id, name');
-
+      const { data: clients } = await supabase.from('clients').select('id, name');
       const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
 
       return (data || []).map(dispute => ({
         id: dispute.id,
         clientId: dispute.client_id || '',
         clientName: dispute.client_id ? (clientMap.get(dispute.client_id) || 'Unknown Client') : 'Unknown Client',
-        amount: (dispute.amount || 0) / 100, // Convert from cents
+        amount: (dispute.amount || 0) / 100,
         status: dispute.status,
         reason: dispute.reason,
         evidenceDeadline: dispute.evidence_due_by,
@@ -387,7 +572,6 @@ export function useActiveDisputes() {
   });
 }
 
-// Retry a failed billing record — calls create-stripe-invoice again
 export function useRetryPayment() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -401,92 +585,104 @@ export function useRetryPayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-overdue'] });
     },
   });
 }
 
-// Full revenue intelligence — MTD actuals + monthly projections from wallet thresholds
-export function useRevenueIntelligence() {
+// Revenue intelligence — MTD actuals + projections. Accepts optional date window for historical months.
+export function useRevenueIntelligence(startIso?: string, endIso?: string) {
   return useQuery({
-    queryKey: ['revenue-intelligence'],
+    queryKey: ['revenue-intelligence', startIso, endIso],
     queryFn: async (): Promise<RevenueIntelligence> => {
       const now = new Date();
-      const mtdStart = startOfMonth(now).toISOString();
-      const lastMonthStart = startOfMonth(subMonths(now, 1)).toISOString();
-      const lastMonthEnd = startOfMonth(now).toISOString(); // exclusive upper bound
-      const nowIso = now.toISOString();
-      const daysElapsed = now.getDate(); // 1-31
-      const daysInMonth = getDaysInMonth(now);
-      const currentMonth = format(now, 'MMMM yyyy');
+      const windowStartDate = startIso ? parseISO(startIso) : startOfMonth(now);
+      const windowStart = windowStartDate.toISOString();
+      const windowEnd = endIso || now.toISOString();
 
-      // MTD billing records
-      const { data: mtdRecords } = await supabase
-        .from('billing_records')
-        .select('billing_type, amount')
-        .eq('status', 'paid')
-        .gte('paid_at', mtdStart)
-        .lte('paid_at', nowIso);
+      const daysInMonth = getDaysInMonth(windowStartDate);
+      const isCurrentMonth = format(windowStartDate, 'yyyy-MM') === format(now, 'yyyy-MM');
+      const daysElapsed = isCurrentMonth ? now.getDate() : daysInMonth;
+      const currentMonth = format(windowStartDate, 'MMMM yyyy');
 
-      // Last month billing records (for comparison)
-      const { data: lastMonthRecords } = await supabase
-        .from('billing_records')
-        .select('billing_type, amount')
-        .eq('status', 'paid')
-        .gte('paid_at', lastMonthStart)
-        .lt('paid_at', lastMonthEnd);
+      // Previous period for comparison (one month before windowStart)
+      const lastMonthStart = startOfMonth(subMonths(windowStartDate, 1)).toISOString();
+      const lastMonthEnd = windowStart;
 
-      // Auto-billing wallets for ceiling calculation
-      const { data: autoWallets } = await supabase
-        .from('client_wallets')
-        .select('low_balance_threshold, auto_charge_amount, auto_billing_enabled')
-        .eq('auto_billing_enabled', true);
+      // Fetch MTD actuals, last-month actuals in parallel with other data
+      const [mtdRecords, lastMonthRecords, autoWallets, perfSetting, activeMgmtSubs, overdueRes, failedRes, disputesRes] =
+        await Promise.all([
+          fetchPaidRecords('billing_type, amount', windowStart, windowEnd),
+          fetchPaidRecords('billing_type, amount', lastMonthStart, lastMonthEnd),
+          supabase
+            .from('client_wallets')
+            .select('low_balance_threshold, auto_charge_amount, auto_billing_enabled')
+            .eq('auto_billing_enabled', true),
+          supabase
+            .from('onboarding_settings')
+            .select('setting_value')
+            .eq('setting_key', 'performance_percentage')
+            .maybeSingle(),
+          // Active management subscriptions — used for accurate monthly projection
+          supabase
+            .from('client_stripe_subscriptions')
+            .select('amount, recurrence_type')
+            .eq('billing_type', 'management')
+            .eq('status', 'active'),
+          // Attention counts
+          supabase
+            .from('billing_records')
+            .select('*', { count: 'exact', head: true })
+            .or(`status.eq.overdue,and(status.eq.pending,due_date.lt.${now.toISOString().split('T')[0]})`)
+            .is('archived_at', null),
+          supabase
+            .from('billing_records')
+            .select('*', { count: 'exact', head: true })
+            .not('last_charge_error', 'is', null)
+            .not('status', 'eq', 'paid')
+            .is('archived_at', null),
+          supabase
+            .from('disputes')
+            .select('*', { count: 'exact', head: true })
+            .in('status', ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review']),
+        ]);
 
-      // Performance percentage from settings
-      const { data: perfSetting } = await supabase
-        .from('onboarding_settings')
-        .select('setting_value')
-        .eq('setting_key', 'performance_percentage')
-        .maybeSingle();
-
-      const performancePct = perfSetting?.setting_value != null
-        ? Number(perfSetting.setting_value)
+      const performancePct = perfSetting.data?.setting_value != null
+        ? Number(perfSetting.data.setting_value)
         : 0;
 
-      // Calculate MTD actuals
+      // MTD actuals
       let mtdAdSpend = 0;
       let mtdManagementFees = 0;
-      for (const r of mtdRecords || []) {
+      for (const r of mtdRecords) {
         if (r.billing_type === 'ad_spend') mtdAdSpend += r.amount || 0;
         if (r.billing_type === 'management') mtdManagementFees += r.amount || 0;
       }
 
-      // Calculate last month actuals
+      // Last month actuals
       let lastMonthAdSpend = 0;
       let lastMonthManagementFees = 0;
-      for (const r of lastMonthRecords || []) {
+      for (const r of lastMonthRecords) {
         if (r.billing_type === 'ad_spend') lastMonthAdSpend += r.amount || 0;
         if (r.billing_type === 'management') lastMonthManagementFees += r.amount || 0;
       }
 
       // Monthly ceiling from wallet thresholds
-      const monthlyAdSpendCeiling = (autoWallets || []).reduce((sum, w) => {
+      const monthlyAdSpendCeiling = (autoWallets.data || []).reduce((sum, w) => {
         return sum + (w.auto_charge_amount || w.low_balance_threshold || 0);
       }, 0);
-      const autoClientCount = (autoWallets || []).length;
+      const autoClientCount = (autoWallets.data || []).length;
 
-      // Projected management fees = ceiling × (perf% / 100)
-      const projectedManagementFees = performancePct > 0
-        ? monthlyAdSpendCeiling * (performancePct / 100)
-        : 0;
+      // Subscription-based management fee projection (fixed monthly amounts, NOT perf% of ad spend)
+      const activeSubscriptionCount = (activeMgmtSubs.data || []).length;
+      const projectedManagementFees = (activeMgmtSubs.data || []).reduce((sum, sub) => {
+        const multiplier = sub.recurrence_type === 'bi_weekly' ? 2.17 : 1;
+        return sum + (sub.amount || 0) * multiplier;
+      }, 0);
 
-      // MTD run-rate projection (linear extrapolation to end of month)
-      const runRateAdSpend = daysElapsed > 0
-        ? (mtdAdSpend / daysElapsed) * daysInMonth
-        : 0;
-      const runRateManagementFees = daysElapsed > 0
-        ? (mtdManagementFees / daysElapsed) * daysInMonth
-        : 0;
+      // Run-rate projections (linear extrapolation, only meaningful for current month)
+      const runRateAdSpend = daysElapsed > 0 ? (mtdAdSpend / daysElapsed) * daysInMonth : 0;
+      const runRateManagementFees = daysElapsed > 0 ? (mtdManagementFees / daysElapsed) * daysInMonth : 0;
 
       return {
         mtdAdSpend,
@@ -495,6 +691,7 @@ export function useRevenueIntelligence() {
         lastMonthManagementFees,
         monthlyAdSpendCeiling,
         projectedManagementFees,
+        activeSubscriptionCount,
         runRateAdSpend,
         runRateManagementFees,
         performancePct,
@@ -502,13 +699,16 @@ export function useRevenueIntelligence() {
         currentMonth,
         daysElapsed,
         daysInMonth,
+        overdueCount: overdueRes.count || 0,
+        failedPaymentsCount: failedRes.count || 0,
+        disputesCount: disputesRes.count || 0,
       };
     },
     refetchInterval: 60000,
   });
 }
 
-// All auto-billing wallets — used to show the ad spend revenue pipeline on admin dashboard
+// All auto-billing wallets — pipeline widget
 export function useWalletPipeline() {
   return useQuery({
     queryKey: ['wallet-pipeline'],
@@ -521,10 +721,7 @@ export function useWalletPipeline() {
 
       if (error) throw error;
 
-      const { data: clients } = await supabase
-        .from('clients')
-        .select('id, name');
-
+      const { data: clients } = await supabase.from('clients').select('id, name');
       const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
 
       return (wallets || []).map(w => ({
@@ -555,7 +752,9 @@ export function useSyncAllStripe() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
-      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-overdue'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-upcoming'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-intelligence'] });
     },
   });
 }

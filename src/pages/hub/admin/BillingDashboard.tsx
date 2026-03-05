@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { DollarSign, RefreshCw, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useQueryClient } from '@tanstack/react-query';
-import { BillingStatsCards } from '@/components/admin/BillingStatsCards';
-import { BillingTimelineTable } from '@/components/admin/BillingTimelineTable';
+import { format, startOfMonth, subMonths, endOfMonth } from 'date-fns';
+import { RevenueSummaryRow } from '@/components/admin/RevenueSummaryRow';
+import { BillingPaymentsTable } from '@/components/admin/BillingPaymentsTable';
 import { FailedPaymentsWidget } from '@/components/admin/FailedPaymentsWidget';
 import { DisputesWidget } from '@/components/admin/DisputesWidget';
 import { WalletPipelineWidget } from '@/components/admin/WalletPipelineWidget';
-import { RevenueIntelligenceCard } from '@/components/admin/RevenueIntelligenceCard';
 import { toast } from 'sonner';
 import {
-  useBillingDashboardStats,
-  useUpcomingPayments,
+  useRevenueIntelligence,
+  useOverdueBillingRecords,
+  useUpcomingBillingRecords,
+  usePaidBillingRecords,
   useFailedPayments,
   useActiveDisputes,
   useSyncAllStripe,
   useWalletPipeline,
-  useRevenueIntelligence,
 } from '@/hooks/useBillingDashboard';
 
 export default function BillingDashboard() {
@@ -24,23 +26,34 @@ export default function BillingDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const syncMutation = useSyncAllStripe();
 
-  const { data: stats, isLoading: statsLoading } = useBillingDashboardStats();
-  const { data: upcomingPayments = [], isLoading: paymentsLoading } = useUpcomingPayments();
+  // Month selector — defaults to current month
+  const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(startOfMonth(new Date()));
+  const now = new Date();
+  const isCurrentMonth = format(selectedMonthDate, 'yyyy-MM') === format(now, 'yyyy-MM');
+  const startIso = selectedMonthDate.toISOString();
+  const endIso = isCurrentMonth ? now.toISOString() : endOfMonth(selectedMonthDate).toISOString();
+
+  const { data: revenueIntel, isLoading: intelLoading } = useRevenueIntelligence(startIso, endIso);
+  const { data: overdueRecords = [], isLoading: overdueLoading } = useOverdueBillingRecords();
+  const { data: upcomingRecords = [], isLoading: upcomingLoading } = useUpcomingBillingRecords();
+  const { data: paidRecords = [], isLoading: paidLoading } = usePaidBillingRecords(startIso, endIso);
   const { data: failedPayments = [], isLoading: failedLoading } = useFailedPayments();
   const { data: disputes = [], isLoading: disputesLoading } = useActiveDisputes();
   const { data: walletPipeline = [], isLoading: pipelineLoading } = useWalletPipeline();
-  const { data: revenueIntel, isLoading: intelLoading } = useRevenueIntelligence();
+
+  const paymentsLoading = overdueLoading || upcomingLoading || paidLoading;
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
       await Promise.all([
-        queryClient.refetchQueries({ queryKey: ['billing-dashboard-stats'] }),
-        queryClient.refetchQueries({ queryKey: ['billing-dashboard-upcoming'] }),
+        queryClient.refetchQueries({ queryKey: ['revenue-intelligence'] }),
+        queryClient.refetchQueries({ queryKey: ['billing-overdue'] }),
+        queryClient.refetchQueries({ queryKey: ['billing-upcoming'] }),
+        queryClient.refetchQueries({ queryKey: ['billing-paid'] }),
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-failed'] }),
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-disputes'] }),
         queryClient.refetchQueries({ queryKey: ['wallet-pipeline'] }),
-        queryClient.refetchQueries({ queryKey: ['revenue-intelligence'] }),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -62,10 +75,16 @@ export default function BillingDashboard() {
     }
   };
 
+  // Build last 12 months for picker
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const d = subMonths(startOfMonth(now), i);
+    return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy'), isCurrent: i === 0 };
+  });
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-primary/10">
             <DollarSign className="w-6 h-6 text-primary" />
@@ -73,11 +92,28 @@ export default function BillingDashboard() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Billing Dashboard</h1>
             <p className="text-sm text-muted-foreground">
-              Overview of all payments, collections, and disputes
+              Payments, collections, and revenue intelligence
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Month picker */}
+          <Select
+            value={format(selectedMonthDate, 'yyyy-MM')}
+            onValueChange={(v) => setSelectedMonthDate(startOfMonth(new Date(v + '-01')))}
+          >
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {monthOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}{opt.isCurrent ? ' (MTD)' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Button
             variant="outline"
             size="sm"
@@ -95,43 +131,30 @@ export default function BillingDashboard() {
         </div>
       </div>
 
-      {/* Revenue Intelligence Banner */}
-      <RevenueIntelligenceCard data={revenueIntel} isLoading={intelLoading} />
-
-      {/* The Big Three Stats */}
-      <BillingStatsCards
-        managementFeesCollected={stats?.managementFeesCollected ?? 0}
-        managementFeesExpected={stats?.managementFeesExpected ?? 0}
-        managementFeesPending={stats?.managementFeesPending ?? 0}
-        adSpendCollected={stats?.adSpendCollected ?? 0}
-        adSpendExpected={stats?.adSpendExpected ?? 0}
-        adSpendPending={stats?.adSpendPending ?? 0}
-        clientsNeedingAttention={stats?.clientsNeedingAttention ?? 0}
-        overdueCount={stats?.overdueCount ?? 0}
-        failedPaymentsCount={stats?.failedPaymentsCount ?? 0}
-        disputesCount={stats?.disputesCount ?? 0}
-        isLoading={statsLoading}
+      {/* Revenue Snapshot */}
+      <RevenueSummaryRow
+        data={revenueIntel}
+        isLoading={intelLoading}
+        isCurrentMonth={isCurrentMonth}
       />
 
-      {/* Timeline Table */}
-      <BillingTimelineTable
-        payments={upcomingPayments}
+      {/* Payments Table (Overdue / Upcoming / Paid / All) */}
+      <BillingPaymentsTable
+        overdueRecords={overdueRecords}
+        upcomingRecords={upcomingRecords}
+        paidRecords={paidRecords}
         isLoading={paymentsLoading}
+        selectedMonth={revenueIntel?.currentMonth ?? format(selectedMonthDate, 'MMMM yyyy')}
       />
 
-      {/* Wallet Pipeline */}
-      <WalletPipelineWidget items={walletPipeline} isLoading={pipelineLoading} />
-
-      {/* Problem Widgets */}
+      {/* Bottom Row: Pipeline + Failed + Disputes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <FailedPaymentsWidget 
-          payments={failedPayments} 
-          isLoading={failedLoading} 
-        />
-        <DisputesWidget 
-          disputes={disputes} 
-          isLoading={disputesLoading} 
-        />
+        <WalletPipelineWidget items={walletPipeline} isLoading={pipelineLoading} />
+
+        <div className="space-y-6">
+          <FailedPaymentsWidget payments={failedPayments} isLoading={failedLoading} />
+          <DisputesWidget disputes={disputes} isLoading={disputesLoading} />
+        </div>
       </div>
     </div>
   );
