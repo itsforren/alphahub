@@ -874,7 +874,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { clientId, states, budget, agentId, agentName, landingPage, retryStep, templateType } = await req.json();
+    const { clientId, states, budget, agentId, agentName, landingPage, retryStep, templateType, targetCampaignId, targetCustomerId } = await req.json();
 
     // Calculate daily budget from monthly budget
     const dailyBudget = budget ? Math.round(budget / 30) : 0;
@@ -888,6 +888,8 @@ Deno.serve(async (req) => {
     console.log(`Daily Budget (calculated): ${dailyBudget}`);
     console.log(`Landing Page (passed): ${landingPage}`);
     console.log(`Retry Step: ${retryStep || 'full'}`);
+    console.log(`Target Campaign ID: ${targetCampaignId || 'none'}`);
+    console.log(`Target Customer ID: ${targetCustomerId || 'none'}`);
 
     if (!clientId) {
       throw new Error('clientId is required');
@@ -934,6 +936,64 @@ Deno.serve(async (req) => {
 
     if (!templateCampaignId) {
       throw new Error('Template campaign ID not configured. Please set it in onboarding settings.');
+    }
+
+    // FAST PATH: If targetCampaignId is provided, skip campaign creation
+    // and rebuild ad groups/ads directly into the specified campaign
+    if (targetCampaignId && targetCustomerId) {
+      console.log(`=== REBUILD MODE: targeting campaign ${targetCampaignId} in customer ${targetCustomerId} ===`);
+
+      const accessToken = await getAccessToken();
+
+      // Parse template for source campaign ID
+      let rebuildSourceId: string;
+      let rebuildCustomerId: string;
+      if (templateCampaignId.includes(':')) {
+        const [cp, cid] = templateCampaignId.split(':');
+        rebuildCustomerId = cp.replace(/\D/g, '');
+        rebuildSourceId = cid.replace(/\D/g, '');
+      } else {
+        rebuildCustomerId = targetCustomerId.replace(/\D/g, '');
+        rebuildSourceId = templateCampaignId.replace(/\D/g, '');
+      }
+
+      // Determine landing page
+      let rebuildLandingPage = landingPage;
+      if (!rebuildLandingPage && clientData?.lander_link) {
+        rebuildLandingPage = clientData.lander_link;
+      }
+      if (!rebuildLandingPage && landingPageBaseUrl) {
+        const agentNameSlug = slugify(agentName);
+        const intAgentId = clientData?.agent_id || agentId || '';
+        rebuildLandingPage = `${landingPageBaseUrl}${agentNameSlug}?id=${intAgentId}`;
+      }
+      if (!rebuildLandingPage) {
+        throw new Error('No landing page URL available for rebuild');
+      }
+
+      console.log(`Rebuild: source=${rebuildSourceId}, target=${targetCampaignId}, landing=${rebuildLandingPage}`);
+
+      const result = await copyAdGroupsAndAds(
+        accessToken,
+        rebuildCustomerId,
+        rebuildSourceId,
+        targetCampaignId.replace(/\D/g, ''),
+        rebuildLandingPage
+      );
+
+      console.log(`Rebuild result: adGroup=${result.adGroupCreated}, ad=${result.adCreated}, keywords=${result.keywordsCreated}`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          campaignId: targetCampaignId,
+          adGroupCreated: result.adGroupCreated,
+          adCreated: result.adCreated,
+          keywordsCreated: result.keywordsCreated,
+          mode: 'rebuild',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Parse template campaign ID (format: customerId:campaignId)

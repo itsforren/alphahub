@@ -35,6 +35,7 @@ export function OnboardingSettingsWidget() {
   const [defaultCustomerId, setDefaultCustomerId] = useState('');
   const [autoCreateCampaigns, setAutoCreateCampaigns] = useState(true);
   const [secondaryTemplateCampaignId, setSecondaryTemplateCampaignId] = useState('');
+  const [googleAdsLinkParams, setGoogleAdsLinkParams] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -62,6 +63,7 @@ export function OnboardingSettingsWidget() {
       setDefaultCustomerId(settingsMap['default_customer_id']?.setting_value || '');
       setAutoCreateCampaigns(settingsMap['auto_create_campaigns']?.setting_value === 'true');
       setSecondaryTemplateCampaignId(settingsMap['template_campaign_id_secondary']?.setting_value || '');
+      setGoogleAdsLinkParams(settingsMap['google_ads_link_params']?.setting_value || '');
     } catch (error) {
       console.error('Error fetching onboarding settings:', error);
       toast.error('Failed to load onboarding settings');
@@ -85,6 +87,7 @@ export function OnboardingSettingsWidget() {
         { key: 'default_customer_id', value: defaultCustomerId },
         { key: 'auto_create_campaigns', value: autoCreateCampaigns ? 'true' : 'false' },
         { key: 'template_campaign_id_secondary', value: secondaryTemplateCampaignId },
+        { key: 'google_ads_link_params', value: googleAdsLinkParams },
       ];
 
       for (const { key, value } of updates) {
@@ -215,6 +218,35 @@ export function OnboardingSettingsWidget() {
           />
           <p className="text-xs text-muted-foreground">
             Optional — for dual-campaign clients. Leave blank if using single campaigns only.
+          </p>
+        </div>
+
+        {/* Google Ads Link Params */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="googleAdsLinkParams">Google Ads Link Params</Label>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Info className="h-4 w-4 text-muted-foreground" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p>
+                    Extra URL params for campaign links so they open directly without login prompts.
+                    Copy from a working Google Ads URL — everything between ? and &campaignId.
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Input
+            id="googleAdsLinkParams"
+            placeholder="ocid=123&euid=456&__u=789&uscid=123&__c=321&authuser=0&ascid=123"
+            value={googleAdsLinkParams}
+            onChange={(e) => handleFieldChange(setGoogleAdsLinkParams, e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Paste the query params from a working Google Ads URL (without campaignId). This avoids login prompts.
           </p>
         </div>
 

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, ChevronDown, ExternalLink } from 'lucide-react';
+import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,9 +47,32 @@ export function CampaignPanel({
 }: CampaignPanelProps) {
   const queryClient = useQueryClient();
   const [isBuilding, setIsBuilding] = useState(false);
+  const [rebuildingCampaignId, setRebuildingCampaignId] = useState<string | null>(null);
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
   const [isSavingManual, setIsSavingManual] = useState(false);
+  const [googleAdsLinkParams, setGoogleAdsLinkParams] = useState('');
+
+  // Fetch Google Ads link params setting once
+  useEffect(() => {
+    supabase
+      .from('onboarding_settings')
+      .select('setting_value')
+      .eq('setting_key', 'google_ads_link_params')
+      .single()
+      .then(({ data }) => {
+        if (data?.setting_value) {
+          setGoogleAdsLinkParams(data.setting_value);
+        }
+      });
+  }, []);
+
+  const buildGoogleAdsUrl = (campaignId: string) => {
+    if (googleAdsLinkParams) {
+      return `https://ads.google.com/aw/campaigns?${googleAdsLinkParams}&campaignId=${campaignId}`;
+    }
+    return `https://ads.google.com/aw/campaigns?campaignId=${campaignId}`;
+  };
 
   const handleBuildCampaign = async (templateType: 'primary' | 'secondary') => {
     setIsBuilding(true);
@@ -93,6 +116,45 @@ export function CampaignPanel({
       toast.error(error instanceof Error ? error.message : 'Failed to build campaign');
     } finally {
       setIsBuilding(false);
+    }
+  };
+
+  const handleRebuildAds = async (campaign: Campaign) => {
+    setRebuildingCampaignId(campaign.id);
+    try {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('name, agent_id, lander_link')
+        .eq('id', clientId)
+        .single();
+
+      if (!client) throw new Error('Client not found');
+
+      const { data, error } = await supabase.functions.invoke('create-google-ads-campaign', {
+        body: {
+          clientId,
+          agentName: client.name,
+          agentId: client.agent_id,
+          landingPage: client.lander_link,
+          retryStep: 'adgroup',
+          targetCampaignId: campaign.google_campaign_id,
+          targetCustomerId: campaign.google_customer_id,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to rebuild ads');
+
+      toast.success('Ad groups and ads rebuilt', {
+        description: `${campaign.label}: ad groups=${data.adGroupCreated}, ads=${data.adCreated}`,
+      });
+
+      onRefresh();
+    } catch (error) {
+      console.error('Error rebuilding ads:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to rebuild ads');
+    } finally {
+      setRebuildingCampaignId(null);
     }
   };
 
@@ -161,7 +223,7 @@ export function CampaignPanel({
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center gap-2">
                 <a
-                  href={`https://ads.google.com/aw/campaigns?campaignId=${campaign.google_campaign_id}&ocid=${campaign.google_customer_id}`}
+                  href={buildGoogleAdsUrl(campaign.google_campaign_id)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-foreground hover:text-primary hover:underline inline-flex items-center gap-1 transition-colors"
@@ -223,6 +285,22 @@ export function CampaignPanel({
                   onRefresh();
                 }}
               />
+
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => handleRebuildAds(campaign)}
+                disabled={rebuildingCampaignId === campaign.id}
+                title="Rebuild ad groups and ads from template"
+              >
+                {rebuildingCampaignId === campaign.id ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                )}
+                Rebuild Ads
+              </Button>
             </div>
           </CardContent>
         </Card>
