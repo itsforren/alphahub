@@ -87,6 +87,12 @@ export interface OverdueBillingRecord {
   notes: string | null;
   recurrenceType: string | null;
   daysOverdue: number;
+  stripeInvoiceId: string | null;
+  stripeSubscriptionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeAccount: string | null;
+  paymentLink: string | null;
+  lastChargeError: string | null;
 }
 
 export interface UpcomingBillingRecord {
@@ -99,6 +105,11 @@ export interface UpcomingBillingRecord {
   notes: string | null;
   recurrenceType: string | null;
   daysUntilDue: number;
+  stripeInvoiceId: string | null;
+  stripeSubscriptionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeAccount: string | null;
+  paymentLink: string | null;
 }
 
 export interface PaidBillingRecord {
@@ -111,6 +122,11 @@ export interface PaidBillingRecord {
   amount: number;
   notes: string | null;
   recurrenceType: string | null;
+  stripeInvoiceId: string | null;
+  stripeSubscriptionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeAccount: string | null;
+  paymentLink: string | null;
 }
 
 export interface FailedPayment {
@@ -362,17 +378,19 @@ export function useOverdueBillingRecords() {
       const now = new Date();
       const todayStr = now.toISOString().split('T')[0];
 
+      const overdueFields = 'id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type, stripe_invoice_id, stripe_subscription_id, stripe_payment_intent_id, stripe_account, payment_link, last_charge_error';
+
       const [overdueStatus, pendingPastDue] = await Promise.all([
         supabase
           .from('billing_records')
-          .select('id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type')
+          .select(overdueFields)
           .eq('status', 'overdue')
           .is('archived_at', null)
           .order('due_date', { ascending: true })
           .limit(200),
         supabase
           .from('billing_records')
-          .select('id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type')
+          .select(overdueFields)
           .eq('status', 'pending')
           .lt('due_date', todayStr)
           .is('archived_at', null)
@@ -410,6 +428,12 @@ export function useOverdueBillingRecords() {
           notes: r.notes,
           recurrenceType: r.recurrence_type,
           daysOverdue,
+          stripeInvoiceId: (r as any).stripe_invoice_id ?? null,
+          stripeSubscriptionId: (r as any).stripe_subscription_id ?? null,
+          stripePaymentIntentId: (r as any).stripe_payment_intent_id ?? null,
+          stripeAccount: (r as any).stripe_account ?? null,
+          paymentLink: (r as any).payment_link ?? null,
+          lastChargeError: (r as any).last_charge_error ?? null,
         };
       });
     },
@@ -426,9 +450,11 @@ export function useUpcomingBillingRecords() {
       const todayStr = now.toISOString().split('T')[0];
       const thirtyDaysAhead = addDays(now, 30).toISOString();
 
+      const upcomingFields = 'id, client_id, client_name, billing_type, amount, due_date, notes, recurrence_type, stripe_invoice_id, stripe_subscription_id, stripe_payment_intent_id, stripe_account, payment_link';
+
       const { data, error } = await supabase
         .from('billing_records')
-        .select('id, client_id, client_name, billing_type, amount, due_date, notes, recurrence_type')
+        .select(upcomingFields)
         .eq('status', 'pending')
         .gte('due_date', todayStr)
         .lte('due_date', thirtyDaysAhead)
@@ -451,6 +477,11 @@ export function useUpcomingBillingRecords() {
         notes: r.notes,
         recurrenceType: r.recurrence_type,
         daysUntilDue: getDaysUntilDue(r.due_date),
+        stripeInvoiceId: (r as any).stripe_invoice_id ?? null,
+        stripeSubscriptionId: (r as any).stripe_subscription_id ?? null,
+        stripePaymentIntentId: (r as any).stripe_payment_intent_id ?? null,
+        stripeAccount: (r as any).stripe_account ?? null,
+        paymentLink: (r as any).payment_link ?? null,
       }));
     },
     refetchInterval: 60000,
@@ -462,7 +493,7 @@ export function usePaidBillingRecords(startIso: string, endIso: string) {
   return useQuery({
     queryKey: ['billing-paid', startIso, endIso],
     queryFn: async (): Promise<PaidBillingRecord[]> => {
-      const fields = 'id, client_id, client_name, billing_type, amount, paid_at, due_date, notes, recurrence_type';
+      const fields = 'id, client_id, client_name, billing_type, amount, paid_at, due_date, notes, recurrence_type, stripe_invoice_id, stripe_subscription_id, stripe_payment_intent_id, stripe_account, payment_link';
 
       const [withPaidAt, withoutPaidAt] = await Promise.all([
         supabase
@@ -504,6 +535,11 @@ export function usePaidBillingRecords(startIso: string, endIso: string) {
         amount: r.amount || 0,
         notes: r.notes,
         recurrenceType: r.recurrence_type,
+        stripeInvoiceId: r.stripe_invoice_id ?? null,
+        stripeSubscriptionId: r.stripe_subscription_id ?? null,
+        stripePaymentIntentId: r.stripe_payment_intent_id ?? null,
+        stripeAccount: r.stripe_account ?? null,
+        paymentLink: r.payment_link ?? null,
       }));
     },
     refetchInterval: 60000,
@@ -586,6 +622,26 @@ export function useRetryPayment() {
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['billing-overdue'] });
+    },
+  });
+}
+
+export function useArchiveBillingRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (billingRecordId: string) => {
+      const { error } = await supabase
+        .from('billing_records')
+        .update({ archived_at: new Date().toISOString() })
+        .eq('id', billingRecordId);
+      if (error) throw new Error(error.message || 'Archive failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing-overdue'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-upcoming'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-paid'] });
+      queryClient.invalidateQueries({ queryKey: ['revenue-intelligence'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
     },
   });
 }

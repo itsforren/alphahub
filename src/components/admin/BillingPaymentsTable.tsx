@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format, parseISO, isValid } from 'date-fns';
 import {
@@ -13,7 +14,13 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
-  ChevronRight,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Separator } from '@/components/ui/separator';
+import {
   DollarSign,
   TrendingUp,
   RefreshCw,
@@ -21,9 +28,15 @@ import {
   Clock,
   CheckCircle2,
   List,
+  ExternalLink,
+  Archive,
+  User,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import type { OverdueBillingRecord, UpcomingBillingRecord, PaidBillingRecord } from '@/hooks/useBillingDashboard';
+import { useArchiveBillingRecord } from '@/hooks/useBillingDashboard';
 
 interface BillingPaymentsTableProps {
   overdueRecords: OverdueBillingRecord[];
@@ -33,11 +46,49 @@ interface BillingPaymentsTableProps {
   selectedMonth: string;
 }
 
+// Normalized detail type for the sheet
+interface BillingRecordDetail {
+  id: string;
+  clientId: string;
+  clientName: string;
+  billingType: 'ad_spend' | 'management';
+  amount: number;
+  status: string;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  notes?: string | null;
+  recurrenceType?: string | null;
+  daysOverdue?: number;
+  daysUntilDue?: number;
+  stripeInvoiceId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripePaymentIntentId?: string | null;
+  stripeAccount?: string | null;
+  paymentLink?: string | null;
+  lastChargeError?: string | null;
+}
+
+function toDetail(r: OverdueBillingRecord | UpcomingBillingRecord | PaidBillingRecord): BillingRecordDetail {
+  if ('daysOverdue' in r) {
+    return { ...r, status: r.status };
+  }
+  if ('daysUntilDue' in r) {
+    return { ...r, status: 'pending' };
+  }
+  return { ...r, status: 'paid' };
+}
+
 function fmt(n: number) {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
 function fmtDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = parseISO(dateStr);
+  return isValid(d) ? format(d, 'MMM d, yyyy') : '—';
+}
+
+function fmtDateShort(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   const d = parseISO(dateStr);
   return isValid(d) ? format(d, 'MMM d') : '—';
@@ -60,7 +111,7 @@ function BillingTypeBadge({ type }: { type: 'ad_spend' | 'management' }) {
   );
 }
 
-function RecurrenceBadge({ type }: { type: string | null }) {
+function RecurrenceBadge({ type }: { type: string | null | undefined }) {
   if (!type || type === 'one_time') return null;
   const label = type === 'bi_weekly' ? 'Bi-weekly' : type === 'monthly' ? 'Monthly' : type;
   return (
@@ -71,9 +122,247 @@ function RecurrenceBadge({ type }: { type: string | null }) {
   );
 }
 
-// --- Overdue Table ---
-function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
+function StripeLink({ label, id, href }: { label: string; id: string | null | undefined; href: string | null | undefined }) {
+  if (!id) return <span className="text-muted-foreground text-sm">—</span>;
+  const url = href || null;
+  return (
+    <div className="flex items-center gap-2">
+      <code className="text-xs bg-muted px-1.5 py-0.5 rounded font-mono text-foreground truncate max-w-[220px]">{id}</code>
+      {url && (
+        <a href={url} target="_blank" rel="noopener noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground transition-colors">
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      )}
+    </div>
+  );
+}
+
+// --- Detail Sheet ---
+function BillingRecordDetailSheet({
+  record,
+  open,
+  onClose,
+}: {
+  record: BillingRecordDetail | null;
+  open: boolean;
+  onClose: () => void;
+}) {
   const navigate = useNavigate();
+  const archiveMutation = useArchiveBillingRecord();
+
+  if (!record) return null;
+
+  const isOverdue = record.status === 'overdue' || (record.status === 'pending' && record.daysOverdue !== undefined);
+  const isPaid = record.status === 'paid';
+
+  const stripeAccount = record.stripeAccount;
+  const stripeBase = 'https://dashboard.stripe.com';
+
+  const invoiceUrl = record.stripeInvoiceId
+    ? `${stripeBase}/invoices/${record.stripeInvoiceId}`
+    : null;
+  const subscriptionUrl = record.stripeSubscriptionId
+    ? `${stripeBase}/subscriptions/${record.stripeSubscriptionId}`
+    : null;
+  const paymentIntentUrl = record.stripePaymentIntentId
+    ? `${stripeBase}/payments/${record.stripePaymentIntentId}`
+    : null;
+
+  const handleArchive = async () => {
+    try {
+      await archiveMutation.mutateAsync(record.id);
+      toast.success('Record archived');
+      onClose();
+    } catch (err: any) {
+      toast.error(`Archive failed: ${err?.message}`);
+    }
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent className="w-full sm:max-w-[480px] overflow-y-auto">
+        <SheetHeader className="mb-4">
+          <SheetTitle className="flex items-center justify-between pr-8">
+            <span>Payment Details</span>
+            <div className="flex items-center gap-2">
+              <BillingTypeBadge type={record.billingType} />
+            </div>
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="space-y-5">
+          {/* Client + Amount */}
+          <div className="rounded-lg border border-border/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => { navigate(`/hub/admin/clients/${record.clientId}?tab=billing`); onClose(); }}
+                className="flex items-center gap-2 text-sm font-semibold text-foreground hover:text-primary transition-colors group"
+              >
+                <User className="w-4 h-4 text-muted-foreground group-hover:text-primary" />
+                {record.clientName}
+                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+              </button>
+              <span className="text-2xl font-bold text-foreground">{fmt(record.amount)}</span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              <RecurrenceBadge type={record.recurrenceType} />
+              {isPaid && (
+                <Badge variant="outline" className="text-xs bg-green-500/10 border-green-500/30 text-green-400">
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                  Paid
+                </Badge>
+              )}
+              {isOverdue && (
+                <Badge variant="outline" className="text-xs bg-red-500/10 border-red-500/30 text-red-400">
+                  <AlertCircle className="w-3 h-3 mr-1" />
+                  {record.daysOverdue === 0 ? 'Due today' : `${record.daysOverdue}d overdue`}
+                </Badge>
+              )}
+              {!isPaid && !isOverdue && record.daysUntilDue !== undefined && (
+                <Badge variant="outline" className={cn(
+                  'text-xs',
+                  record.daysUntilDue <= 2
+                    ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                    : record.daysUntilDue <= 7
+                    ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                    : 'bg-green-500/10 border-green-500/30 text-green-400',
+                )}>
+                  <Clock className="w-3 h-3 mr-1" />
+                  Due in {record.daysUntilDue}d
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Dates */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dates</p>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {record.dueDate && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Due Date</p>
+                  <p className="font-medium">{fmtDate(record.dueDate)}</p>
+                </div>
+              )}
+              {record.paidAt && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Paid At</p>
+                  <p className="font-medium text-green-400">{fmtDate(record.paidAt)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <Separator className="opacity-30" />
+
+          {/* Stripe IDs */}
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Stripe
+              {stripeAccount && (
+                <span className="ml-2 font-normal normal-case text-xs">
+                  ({stripeAccount === 'management' ? 'Management account' : 'Ad Spend account'})
+                </span>
+              )}
+            </p>
+
+            <div className="space-y-2 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Invoice ID</p>
+                <StripeLink label="Invoice" id={record.stripeInvoiceId} href={invoiceUrl} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Subscription ID</p>
+                <StripeLink label="Subscription" id={record.stripeSubscriptionId} href={subscriptionUrl} />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-0.5">Payment Intent</p>
+                <StripeLink label="Payment" id={record.stripePaymentIntentId} href={paymentIntentUrl} />
+              </div>
+              {record.paymentLink && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-0.5">Payment Link</p>
+                  <a
+                    href={record.paymentLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    Open payment link <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Last charge error */}
+          {record.lastChargeError && (
+            <>
+              <Separator className="opacity-30" />
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Charge Error</p>
+                <p className="text-xs text-red-400 bg-red-500/10 rounded-md px-3 py-2 border border-red-500/20">
+                  {record.lastChargeError}
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* Notes */}
+          {record.notes && (
+            <>
+              <Separator className="opacity-30" />
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes</p>
+                <p className="text-sm text-muted-foreground">{record.notes}</p>
+              </div>
+            </>
+          )}
+
+          <Separator className="opacity-30" />
+
+          {/* Actions */}
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => { navigate(`/hub/admin/clients/${record.clientId}?tab=billing`); onClose(); }}
+            >
+              <User className="w-4 h-4" />
+              View client billing
+              <ChevronRight className="w-4 h-4 ml-auto" />
+            </Button>
+            {!isPaid && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 text-orange-400 border-orange-500/30 hover:bg-orange-500/10 hover:text-orange-300"
+                onClick={handleArchive}
+                disabled={archiveMutation.isPending}
+              >
+                <Archive className="w-4 h-4" />
+                {archiveMutation.isPending ? 'Archiving…' : 'Archive this record'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// --- Overdue Table ---
+function OverdueRows({
+  records,
+  onSelect,
+  onArchive,
+}: {
+  records: OverdueBillingRecord[];
+  onSelect: (r: BillingRecordDetail) => void;
+  onArchive: (id: string) => void;
+}) {
   if (!records.length) {
     return (
       <div className="p-12 text-center">
@@ -92,7 +381,7 @@ function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
             <TableHead className="w-[160px]">Type</TableHead>
             <TableHead className="w-[100px] text-right">Amount</TableHead>
             <TableHead className="w-[150px]">Overdue By</TableHead>
-            <TableHead className="w-[40px]" />
+            <TableHead className="w-[80px]" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -100,7 +389,7 @@ function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
             <TableRow
               key={r.id}
               className="cursor-pointer hover:bg-red-500/5 transition-colors border-l-2 border-l-red-500/40"
-              onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+              onClick={() => onSelect(toDetail(r))}
             >
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -108,7 +397,7 @@ function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
                   <span className="font-medium text-foreground">{r.clientName}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{fmtDate(r.dueDate)}</TableCell>
+              <TableCell className="text-muted-foreground">{fmtDateShort(r.dueDate)}</TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <BillingTypeBadge type={r.billingType} />
@@ -125,9 +414,20 @@ function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
                 </Badge>
               </TableCell>
               <TableCell>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-orange-400 hover:bg-orange-500/10"
+                    title="Archive record"
+                    onClick={(e) => { e.stopPropagation(); onArchive(r.id); }}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
@@ -138,8 +438,13 @@ function OverdueRows({ records }: { records: OverdueBillingRecord[] }) {
 }
 
 // --- Upcoming Table ---
-function UpcomingRows({ records }: { records: UpcomingBillingRecord[] }) {
-  const navigate = useNavigate();
+function UpcomingRows({
+  records,
+  onSelect,
+}: {
+  records: UpcomingBillingRecord[];
+  onSelect: (r: BillingRecordDetail) => void;
+}) {
   if (!records.length) {
     return (
       <div className="p-12 text-center">
@@ -175,7 +480,7 @@ function UpcomingRows({ records }: { records: UpcomingBillingRecord[] }) {
               <TableRow
                 key={r.id}
                 className="cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+                onClick={() => onSelect(toDetail(r))}
               >
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -186,7 +491,7 @@ function UpcomingRows({ records }: { records: UpcomingBillingRecord[] }) {
                     <span className="font-medium text-foreground">{r.clientName}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground">{fmtDate(r.dueDate)}</TableCell>
+                <TableCell className="text-muted-foreground">{fmtDateShort(r.dueDate)}</TableCell>
                 <TableCell>
                   <div className="flex items-center">
                     <BillingTypeBadge type={r.billingType} />
@@ -217,8 +522,15 @@ function UpcomingRows({ records }: { records: UpcomingBillingRecord[] }) {
 }
 
 // --- Paid Table ---
-function PaidRows({ records, selectedMonth }: { records: PaidBillingRecord[]; selectedMonth: string }) {
-  const navigate = useNavigate();
+function PaidRows({
+  records,
+  selectedMonth,
+  onSelect,
+}: {
+  records: PaidBillingRecord[];
+  selectedMonth: string;
+  onSelect: (r: BillingRecordDetail) => void;
+}) {
   if (!records.length) {
     return (
       <div className="p-12 text-center">
@@ -245,7 +557,7 @@ function PaidRows({ records, selectedMonth }: { records: PaidBillingRecord[]; se
             <TableRow
               key={r.id}
               className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+              onClick={() => onSelect(toDetail(r))}
             >
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -253,7 +565,7 @@ function PaidRows({ records, selectedMonth }: { records: PaidBillingRecord[]; se
                   <span className="font-medium text-foreground">{r.clientName}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{fmtDate(r.paidAt)}</TableCell>
+              <TableCell className="text-muted-foreground">{fmtDateShort(r.paidAt)}</TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <BillingTypeBadge type={r.billingType} />
@@ -288,13 +600,16 @@ function AllRows({
   upcoming,
   paid,
   selectedMonth,
+  onSelect,
+  onArchive,
 }: {
   overdue: OverdueBillingRecord[];
   upcoming: UpcomingBillingRecord[];
   paid: PaidBillingRecord[];
   selectedMonth: string;
+  onSelect: (r: BillingRecordDetail) => void;
+  onArchive: (id: string) => void;
 }) {
-  const navigate = useNavigate();
   const totalCount = overdue.length + upcoming.length + paid.length;
 
   if (!totalCount) {
@@ -316,11 +631,10 @@ function AllRows({
             <TableHead className="w-[160px]">Type</TableHead>
             <TableHead className="w-[100px] text-right">Amount</TableHead>
             <TableHead className="w-[150px]">Status</TableHead>
-            <TableHead className="w-[40px]" />
+            <TableHead className="w-[80px]" />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {/* Overdue first */}
           {overdue.length > 0 && (
             <TableRow className="hover:bg-transparent bg-red-500/5">
               <TableCell colSpan={6} className="py-1.5">
@@ -334,7 +648,7 @@ function AllRows({
             <TableRow
               key={r.id}
               className="cursor-pointer hover:bg-red-500/5 transition-colors border-l-2 border-l-red-500/40"
-              onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+              onClick={() => onSelect(toDetail(r))}
             >
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -342,7 +656,7 @@ function AllRows({
                   <span className="font-medium text-foreground">{r.clientName}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{fmtDate(r.dueDate)}</TableCell>
+              <TableCell className="text-muted-foreground">{fmtDateShort(r.dueDate)}</TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <BillingTypeBadge type={r.billingType} />
@@ -357,14 +671,24 @@ function AllRows({
                 </Badge>
               </TableCell>
               <TableCell>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-orange-400 hover:bg-orange-500/10"
+                    title="Archive record"
+                    onClick={(e) => { e.stopPropagation(); onArchive(r.id); }}
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           ))}
 
-          {/* Upcoming */}
           {upcoming.length > 0 && (
             <TableRow className="hover:bg-transparent bg-muted/20">
               <TableCell colSpan={6} className="py-1.5">
@@ -378,7 +702,7 @@ function AllRows({
             <TableRow
               key={r.id}
               className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+              onClick={() => onSelect(toDetail(r))}
             >
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -389,7 +713,7 @@ function AllRows({
                   <span className="font-medium text-foreground">{r.clientName}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{fmtDate(r.dueDate)}</TableCell>
+              <TableCell className="text-muted-foreground">{fmtDateShort(r.dueDate)}</TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <BillingTypeBadge type={r.billingType} />
@@ -404,14 +728,13 @@ function AllRows({
                 </Badge>
               </TableCell>
               <TableCell>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button variant="ghost" size="icon" className="h-7 w-7">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </TableCell>
             </TableRow>
           ))}
 
-          {/* Paid */}
           {paid.length > 0 && (
             <TableRow className="hover:bg-transparent bg-green-500/5">
               <TableCell colSpan={6} className="py-1.5">
@@ -425,7 +748,7 @@ function AllRows({
             <TableRow
               key={r.id}
               className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => navigate(`/hub/admin/clients/${r.clientId}?tab=billing`)}
+              onClick={() => onSelect(toDetail(r))}
             >
               <TableCell>
                 <div className="flex items-center gap-2">
@@ -433,7 +756,7 @@ function AllRows({
                   <span className="font-medium text-foreground">{r.clientName}</span>
                 </div>
               </TableCell>
-              <TableCell className="text-muted-foreground">{fmtDate(r.paidAt)}</TableCell>
+              <TableCell className="text-muted-foreground">{fmtDateShort(r.paidAt)}</TableCell>
               <TableCell>
                 <div className="flex items-center">
                   <BillingTypeBadge type={r.billingType} />
@@ -448,7 +771,7 @@ function AllRows({
                 </Badge>
               </TableCell>
               <TableCell>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button variant="ghost" size="icon" className="h-7 w-7">
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </TableCell>
@@ -467,6 +790,18 @@ export function BillingPaymentsTable({
   isLoading,
   selectedMonth,
 }: BillingPaymentsTableProps) {
+  const [selectedRecord, setSelectedRecord] = useState<BillingRecordDetail | null>(null);
+  const archiveMutation = useArchiveBillingRecord();
+
+  const handleArchive = async (id: string) => {
+    try {
+      await archiveMutation.mutateAsync(id);
+      toast.success('Record archived');
+    } catch (err: any) {
+      toast.error(`Archive failed: ${err?.message}`);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="rounded-xl border border-border/50 overflow-hidden bg-card/50">
@@ -515,73 +850,88 @@ export function BillingPaymentsTable({
   }
 
   return (
-    <div className="rounded-xl border border-border/50 overflow-hidden bg-card/50">
-      <Tabs defaultValue="overdue">
-        <div className="px-4 pt-4 border-b border-border/50">
-          <TabsList className="bg-transparent border border-border/50 h-auto p-0 gap-0 w-full sm:w-auto">
-            <TabsTrigger
-              value="overdue"
-              className="rounded-none first:rounded-l-md last:rounded-r-md border-r border-border/50 px-4 py-2 data-[state=active]:bg-red-500/10 data-[state=active]:text-red-400"
-            >
-              <TabLabel
-                icon={<AlertCircle className="w-3.5 h-3.5" />}
-                label="Overdue"
-                count={overdueRecords.length}
-                total={overdueTotal}
-                colorClass="text-red-400"
-              />
-            </TabsTrigger>
-            <TabsTrigger
-              value="upcoming"
-              className="rounded-none border-r border-border/50 px-4 py-2 data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-400"
-            >
-              <TabLabel
-                icon={<Clock className="w-3.5 h-3.5" />}
-                label="Upcoming"
-                count={upcomingRecords.length}
-                total={upcomingTotal}
-                colorClass="text-yellow-400"
-              />
-            </TabsTrigger>
-            <TabsTrigger
-              value="paid"
-              className="rounded-none border-r border-border/50 px-4 py-2 data-[state=active]:bg-green-500/10 data-[state=active]:text-green-400"
-            >
-              <TabLabel
-                icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                label="Paid"
-                count={paidRecords.length}
-                total={paidTotal}
-                colorClass="text-green-400"
-              />
-            </TabsTrigger>
-            <TabsTrigger
-              value="all"
-              className="rounded-none last:rounded-r-md px-4 py-2"
-            >
-              <TabLabel
-                icon={<List className="w-3.5 h-3.5" />}
-                label="All"
-                count={allCount}
-                total={overdueTotal + upcomingTotal + paidTotal}
-              />
-            </TabsTrigger>
-          </TabsList>
-        </div>
+    <>
+      <BillingRecordDetailSheet
+        record={selectedRecord}
+        open={!!selectedRecord}
+        onClose={() => setSelectedRecord(null)}
+      />
 
-        <TabsContent value="overdue" className="m-0">
-          <OverdueRows records={overdueRecords} />
-        </TabsContent>
-        <TabsContent value="upcoming" className="m-0">
-          <UpcomingRows records={upcomingRecords} />
-        </TabsContent>
-        <TabsContent value="paid" className="m-0">
-          <PaidRows records={paidRecords} selectedMonth={selectedMonth} />
-        </TabsContent>
-        <TabsContent value="all" className="m-0">
-          <AllRows overdue={overdueRecords} upcoming={upcomingRecords} paid={paidRecords} selectedMonth={selectedMonth} />
-        </TabsContent>
-      </Tabs>
-    </div>
+      <div className="rounded-xl border border-border/50 overflow-hidden bg-card/50">
+        <Tabs defaultValue="overdue">
+          <div className="px-4 pt-4 border-b border-border/50">
+            <TabsList className="bg-transparent border border-border/50 h-auto p-0 gap-0 w-full sm:w-auto">
+              <TabsTrigger
+                value="overdue"
+                className="rounded-none first:rounded-l-md last:rounded-r-md border-r border-border/50 px-4 py-2 data-[state=active]:bg-red-500/10 data-[state=active]:text-red-400"
+              >
+                <TabLabel
+                  icon={<AlertCircle className="w-3.5 h-3.5" />}
+                  label="Overdue"
+                  count={overdueRecords.length}
+                  total={overdueTotal}
+                  colorClass="text-red-400"
+                />
+              </TabsTrigger>
+              <TabsTrigger
+                value="upcoming"
+                className="rounded-none border-r border-border/50 px-4 py-2 data-[state=active]:bg-yellow-500/10 data-[state=active]:text-yellow-400"
+              >
+                <TabLabel
+                  icon={<Clock className="w-3.5 h-3.5" />}
+                  label="Upcoming"
+                  count={upcomingRecords.length}
+                  total={upcomingTotal}
+                  colorClass="text-yellow-400"
+                />
+              </TabsTrigger>
+              <TabsTrigger
+                value="paid"
+                className="rounded-none border-r border-border/50 px-4 py-2 data-[state=active]:bg-green-500/10 data-[state=active]:text-green-400"
+              >
+                <TabLabel
+                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  label="Paid"
+                  count={paidRecords.length}
+                  total={paidTotal}
+                  colorClass="text-green-400"
+                />
+              </TabsTrigger>
+              <TabsTrigger
+                value="all"
+                className="rounded-none last:rounded-r-md px-4 py-2"
+              >
+                <TabLabel
+                  icon={<List className="w-3.5 h-3.5" />}
+                  label="All"
+                  count={allCount}
+                  total={overdueTotal + upcomingTotal + paidTotal}
+                />
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="overdue" className="m-0">
+            <OverdueRows records={overdueRecords} onSelect={setSelectedRecord} onArchive={handleArchive} />
+          </TabsContent>
+          <TabsContent value="upcoming" className="m-0">
+            <UpcomingRows records={upcomingRecords} onSelect={setSelectedRecord} />
+          </TabsContent>
+          <TabsContent value="paid" className="m-0">
+            <PaidRows records={paidRecords} selectedMonth={selectedMonth} onSelect={setSelectedRecord} />
+          </TabsContent>
+          <TabsContent value="all" className="m-0">
+            <AllRows
+              overdue={overdueRecords}
+              upcoming={upcomingRecords}
+              paid={paidRecords}
+              selectedMonth={selectedMonth}
+              onSelect={setSelectedRecord}
+              onArchive={handleArchive}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </>
   );
 }
