@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, ChevronDown } from 'lucide-react';
+import { Plus, Loader2, ChevronDown, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -63,12 +63,16 @@ export function CampaignPanel({
 
       if (!client) throw new Error('Client not found');
 
+      // Use primary campaign's states if available, otherwise fall back to client states
+      const primaryCampaign = campaigns.find(c => c.is_primary);
+      const statesToUse = primaryCampaign?.states || client.states;
+
       const { data, error } = await supabase.functions.invoke('create-google-ads-campaign', {
         body: {
           clientId,
           agentName: client.name,
           agentId: client.agent_id,
-          states: client.states,
+          states: statesToUse,
           budget: client.ad_spend_budget,
           landingPage: client.lander_link,
           templateType,
@@ -156,7 +160,15 @@ export function CampaignPanel({
           <CardContent className="py-3 px-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-foreground">{campaign.label || 'Campaign'}</span>
+                <a
+                  href={`https://ads.google.com/aw/campaigns?campaignId=${campaign.google_campaign_id}&ocid=${campaign.google_customer_id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground hover:text-primary hover:underline inline-flex items-center gap-1 transition-colors"
+                >
+                  {campaign.label || 'Campaign'}
+                  <ExternalLink className="h-3 w-3 opacity-50" />
+                </a>
                 {campaign.is_primary && (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0">Primary</Badge>
                 )}
