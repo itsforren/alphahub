@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { DollarSign, RefreshCw, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,10 +28,18 @@ export default function BillingDashboard() {
 
   // Month selector — defaults to current month
   const [selectedMonthDate, setSelectedMonthDate] = useState<Date>(startOfMonth(new Date()));
-  const now = new Date();
-  const isCurrentMonth = format(selectedMonthDate, 'yyyy-MM') === format(now, 'yyyy-MM');
-  const startIso = selectedMonthDate.toISOString();
-  const endIso = isCurrentMonth ? now.toISOString() : endOfMonth(selectedMonthDate).toISOString();
+
+  // Memoize date window — prevents query keys from changing every millisecond
+  // (new Date() in render would produce a different string each ms, causing infinite re-fetches)
+  const { startIso, endIso, isCurrentMonth } = useMemo(() => {
+    const now = new Date();
+    const isCurrent = format(selectedMonthDate, 'yyyy-MM') === format(now, 'yyyy-MM');
+    return {
+      startIso: selectedMonthDate.toISOString(),
+      endIso: isCurrent ? now.toISOString() : endOfMonth(selectedMonthDate).toISOString(),
+      isCurrentMonth: isCurrent,
+    };
+  }, [selectedMonthDate]);
 
   const { data: revenueIntel, isLoading: intelLoading } = useRevenueIntelligence(startIso, endIso);
   const { data: overdueRecords = [], isLoading: overdueLoading } = useOverdueBillingRecords();
@@ -75,11 +83,11 @@ export default function BillingDashboard() {
     }
   };
 
-  // Build last 12 months for picker
-  const monthOptions = Array.from({ length: 12 }, (_, i) => {
-    const d = subMonths(startOfMonth(now), i);
+  // Build last 12 months for picker (stable — doesn't depend on now)
+  const monthOptions = useMemo(() => Array.from({ length: 12 }, (_, i) => {
+    const d = subMonths(startOfMonth(new Date()), i);
     return { value: format(d, 'yyyy-MM'), label: format(d, 'MMMM yyyy'), isCurrent: i === 0 };
-  });
+  }), []);
 
   return (
     <div className="p-6 space-y-6">
