@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, CreditCard, ChevronRight } from 'lucide-react';
+import { AlertTriangle, CreditCard, ChevronRight, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useRetryPayment } from '@/hooks/useBillingDashboard';
 import type { FailedPayment } from '@/hooks/useBillingDashboard';
+import { toast } from 'sonner';
 
 interface FailedPaymentsWidgetProps {
   payments: FailedPayment[];
@@ -36,6 +39,25 @@ function getErrorLabel(error: string | null): string {
 
 export function FailedPaymentsWidget({ payments, isLoading }: FailedPaymentsWidgetProps) {
   const navigate = useNavigate();
+  const retryMutation = useRetryPayment();
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  const handleRetry = async (payment: FailedPayment, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRetryingId(payment.id);
+    try {
+      const result = await retryMutation.mutateAsync(payment.id);
+      if (result?.auto_charged) {
+        toast.success(`$${payment.amount.toFixed(2)} charged successfully for ${payment.clientName}`);
+      } else {
+        toast.info(`Payment requires action for ${payment.clientName}`, { description: 'A payment link has been sent' });
+      }
+    } catch (err: any) {
+      toast.error(`Retry failed: ${err?.message || 'Unknown error'}`);
+    } finally {
+      setRetryingId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -108,16 +130,16 @@ export function FailedPaymentsWidget({ payments, isLoading }: FailedPaymentsWidg
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <div className="text-right">
                 <p className="font-semibold text-foreground">
                   ${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </p>
-                <Badge 
-                  variant="outline" 
+                <Badge
+                  variant="outline"
                   className={cn(
                     'text-xs',
-                    payment.billingType === 'management' 
+                    payment.billingType === 'management'
                       ? 'bg-purple-500/10 text-purple-400 border-purple-500/30'
                       : 'bg-blue-500/10 text-blue-400 border-blue-500/30'
                   )}
@@ -125,6 +147,16 @@ export function FailedPaymentsWidget({ payments, isLoading }: FailedPaymentsWidg
                   {payment.billingType === 'management' ? 'Mgmt' : 'Ad Spend'}
                 </Badge>
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs gap-1 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                disabled={retryingId === payment.id}
+                onClick={(e) => handleRetry(payment, e)}
+              >
+                <RefreshCw className={cn('w-3 h-3', retryingId === payment.id && 'animate-spin')} />
+                {retryingId === payment.id ? '...' : 'Retry'}
+              </Button>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
             </div>
           </div>

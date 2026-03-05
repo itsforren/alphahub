@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { subDays, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
 
@@ -145,11 +145,21 @@ export function useBillingDashboardStats() {
         }
       }
 
-      // Overdue count (all time, not just 30 days)
-      const { count: overdueCount } = await supabase
+      // Overdue count: explicit overdue status + pending records that are past due
+      const { count: overdueStatusCount } = await supabase
         .from('billing_records')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'overdue');
+        .eq('status', 'overdue')
+        .is('archived_at', null);
+
+      const { count: pastDuePendingCount } = await supabase
+        .from('billing_records')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending')
+        .lt('due_date', now.toISOString().split('T')[0])
+        .is('archived_at', null);
+
+      const overdueCount = (overdueStatusCount || 0) + (pastDuePendingCount || 0);
 
       // Active disputes count
       const { count: disputesCount } = await supabase
@@ -157,14 +167,25 @@ export function useBillingDashboardStats() {
         .select('*', { count: 'exact', head: true })
         .in('status', ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review']);
 
-      // Failed payments with errors (all time)
+      // Failed payments with errors (not archived)
       const { count: failedCount } = await supabase
         .from('billing_records')
         .select('*', { count: 'exact', head: true })
-        .not('last_charge_error', 'is', null);
+        .not('last_charge_error', 'is', null)
+        .not('status', 'eq', 'paid')
+        .is('archived_at', null);
+
+      // Low wallet count: auto-billing wallets with a recent charge failure (last 7 days)
+      const sevenDaysAgo = subDays(now, 7).toISOString();
+      const { count: lowWalletCount } = await supabase
+        .from('client_wallets')
+        .select('*', { count: 'exact', head: true })
+        .eq('auto_billing_enabled', true)
+        .not('last_charge_failed_at', 'is', null)
+        .gte('last_charge_failed_at', sevenDaysAgo);
 
       const totalFailed = failedCount || 0;
-      const clientsNeedingAttention = (overdueCount || 0) + totalFailed + (disputesCount || 0);
+      const clientsNeedingAttention = overdueCount + totalFailed + (disputesCount || 0) + (lowWalletCount || 0);
 
       return {
         managementFeesCollected,
@@ -174,9 +195,9 @@ export function useBillingDashboardStats() {
         adSpendExpected,
         adSpendPending,
         clientsNeedingAttention,
-        overdueCount: overdueCount || 0,
+        overdueCount,
         failedPaymentsCount: totalFailed,
-        lowWalletCount: 0,
+        lowWalletCount: lowWalletCount || 0,
         disputesCount: disputesCount || 0,
       };
     },
@@ -326,5 +347,43 @@ export function useActiveDisputes() {
       }));
     },
     refetchInterval: 60000,
+  });
+}
+
+// Retry a failed billing record — calls create-stripe-invoice again
+export function useRetryPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (billingRecordId: string) => {
+      const { data, error } = await supabase.functions.invoke('create-stripe-invoice', {
+        body: { billing_record_id: billingRecordId },
+      });
+      if (error) throw new Error(error.message || 'Retry failed');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
+    },
+  });
+}
+
+// Global Stripe sync — reconciles all pending/overdue records against Stripe
+export function useSyncAllStripe() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('sync-stripe-charges', {
+        body: {},
+      });
+      if (error) throw new Error(error.message || 'Sync failed');
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-failed'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
+    },
   });
 }
