@@ -31,12 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. App displays a blur overlay when backgrounded and requires biometric re-authentication on return
   4. Session persists across app kills and relaunches without requiring re-login
   5. All screens use the dark-first design system with consistent color tokens, typography, and haptic feedback
-**Plans**: TBD
+**Plans**: 3 plans in 3 waves (sequential)
 
 Plans:
-- [ ] 01-01: Xcode project setup, SPM dependencies, folder structure, Apple Developer account config
-- [ ] 01-02: Supabase auth integration, Keychain session storage, biometric unlock, sign out
-- [ ] 01-03: Design system tokens, shared components, tab navigation shell, PrivacyInfo.xcprivacy
+- [ ] 01-01-PLAN.md — Xcode project skeleton, SPM dependencies (supabase-swift, KeychainAccess, Kingfisher), folder structure, Info.plist
+- [ ] 01-02-PLAN.md — Supabase auth (email/password), Keychain session persistence, Face ID biometric gating, login screen with particle background, password reset (OTP), privacy blur, sign out
+- [ ] 01-03-PLAN.md — Dark design system (color tokens, Inter font, haptics, glass effects), floating pill tab bar, role-based tab navigation (client 5-tab / admin 4-tab), PrivacyInfo.xcprivacy
 
 ### Phase 2: Core Value
 **Goal**: Client can check their wallet balance, view billing history, and see key business metrics -- the daily-use features that justify installing the app
