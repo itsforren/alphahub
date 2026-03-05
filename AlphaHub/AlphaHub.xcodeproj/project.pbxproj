@@ -12,10 +12,14 @@
 		5254E93D2F5A3F94007F35A4 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 5254E93C2F5A3F94007F35A4 /* PostgREST */; };
 		5254E93F2F5A3F94007F35A4 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 5254E93E2F5A3F94007F35A4 /* Realtime */; };
 		5254E9412F5A3F94007F35A4 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 5254E9402F5A3F94007F35A4 /* Storage */; };
+		5254E9432F5A3F94007F35A4 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 5254E9422F5A3F94007F35A4 /* Supabase */; };
 		A10000010000000000000001 /* AlphaHubApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* AlphaHubApp.swift */; };
 		A10000010000000000000002 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* AppState.swift */; };
 		A10000010000000000000003 /* PlaceholderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* PlaceholderView.swift */; };
 		A10000010000000000000004 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* Assets.xcassets */; };
+		B10000010000000000000001 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000001 /* SupabaseConfig.swift */; };
+		B10000010000000000000002 /* AuthManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000002 /* AuthManager.swift */; };
+		B10000010000000000000003 /* BiometricManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000003 /* BiometricManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,6 +29,9 @@
 		A20000010000000000000004 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A20000010000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000010000000000000099 /* AlphaHub.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AlphaHub.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000010000000000000001 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
+		B20000010000000000000002 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
+		B20000010000000000000003 /* BiometricManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,6 +44,7 @@
 				5254E9392F5A3F94007F35A4 /* Auth in Frameworks */,
 				5254E9412F5A3F94007F35A4 /* Storage in Frameworks */,
 				5254E93F2F5A3F94007F35A4 /* Realtime in Frameworks */,
+				5254E9432F5A3F94007F35A4 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,6 +94,9 @@
 		D10000010000000000000005 /* Auth */ = {
 			isa = PBXGroup;
 			children = (
+				B20000010000000000000001 /* SupabaseConfig.swift */,
+				B20000010000000000000002 /* AuthManager.swift */,
+				B20000010000000000000003 /* BiometricManager.swift */,
 			);
 			path = Auth;
 			sourceTree = "<group>";
@@ -266,6 +277,9 @@
 				A10000010000000000000001 /* AlphaHubApp.swift in Sources */,
 				A10000010000000000000002 /* AppState.swift in Sources */,
 				A10000010000000000000003 /* PlaceholderView.swift in Sources */,
+				B10000010000000000000001 /* SupabaseConfig.swift in Sources */,
+				B10000010000000000000002 /* AuthManager.swift in Sources */,
+				B10000010000000000000003 /* BiometricManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -516,6 +530,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 5254E9372F5A3F94007F35A4 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Storage;
+		};
+		5254E9422F5A3F94007F35A4 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5254E9372F5A3F94007F35A4 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
