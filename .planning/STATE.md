@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2025-03-05)
 ## Current Position
 
 Phase: 1 of 6 (Foundation)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-03-05 -- Roadmap created with 6 phases covering 54 requirements
+Plan: 2 of 3 in current phase
+Status: In progress
+Last activity: 2026-03-05 -- Completed 01-02-PLAN.md (authentication flow)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [##░░░░░░░░] ~11%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 2
+- Average duration: ~16min
+- Total execution time: ~31 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01-foundation | 2/3 | ~31min | ~16min |
 
 **Recent Trend:**
-- Last 5 plans: -
-- Trend: -
+- Last 5 plans: 01-01 (25min), 01-02 (6min)
+- Trend: accelerating
 
 *Updated after each plan completion*
 
@@ -44,13 +44,17 @@ Recent decisions affecting current work:
 
 - Roadmap: iOS 17+ minimum target (required for @Observable macro)
 - Roadmap: Native Swift + SwiftUI, no cross-platform frameworks
-- Roadmap: 3 SPM dependencies only (supabase-swift, Kingfisher, KeychainAccess)
+- Roadmap: supabase-swift only SPM dependency (KeychainAccess and Kingfisher skipped)
 - Roadmap: Realtime WebSocket only for chat; REST + pull-to-refresh for everything else
 - Roadmap: APNs direct (no Firebase/FCM) since iOS-only app
+- 01-01: SPM packages must be added via Xcode UI (Xcode 26 compatibility)
+- 01-02: Added Supabase SPM product for SupabaseClient access
+- 01-02: Used built-in KeychainLocalStorage from supabase-swift Auth module
+- 01-02: Programmatic SpriteKit emitter (no .sks files)
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -61,5 +65,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Roadmap created, ready for Phase 1 planning
+Stopped at: Completed 01-02-PLAN.md (authentication flow)
 Resume file: None
