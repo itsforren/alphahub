@@ -1,7 +1,7 @@
 # Requirements: Alpha Agent iOS App
 
 **Defined:** 2025-03-05
-**Core Value:** Clients can manage their entire Alpha Hub experience from their phone — wallet, chat, courses, referrals — with real-time sync to the web app.
+**Core Value:** Clients can manage their entire Alpha Hub experience from their phone -- wallet, chat, courses, referrals -- with real-time sync to the web app.
 
 ## v1 Requirements
 
@@ -17,7 +17,7 @@
 ### Dashboard
 
 - [ ] **DASH-01**: Wallet balance hero card showing remaining balance, tracked spend, total deposits
-- [ ] **DASH-02**: Key metrics cards — leads count, cost-per-lead, total ad spend
+- [ ] **DASH-02**: Key metrics cards -- leads count, cost-per-lead, total ad spend
 - [ ] **DASH-03**: Daily ad spend sparkline chart (last 30 days, mobile-optimized)
 - [ ] **DASH-04**: Upcoming payment indicator with due date and amount
 - [ ] **DASH-05**: Quick action navigation buttons (Chat, Courses, Billing, Referrals)
@@ -32,15 +32,15 @@
 ### Billing & Wallet
 
 - [ ] **BILL-01**: Transaction list grouped by month (scrollable)
-- [ ] **BILL-02**: Filter by type — All / Ad Spend / Management (segmented control)
+- [ ] **BILL-02**: Filter by type -- All / Ad Spend / Management (segmented control)
 - [ ] **BILL-03**: Status badges on each record (paid, pending, overdue)
-- [ ] **BILL-04**: Payment method cards displayed (view-only — card brand, last 4, expiry)
+- [ ] **BILL-04**: Payment method cards displayed (view-only -- card brand, last 4, expiry)
 - [ ] **BILL-05**: Transaction detail bottom sheet on tap
 - [ ] **BILL-06**: "Manage payment methods on alphaagent.io" link
 
 ### Real-Time Chat
 
-- [ ] **CHAT-01**: Message bubbles — client (blue, right), admin (gray, left) with avatars
+- [ ] **CHAT-01**: Message bubbles -- client (blue, right), admin (gray, left) with avatars
 - [ ] **CHAT-02**: Real-time message delivery via Supabase Realtime
 - [ ] **CHAT-03**: Unread message badge on Chat tab
 - [ ] **CHAT-04**: Business hours indicator banner
@@ -51,10 +51,10 @@
 
 ### Courses & Learning
 
-- [ ] **CRSE-01**: Course browser — browse and enroll in available courses
+- [ ] **CRSE-01**: Course browser -- browse and enroll in available courses
 - [ ] **CRSE-02**: Native video player (AVKit) for lessons
 - [ ] **CRSE-03**: Picture-in-Picture video playback
-- [ ] **CRSE-04**: Progress tracking — resume exactly where client left off
+- [ ] **CRSE-04**: Progress tracking -- resume exactly where client left off
 - [ ] **CRSE-05**: Chapter/module navigation sidebar or bottom sheet
 - [ ] **CRSE-06**: Lesson completion marking (manual + auto at 90% progress)
 - [ ] **CRSE-07**: Downloadable lesson resources (PDFs, attachments)
@@ -75,7 +75,7 @@
 
 ### Referrals
 
-- [ ] **REFR-01**: Referral dashboard — referred clients, status (pending/active), reward amount
+- [ ] **REFR-01**: Referral dashboard -- referred clients, status (pending/active), reward amount
 - [ ] **REFR-02**: Native iOS share sheet for referral link
 - [ ] **REFR-03**: Copy referral link to clipboard with haptic feedback
 - [ ] **REFR-04**: Pre-populated share text template
@@ -92,20 +92,20 @@
 ### Profile & Settings
 
 - [ ] **PROF-01**: View and edit profile (name, phone, email, photo)
-- [ ] **PROF-02**: Settings — Face ID toggle, notification preferences, theme (System/Dark/Light)
+- [ ] **PROF-02**: Settings -- Face ID toggle, notification preferences, theme (System/Dark/Light)
 - [ ] **PROF-03**: Sign out button
 
 ### Design System
 
-- [ ] **DSGN-01**: Dark-first design system — near-black backgrounds, elevated surfaces, bold accent colors
-- [ ] **DSGN-02**: Haptic feedback throughout — taps, pull-to-refresh, success/error states
+- [ ] **DSGN-01**: Dark-first design system -- near-black backgrounds, elevated surfaces, bold accent colors
+- [ ] **DSGN-02**: Haptic feedback throughout -- taps, pull-to-refresh, success/error states
 - [ ] **DSGN-03**: OLED-optimized dark theme (true black where appropriate)
 - [ ] **DSGN-04**: Consistent typography, spacing, and color tokens
 
 ### Widgets
 
-- [ ] **WDGT-01**: Home screen widget — wallet balance (small + medium sizes)
-- [ ] **WDGT-02**: Home screen widget — unread messages count with last message preview
+- [ ] **WDGT-01**: Home screen widget -- wallet balance (small + medium sizes)
+- [ ] **WDGT-02**: Home screen widget -- unread messages count with last message preview
 
 ### App Store
 
@@ -122,7 +122,7 @@
 
 - **ADMN-01**: Client overview list with status and key metrics
 - **ADMN-02**: Quick client stats (wallet balance, lead count)
-- **ADMN-03**: Chat inbox — respond to client messages
+- **ADMN-03**: Chat inbox -- respond to client messages
 - **ADMN-04**: Alert notifications for system issues
 
 ### Payment Management
@@ -160,16 +160,83 @@
 
 ## Traceability
 
-(Empty — populated during roadmap creation)
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| AUTH-04 | Phase 1 | Pending |
+| AUTH-05 | Phase 1 | Pending |
+| AUTH-06 | Phase 1 | Pending |
+| DASH-01 | Phase 2 | Pending |
+| DASH-02 | Phase 2 | Pending |
+| DASH-03 | Phase 2 | Pending |
+| DASH-04 | Phase 2 | Pending |
+| DASH-05 | Phase 2 | Pending |
+| DASH-06 | Phase 2 | Pending |
+| DASH-07 | Phase 2 | Pending |
+| LEAD-01 | Phase 5 | Pending |
+| LEAD-02 | Phase 5 | Pending |
+| BILL-01 | Phase 2 | Pending |
+| BILL-02 | Phase 2 | Pending |
+| BILL-03 | Phase 2 | Pending |
+| BILL-04 | Phase 2 | Pending |
+| BILL-05 | Phase 2 | Pending |
+| BILL-06 | Phase 2 | Pending |
+| CHAT-01 | Phase 3 | Pending |
+| CHAT-02 | Phase 3 | Pending |
+| CHAT-03 | Phase 3 | Pending |
+| CHAT-04 | Phase 3 | Pending |
+| CHAT-05 | Phase 3 | Pending |
+| CHAT-06 | Phase 3 | Pending |
+| CHAT-07 | Phase 3 | Pending |
+| CHAT-08 | Phase 3 | Pending |
+| CRSE-01 | Phase 4 | Pending |
+| CRSE-02 | Phase 4 | Pending |
+| CRSE-03 | Phase 4 | Pending |
+| CRSE-04 | Phase 4 | Pending |
+| CRSE-05 | Phase 4 | Pending |
+| CRSE-06 | Phase 4 | Pending |
+| CRSE-07 | Phase 4 | Pending |
+| ONBD-01 | Phase 4 | Pending |
+| ONBD-02 | Phase 4 | Pending |
+| ONBD-03 | Phase 4 | Pending |
+| AGMT-01 | Phase 4 | Pending |
+| AGMT-02 | Phase 4 | Pending |
+| AGMT-03 | Phase 4 | Pending |
+| AGMT-04 | Phase 4 | Pending |
+| AGMT-05 | Phase 4 | Pending |
+| REFR-01 | Phase 5 | Pending |
+| REFR-02 | Phase 5 | Pending |
+| REFR-03 | Phase 5 | Pending |
+| REFR-04 | Phase 5 | Pending |
+| PUSH-01 | Phase 3 | Pending |
+| PUSH-02 | Phase 3 | Pending |
+| PUSH-03 | Phase 3 | Pending |
+| PUSH-04 | Phase 3 | Pending |
+| PUSH-05 | Phase 3 | Pending |
+| PUSH-06 | Phase 3 | Pending |
+| PROF-01 | Phase 5 | Pending |
+| PROF-02 | Phase 5 | Pending |
+| PROF-03 | Phase 5 | Pending |
+| DSGN-01 | Phase 1 | Pending |
+| DSGN-02 | Phase 1 | Pending |
+| DSGN-03 | Phase 1 | Pending |
+| DSGN-04 | Phase 1 | Pending |
+| WDGT-01 | Phase 5 | Pending |
+| WDGT-02 | Phase 5 | Pending |
+| STOR-01 | Phase 1 | Pending |
+| STOR-02 | Phase 6 | Pending |
+| STOR-03 | Phase 6 | Pending |
+| STOR-04 | Phase 6 | Pending |
+| STOR-05 | Phase 6 | Pending |
+| STOR-06 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 54 total
-- Mapped to phases: 0
-- Unmapped: 54
+- v1 requirements: 69 total
+- Mapped to phases: 69
+- Unmapped: 0
 
 ---
 *Requirements defined: 2025-03-05*
-*Last updated: 2025-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation (traceability populated)*
