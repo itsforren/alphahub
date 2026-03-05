@@ -24,6 +24,8 @@ interface RevenueStatCardProps {
   icon: React.ReactNode;
   variant: 'success' | 'primary';
   isLoading?: boolean;
+  expectedLabel?: string;
+  pendingLabel?: string;
 }
 
 interface AttentionStatCardProps {
@@ -32,18 +34,21 @@ interface AttentionStatCardProps {
   overdueCount: number;
   failedCount: number;
   disputesCount: number;
+  lowWalletCount?: number;
   icon: React.ReactNode;
   isLoading?: boolean;
 }
 
-function RevenueStatCard({ 
-  title, 
-  collected, 
-  expected, 
-  pendingCount, 
-  icon, 
+function RevenueStatCard({
+  title,
+  collected,
+  expected,
+  pendingCount,
+  icon,
   variant,
-  isLoading 
+  isLoading,
+  expectedLabel = 'expected',
+  pendingLabel,
 }: RevenueStatCardProps) {
   const variantStyles = {
     success: 'from-green-500/20 to-emerald-500/20 border-green-500/30',
@@ -89,18 +94,18 @@ function RevenueStatCard({
             <span className="text-sm text-muted-foreground ml-2">collected</span>
           </div>
           
-          {/* Expected - Prominent secondary */}
+          {/* Expected / Pipeline - Prominent secondary */}
           <div className="flex items-center gap-2">
             <ArrowUp className={cn('w-4 h-4', expectedGlow[variant])} />
             <span className={cn('text-xl font-semibold', expectedGlow[variant])}>
               <AnimatedNumber value={expected} format="currency" />
             </span>
-            <span className="text-sm text-muted-foreground">expected</span>
+            <span className="text-sm text-muted-foreground">{expectedLabel}</span>
           </div>
-          
+
           {/* Pending count - Tertiary */}
           <p className="text-xs text-muted-foreground">
-            {pendingCount} pending invoice{pendingCount !== 1 ? 's' : ''}
+            {pendingLabel ?? `${pendingCount} pending invoice${pendingCount !== 1 ? 's' : ''}`}
           </p>
         </div>
       )}
@@ -108,14 +113,15 @@ function RevenueStatCard({
   );
 }
 
-function AttentionStatCard({ 
-  title, 
-  value, 
-  overdueCount, 
-  failedCount, 
-  disputesCount, 
+function AttentionStatCard({
+  title,
+  value,
+  overdueCount,
+  failedCount,
+  disputesCount,
+  lowWalletCount = 0,
   icon,
-  isLoading 
+  isLoading,
 }: AttentionStatCardProps) {
   const hasIssues = value > 0;
   
@@ -164,6 +170,9 @@ function AttentionStatCard({
             <span className={disputesCount > 0 ? 'text-yellow-400' : ''}>
               {disputesCount} disputes
             </span>
+            {lowWalletCount > 0 && (
+              <span className="text-amber-400">{lowWalletCount} low wallet</span>
+            )}
           </div>
         </div>
       )}
@@ -202,6 +211,8 @@ export function BillingStatsCards({
         pendingCount={adSpendPending}
         icon={<TrendingUp className="w-5 h-5" />}
         variant="primary"
+        expectedLabel="wallet pipeline"
+        pendingLabel={`${adSpendPending} auto-billing client${adSpendPending !== 1 ? 's' : ''}`}
         isLoading={isLoading}
       />
       <AttentionStatCard

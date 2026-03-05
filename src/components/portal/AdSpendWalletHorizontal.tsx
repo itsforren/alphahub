@@ -9,11 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, AlertTriangle, Settings, Loader2, Calendar, TrendingDown, DollarSign } from 'lucide-react';
+import { Wallet, AlertTriangle, Settings, Loader2, Calendar, TrendingDown, DollarSign, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { format, differenceInDays, parseISO } from 'date-fns';
 
 interface AdSpendWalletHorizontalProps {
   clientId: string;
@@ -45,9 +45,30 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const lowThreshold = wallet?.low_balance_threshold ?? 150;
   const isLowBalance = remainingBalance <= lowThreshold;
   const isNegative = remainingBalance < 0;
-  const balancePercent = totalDeposits > 0 
-    ? Math.max(0, Math.min(100, (remainingBalance / totalDeposits) * 100)) 
+  const balancePercent = totalDeposits > 0
+    ? Math.max(0, Math.min(100, (remainingBalance / totalDeposits) * 100))
     : 0;
+
+  // Recharge cycle calculations
+  // cycleAmount = what gets charged each time (auto_charge_amount, else threshold itself)
+  const cycleAmount = wallet?.auto_charge_amount || wallet?.low_balance_threshold || 0;
+  const lastRechargeAt = wallet?.last_auto_charge_at ?? null;
+  // Use last recharge date or tracking start — whichever is more recent
+  const cycleSinceDate = lastRechargeAt || trackingStartDate;
+  const daysSinceCycle = cycleSinceDate
+    ? differenceInDays(new Date(), parseISO(cycleSinceDate))
+    : null;
+  // How much of current recharge has been consumed
+  const cycleUsed = cycleAmount > 0
+    ? Math.max(0, Math.min(cycleAmount, cycleAmount - remainingBalance))
+    : 0;
+  const cyclePercent = cycleAmount > 0 ? Math.min(100, (cycleUsed / cycleAmount) * 100) : 0;
+  const dailyBurnRate = (daysSinceCycle && daysSinceCycle > 1 && cycleUsed > 0)
+    ? cycleUsed / daysSinceCycle
+    : null;
+  const daysUntilRecharge = (dailyBurnRate && dailyBurnRate > 0 && remainingBalance > 0)
+    ? Math.floor(remainingBalance / dailyBurnRate)
+    : null;
 
   const handleSaveSettings = async () => {
     try {
@@ -301,6 +322,44 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             </div>
           </div>
         </div>
+        {/* Recharge Cycle Row */}
+        {cycleAmount > 0 && (
+          <div className="px-6 py-3 border-t border-white/5 bg-muted/20">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Zap className="w-3 h-3 text-cyan-400" />
+                Recharge cycle · ${cycleAmount.toLocaleString()} threshold
+              </span>
+              <span className="text-xs text-muted-foreground">{cyclePercent.toFixed(0)}% consumed</span>
+            </div>
+            <Progress
+              value={cyclePercent}
+              className={cn(
+                'h-1.5',
+                cyclePercent >= 90 ? '[&>div]:bg-red-500' : cyclePercent >= 70 ? '[&>div]:bg-orange-500' : '[&>div]:bg-cyan-500'
+              )}
+            />
+            <div className="flex items-center justify-between mt-1.5 text-xs text-muted-foreground">
+              <span>
+                ${cycleUsed.toLocaleString('en-US', { maximumFractionDigits: 0 })} used ·{' '}
+                ${Math.max(0, remainingBalance).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining
+              </span>
+              <div className="flex items-center gap-3">
+                {dailyBurnRate && (
+                  <span>~${dailyBurnRate.toFixed(0)}/day</span>
+                )}
+                {daysUntilRecharge !== null && (
+                  <span className={cn(daysUntilRecharge <= 3 ? 'text-orange-400 font-medium' : '')}>
+                    {daysUntilRecharge === 0 ? 'Recharge due!' : `~${daysUntilRecharge}d to recharge`}
+                  </span>
+                )}
+                {lastRechargeAt && (
+                  <span>Last: {format(parseISO(lastRechargeAt), 'MMM d')}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* Settings Modal */}

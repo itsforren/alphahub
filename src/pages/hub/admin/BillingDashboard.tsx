@@ -6,6 +6,8 @@ import { BillingStatsCards } from '@/components/admin/BillingStatsCards';
 import { BillingTimelineTable } from '@/components/admin/BillingTimelineTable';
 import { FailedPaymentsWidget } from '@/components/admin/FailedPaymentsWidget';
 import { DisputesWidget } from '@/components/admin/DisputesWidget';
+import { WalletPipelineWidget } from '@/components/admin/WalletPipelineWidget';
+import { RevenueIntelligenceCard } from '@/components/admin/RevenueIntelligenceCard';
 import { toast } from 'sonner';
 import {
   useBillingDashboardStats,
@@ -13,6 +15,8 @@ import {
   useFailedPayments,
   useActiveDisputes,
   useSyncAllStripe,
+  useWalletPipeline,
+  useRevenueIntelligence,
 } from '@/hooks/useBillingDashboard';
 
 export default function BillingDashboard() {
@@ -24,6 +28,8 @@ export default function BillingDashboard() {
   const { data: upcomingPayments = [], isLoading: paymentsLoading } = useUpcomingPayments();
   const { data: failedPayments = [], isLoading: failedLoading } = useFailedPayments();
   const { data: disputes = [], isLoading: disputesLoading } = useActiveDisputes();
+  const { data: walletPipeline = [], isLoading: pipelineLoading } = useWalletPipeline();
+  const { data: revenueIntel, isLoading: intelLoading } = useRevenueIntelligence();
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -33,6 +39,8 @@ export default function BillingDashboard() {
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-upcoming'] }),
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-failed'] }),
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-disputes'] }),
+        queryClient.refetchQueries({ queryKey: ['wallet-pipeline'] }),
+        queryClient.refetchQueries({ queryKey: ['revenue-intelligence'] }),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -87,6 +95,9 @@ export default function BillingDashboard() {
         </div>
       </div>
 
+      {/* Revenue Intelligence Banner */}
+      <RevenueIntelligenceCard data={revenueIntel} isLoading={intelLoading} />
+
       {/* The Big Three Stats */}
       <BillingStatsCards
         managementFeesCollected={stats?.managementFeesCollected ?? 0}
@@ -103,10 +114,13 @@ export default function BillingDashboard() {
       />
 
       {/* Timeline Table */}
-      <BillingTimelineTable 
-        payments={upcomingPayments} 
-        isLoading={paymentsLoading} 
+      <BillingTimelineTable
+        payments={upcomingPayments}
+        isLoading={paymentsLoading}
       />
+
+      {/* Wallet Pipeline */}
+      <WalletPipelineWidget items={walletPipeline} isLoading={pipelineLoading} />
 
       {/* Problem Widgets */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

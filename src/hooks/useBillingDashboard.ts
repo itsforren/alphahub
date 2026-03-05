@@ -1,19 +1,51 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { subDays, addDays, differenceInDays, parseISO, isValid } from 'date-fns';
+import { subDays, addDays, differenceInDays, parseISO, isValid, format, getDaysInMonth, startOfMonth, subMonths } from 'date-fns';
 
 export interface BillingDashboardStats {
   managementFeesCollected: number;
   managementFeesExpected: number;
   managementFeesPending: number;
   adSpendCollected: number;
-  adSpendExpected: number;
-  adSpendPending: number;
+  adSpendExpected: number;    // Sum of wallet recharge amounts for auto-billing clients
+  adSpendPending: number;     // Count of auto-billing clients
   clientsNeedingAttention: number;
   overdueCount: number;
   failedPaymentsCount: number;
   lowWalletCount: number;
   disputesCount: number;
+}
+
+export interface WalletPipelineItem {
+  clientId: string;
+  clientName: string;
+  threshold: number;
+  autoChargeAmount: number | null;
+  autoBillingEnabled: boolean;
+  lastAutoChargeAt: string | null;
+  lastChargeFailedAt: string | null;
+}
+
+export interface RevenueIntelligence {
+  // Month-to-date actuals
+  mtdAdSpend: number;
+  mtdManagementFees: number;
+  // Last month actuals (for comparison)
+  lastMonthAdSpend: number;
+  lastMonthManagementFees: number;
+  // Monthly ceiling from wallet thresholds (structural max per month)
+  monthlyAdSpendCeiling: number;
+  // Projected management fees = ceiling × (performancePct / 100)
+  projectedManagementFees: number;
+  // MTD run-rate projection = (MTD / days_elapsed) × days_in_month
+  runRateAdSpend: number;
+  runRateManagementFees: number;
+  // Settings
+  performancePct: number;
+  autoClientCount: number;
+  currentMonth: string; // e.g. "March 2026"
+  daysElapsed: number;
+  daysInMonth: number;
 }
 
 export interface UpcomingPayment {
@@ -92,16 +124,16 @@ export function useBillingDashboardStats() {
     queryKey: ['billing-dashboard-stats'],
     queryFn: async (): Promise<BillingDashboardStats> => {
       const now = new Date();
-      const thirtyDaysAgo = subDays(now, 30).toISOString();
+      const mtdStart = startOfMonth(now).toISOString(); // First of current month
       const thirtyDaysAhead = addDays(now, 30).toISOString();
       const nowIso = now.toISOString();
 
-      // Collected in the last 30 days (paid_at within window)
+      // Collected month-to-date (paid_at since start of current month)
       const { data: collectedRecords, error: collectedError } = await supabase
         .from('billing_records')
         .select('billing_type, amount')
         .eq('status', 'paid')
-        .gte('paid_at', thirtyDaysAgo)
+        .gte('paid_at', mtdStart)
         .lte('paid_at', nowIso);
 
       if (collectedError) throw collectedError;
@@ -119,9 +151,6 @@ export function useBillingDashboardStats() {
       let managementFeesExpected = 0;
       let managementFeesPending = 0;
       let adSpendCollected = 0;
-      let adSpendExpected = 0;
-      let adSpendPending = 0;
-      let failedPaymentsCount = 0;
 
       for (const record of collectedRecords || []) {
         if (record.billing_type === 'management') {
@@ -136,14 +165,22 @@ export function useBillingDashboardStats() {
         if (record.billing_type === 'management') {
           managementFeesExpected += amount;
           managementFeesPending += 1;
-        } else if (record.billing_type === 'ad_spend') {
-          adSpendExpected += amount;
-          adSpendPending += 1;
         }
-        if (record.last_charge_error || (record.charge_attempts && record.charge_attempts > 1)) {
-          failedPaymentsCount += 1;
-        }
+        // Ad spend pending records are not meaningful (charge-first flow — records only
+        // exist after charge fires). Pipeline is calculated from wallet thresholds below.
       }
+
+      // Ad spend pipeline: sum of recharge amounts for all auto-billing clients.
+      // This is the true "expected" ad spend revenue — what will come in as clients spend down.
+      const { data: autoWallets } = await supabase
+        .from('client_wallets')
+        .select('low_balance_threshold, auto_charge_amount, auto_billing_enabled')
+        .eq('auto_billing_enabled', true);
+
+      const adSpendExpected = (autoWallets || []).reduce((sum, w) => {
+        return sum + (w.auto_charge_amount || w.low_balance_threshold || 0);
+      }, 0);
+      const adSpendPending = (autoWallets || []).length;
 
       // Overdue count: explicit overdue status + pending records that are past due
       const { count: overdueStatusCount } = await supabase
@@ -366,6 +403,141 @@ export function useRetryPayment() {
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-stats'] });
       queryClient.invalidateQueries({ queryKey: ['billing-dashboard-upcoming'] });
     },
+  });
+}
+
+// Full revenue intelligence — MTD actuals + monthly projections from wallet thresholds
+export function useRevenueIntelligence() {
+  return useQuery({
+    queryKey: ['revenue-intelligence'],
+    queryFn: async (): Promise<RevenueIntelligence> => {
+      const now = new Date();
+      const mtdStart = startOfMonth(now).toISOString();
+      const lastMonthStart = startOfMonth(subMonths(now, 1)).toISOString();
+      const lastMonthEnd = startOfMonth(now).toISOString(); // exclusive upper bound
+      const nowIso = now.toISOString();
+      const daysElapsed = now.getDate(); // 1-31
+      const daysInMonth = getDaysInMonth(now);
+      const currentMonth = format(now, 'MMMM yyyy');
+
+      // MTD billing records
+      const { data: mtdRecords } = await supabase
+        .from('billing_records')
+        .select('billing_type, amount')
+        .eq('status', 'paid')
+        .gte('paid_at', mtdStart)
+        .lte('paid_at', nowIso);
+
+      // Last month billing records (for comparison)
+      const { data: lastMonthRecords } = await supabase
+        .from('billing_records')
+        .select('billing_type, amount')
+        .eq('status', 'paid')
+        .gte('paid_at', lastMonthStart)
+        .lt('paid_at', lastMonthEnd);
+
+      // Auto-billing wallets for ceiling calculation
+      const { data: autoWallets } = await supabase
+        .from('client_wallets')
+        .select('low_balance_threshold, auto_charge_amount, auto_billing_enabled')
+        .eq('auto_billing_enabled', true);
+
+      // Performance percentage from settings
+      const { data: perfSetting } = await supabase
+        .from('onboarding_settings')
+        .select('setting_value')
+        .eq('setting_key', 'performance_percentage')
+        .maybeSingle();
+
+      const performancePct = perfSetting?.setting_value != null
+        ? Number(perfSetting.setting_value)
+        : 0;
+
+      // Calculate MTD actuals
+      let mtdAdSpend = 0;
+      let mtdManagementFees = 0;
+      for (const r of mtdRecords || []) {
+        if (r.billing_type === 'ad_spend') mtdAdSpend += r.amount || 0;
+        if (r.billing_type === 'management') mtdManagementFees += r.amount || 0;
+      }
+
+      // Calculate last month actuals
+      let lastMonthAdSpend = 0;
+      let lastMonthManagementFees = 0;
+      for (const r of lastMonthRecords || []) {
+        if (r.billing_type === 'ad_spend') lastMonthAdSpend += r.amount || 0;
+        if (r.billing_type === 'management') lastMonthManagementFees += r.amount || 0;
+      }
+
+      // Monthly ceiling from wallet thresholds
+      const monthlyAdSpendCeiling = (autoWallets || []).reduce((sum, w) => {
+        return sum + (w.auto_charge_amount || w.low_balance_threshold || 0);
+      }, 0);
+      const autoClientCount = (autoWallets || []).length;
+
+      // Projected management fees = ceiling × (perf% / 100)
+      const projectedManagementFees = performancePct > 0
+        ? monthlyAdSpendCeiling * (performancePct / 100)
+        : 0;
+
+      // MTD run-rate projection (linear extrapolation to end of month)
+      const runRateAdSpend = daysElapsed > 0
+        ? (mtdAdSpend / daysElapsed) * daysInMonth
+        : 0;
+      const runRateManagementFees = daysElapsed > 0
+        ? (mtdManagementFees / daysElapsed) * daysInMonth
+        : 0;
+
+      return {
+        mtdAdSpend,
+        mtdManagementFees,
+        lastMonthAdSpend,
+        lastMonthManagementFees,
+        monthlyAdSpendCeiling,
+        projectedManagementFees,
+        runRateAdSpend,
+        runRateManagementFees,
+        performancePct,
+        autoClientCount,
+        currentMonth,
+        daysElapsed,
+        daysInMonth,
+      };
+    },
+    refetchInterval: 60000,
+  });
+}
+
+// All auto-billing wallets — used to show the ad spend revenue pipeline on admin dashboard
+export function useWalletPipeline() {
+  return useQuery({
+    queryKey: ['wallet-pipeline'],
+    queryFn: async (): Promise<WalletPipelineItem[]> => {
+      const { data: wallets, error } = await supabase
+        .from('client_wallets')
+        .select('client_id, low_balance_threshold, auto_charge_amount, auto_billing_enabled, last_auto_charge_at, last_charge_failed_at')
+        .eq('auto_billing_enabled', true)
+        .order('last_auto_charge_at', { ascending: false, nullsFirst: false });
+
+      if (error) throw error;
+
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('id, name');
+
+      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+
+      return (wallets || []).map(w => ({
+        clientId: w.client_id,
+        clientName: clientMap.get(w.client_id) || 'Unknown Client',
+        threshold: w.low_balance_threshold || 0,
+        autoChargeAmount: w.auto_charge_amount,
+        autoBillingEnabled: w.auto_billing_enabled ?? false,
+        lastAutoChargeAt: w.last_auto_charge_at,
+        lastChargeFailedAt: w.last_charge_failed_at,
+      }));
+    },
+    refetchInterval: 60000,
   });
 }
 

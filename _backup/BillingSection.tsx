@@ -87,7 +87,7 @@ export function BillingSection({ clientId }: BillingSectionProps) {
               </SelectContent>
             </Select>
           </div>
-          
+
           <Button size="sm" onClick={() => handleOpenModal()} className="gap-1">
             <Plus className="w-4 h-4" />
             Add Record
