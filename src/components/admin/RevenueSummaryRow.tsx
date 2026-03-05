@@ -96,7 +96,7 @@ export function RevenueSummaryRow({ data, isLoading, isCurrentMonth = true }: Re
 
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {activeSubscriptionCount > 0 && (
-              <span>{activeSubscriptionCount} active subscription{activeSubscriptionCount !== 1 ? 's' : ''}</span>
+              <span>{activeSubscriptionCount} active client{activeSubscriptionCount !== 1 ? 's' : ''}</span>
             )}
             {performancePct > 0 && (
               <span className="text-purple-400">{performancePct}% performance fee</span>

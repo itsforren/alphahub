@@ -609,8 +609,11 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
       const lastMonthStart = startOfMonth(subMonths(windowStartDate, 1)).toISOString();
       const lastMonthEnd = windowStart;
 
+      // 60-day lookback for management projection (catches monthly + bi-weekly clients)
+      const sixtyDaysAgo = subDays(now, 60).toISOString();
+
       // Fetch MTD actuals, last-month actuals in parallel with other data
-      const [mtdRecords, lastMonthRecords, autoWallets, perfSetting, activeMgmtSubs, overdueRes, failedRes, disputesRes] =
+      const [mtdRecords, lastMonthRecords, autoWallets, perfSetting, recentMgmtWithPaidAt, recentMgmtWithoutPaidAt, overdueRes, failedRes, disputesRes] =
         await Promise.all([
           fetchPaidRecords('billing_type, amount', windowStart, windowEnd),
           fetchPaidRecords('billing_type, amount', lastMonthStart, lastMonthEnd),
@@ -623,12 +626,24 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
             .select('setting_value')
             .eq('setting_key', 'performance_percentage')
             .maybeSingle(),
-          // Active management subscriptions — used for accurate monthly projection
+          // Management projection — clients who actually paid in last 60 days (ground truth)
           supabase
-            .from('client_stripe_subscriptions')
-            .select('amount, recurrence_type')
+            .from('billing_records')
+            .select('client_id, amount, recurrence_type, paid_at')
             .eq('billing_type', 'management')
-            .eq('status', 'active'),
+            .eq('status', 'paid')
+            .not('paid_at', 'is', null)
+            .gte('paid_at', sixtyDaysAgo)
+            .order('paid_at', { ascending: false }),
+          // Same query with updated_at fallback for records where paid_at is NULL
+          supabase
+            .from('billing_records')
+            .select('client_id, amount, recurrence_type, updated_at')
+            .eq('billing_type', 'management')
+            .eq('status', 'paid')
+            .is('paid_at', null)
+            .gte('updated_at', sixtyDaysAgo)
+            .order('updated_at', { ascending: false }),
           // Attention counts
           supabase
             .from('billing_records')
@@ -673,11 +688,27 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
       }, 0);
       const autoClientCount = (autoWallets.data || []).length;
 
-      // Subscription-based management fee projection (fixed monthly amounts, NOT perf% of ad spend)
-      const activeSubscriptionCount = (activeMgmtSubs.data || []).length;
-      const projectedManagementFees = (activeMgmtSubs.data || []).reduce((sum, sub) => {
-        const multiplier = sub.recurrence_type === 'bi_weekly' ? 2.17 : 1;
-        return sum + (sub.amount || 0) * multiplier;
+      // Management fee projection — ground truth from billing_records payment history.
+      // Merge paid_at + updated_at fallback records, take most recent per client,
+      // then sum monthly equivalents (bi-weekly × 2.17 to normalize to monthly).
+      const recentMgmt = [
+        ...(recentMgmtWithPaidAt.data || []).map((r: any) => ({ ...r, effectiveDate: r.paid_at as string })),
+        ...(recentMgmtWithoutPaidAt.data || []).map((r: any) => ({ ...r, effectiveDate: r.updated_at as string })),
+      ];
+      recentMgmt.sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+
+      // Keep only the most recent payment per client
+      const latestPerClient = new Map<string, { amount: number; recurrence_type: string | null }>();
+      for (const r of recentMgmt) {
+        if (!latestPerClient.has(r.client_id)) {
+          latestPerClient.set(r.client_id, { amount: r.amount || 0, recurrence_type: r.recurrence_type });
+        }
+      }
+
+      const activeSubscriptionCount = latestPerClient.size;
+      const projectedManagementFees = [...latestPerClient.values()].reduce((sum, r) => {
+        const multiplier = r.recurrence_type === 'bi_weekly' ? 2.17 : 1;
+        return sum + r.amount * multiplier;
       }, 0);
 
       // Run-rate projections (linear extrapolation, only meaningful for current month)
