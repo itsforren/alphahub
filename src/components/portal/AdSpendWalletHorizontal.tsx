@@ -246,7 +246,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         isNegative && 'ring-2 ring-red-500/50',
         isLowBalance && !isNegative && 'ring-2 ring-orange-500/50'
       )}>
-        {/* Top Row: Balance + Info Pills + Settings */}
+        {/* Single Row: Balance + Monthly Max Bar + Pills + Settings */}
         <div className={cn(
           'px-6 py-5',
           isNegative
@@ -257,7 +257,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         )}>
           <div className="flex items-center justify-between gap-4">
             {/* Left: Icon + Balance */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 shrink-0">
               <div className={cn(
                 'w-12 h-12 rounded-xl flex items-center justify-center shrink-0',
                 isNegative ? 'bg-red-500/20' : isLowBalance ? 'bg-orange-500/20' : 'bg-blue-500/20'
@@ -290,8 +290,47 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
               </div>
             </div>
 
+            {/* Middle: Monthly Max Progress (inline) */}
+            {monthlyCap && monthlyCap > 0 && (
+              <div className="hidden sm:flex flex-col gap-1 flex-1 min-w-0 max-w-sm">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-violet-400" />
+                    <span className="text-muted-foreground">Monthly Max</span>
+                  </div>
+                  <span className={cn(
+                    'font-semibold',
+                    monthlyCapPercent >= 90 ? 'text-red-400' : monthlyCapPercent >= 75 ? 'text-orange-400' : 'text-violet-400'
+                  )}>
+                    ${capPeriodSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    <span className="text-muted-foreground font-normal"> / ${monthlyCap.toLocaleString()}</span>
+                  </span>
+                </div>
+                <div className="relative">
+                  <Progress
+                    value={monthlyCapPercent}
+                    className={cn(
+                      'h-2.5 rounded-full',
+                      monthlyCapPercent >= 90 ? '[&>div]:bg-red-500' : monthlyCapPercent >= 75 ? '[&>div]:bg-orange-500' : '[&>div]:bg-violet-500'
+                    )}
+                  />
+                  {capPeriodDaysElapsed <= capPeriodDaysTotal && (
+                    <div
+                      className="absolute top-0 h-2.5 border-r-2 border-white/30"
+                      style={{ left: `${Math.min(100, (capPeriodDaysElapsed / capPeriodDaysTotal) * 100)}%` }}
+                      title={`Day ${capPeriodDaysElapsed} of ${capPeriodDaysTotal}`}
+                    />
+                  )}
+                </div>
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} left</span>
+                  <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)}/{capPeriodDaysTotal}</span>
+                </div>
+              </div>
+            )}
+
             {/* Right: Threshold + Recharge + Settings */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 shrink-0">
               <div className="hidden sm:flex items-center gap-3">
                 <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
                   <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
@@ -317,50 +356,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             </div>
           </div>
         </div>
-
-        {/* Monthly Max Bar */}
-        {monthlyCap && monthlyCap > 0 && (
-          <div className="px-6 py-4 border-t border-white/5">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-violet-400" />
-                <span className="text-sm font-medium text-foreground">Monthly Max</span>
-              </div>
-              <span className={cn(
-                'text-sm font-semibold',
-                monthlyCapPercent >= 90 ? 'text-red-400' : monthlyCapPercent >= 75 ? 'text-orange-400' : 'text-violet-400'
-              )}>
-                ${capPeriodSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                <span className="text-muted-foreground font-normal"> / ${monthlyCap.toLocaleString()}</span>
-              </span>
-            </div>
-            <div className="relative">
-              <Progress
-                value={monthlyCapPercent}
-                className={cn(
-                  'h-3 rounded-full',
-                  monthlyCapPercent >= 90 ? '[&>div]:bg-red-500' : monthlyCapPercent >= 75 ? '[&>div]:bg-orange-500' : '[&>div]:bg-violet-500'
-                )}
-              />
-              {capPeriodDaysElapsed <= capPeriodDaysTotal && (
-                <div
-                  className="absolute top-0 h-3 border-r-2 border-white/30"
-                  style={{ left: `${Math.min(100, (capPeriodDaysElapsed / capPeriodDaysTotal) * 100)}%` }}
-                  title={`Day ${capPeriodDaysElapsed} of ${capPeriodDaysTotal}`}
-                />
-              )}
-            </div>
-            <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-              <span>
-                ${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining
-              </span>
-              <div className="flex items-center gap-3">
-                <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)} of {capPeriodDaysTotal}</span>
-                <span>~${Math.round(monthlyCap / 30)}/day target</span>
-              </div>
-            </div>
-          </div>
-        )}
       </Card>
 
       {/* Settings Modal */}

@@ -20,7 +20,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { OnboardingStageProgress } from '@/components/portal/onboarding';
 import { PillLinks } from '@/components/portal/PillLinks';
-import { SuccessManagerWidget } from '@/components/portal/SuccessManagerWidget';
 import { ChatPopup, ChatBubbleButton } from '@/components/portal/ChatPopup';
 import StatusBadge from '@/components/portal/StatusBadge';
 import { PackageTypeBadge } from '@/components/portal/PackageTypeBadge';
@@ -367,16 +366,6 @@ export default function PortalAdminClientDetail() {
     } finally {
       setIsSendingTestLead(false);
     }
-  };
-
-  const handleSaveManager = async (data: {
-    success_manager_name: string;
-    success_manager_email: string;
-    success_manager_phone: string;
-    success_manager_image_url: string;
-  }) => {
-    if (!id) return;
-    await updateClient.mutateAsync({ clientId: id, updates: data });
   };
 
   const handleProfilePhotoUpload = async (url: string) => {
@@ -742,24 +731,33 @@ export default function PortalAdminClientDetail() {
         </div>
       </div>
 
-      {/* ASM Widget - Full Width at Top */}
-      <SuccessManagerWidget
-        name={client.success_manager_name}
-        email={client.success_manager_email}
-        phone={client.success_manager_phone}
-        imageUrl={client.success_manager_image_url}
-        calendarLink={(client as any).scheduler_link}
-        onChatClick={() => setIsChatOpen(true)}
-        onSave={isClientView ? undefined : handleSaveManager}
-        isSaving={updateClient.isPending}
-        useFallbackDefaults={true}
-      />
+      {/* Alpha Results (Hero Stats) - Top of page */}
+      {allTimeMetrics && showPerformance && (
+        allTimeMetrics.submittedApps > 0 ||
+        allTimeMetrics.issuedPaidCount > 0 ||
+        allTimeMetrics.totalSubmittedPremium > 0 ||
+        allTimeMetrics.totalIssuedPremium > 0
+      ) && (
+        <HeroStatsCard
+          totalSubmittedPremium={allTimeMetrics.totalSubmittedPremium}
+          totalIssuedPremium={allTimeMetrics.totalIssuedPremium}
+          submittedApps={allTimeMetrics.submittedApps}
+          issuedPaidCount={allTimeMetrics.issuedPaidCount}
+          alphaRoi={allTimeMetrics.alphaRoi}
+          adSpend={allTimeMetrics.adSpend}
+          isLoading={allTimeMetricsLoading}
+          commissionContractPercent={client?.commission_contract_percent ?? 100}
+          onCommissionChange={!isClientView ? async (value) => {
+            await handleSaveField('commission_contract_percent', String(value));
+          } : undefined}
+        />
+      )}
 
       {/* Full-width Ad Spend Wallet (visibility controlled) */}
       {showWallet && (
-        <AdSpendWalletHorizontal 
-          clientId={client.id} 
-          mtdAdSpend={client.mtd_ad_spend || 0} 
+        <AdSpendWalletHorizontal
+          clientId={client.id}
+          mtdAdSpend={client.mtd_ad_spend || 0}
         />
       )}
 
@@ -773,232 +771,6 @@ export default function PortalAdminClientDetail() {
           <OnboardingStageProgress clientId={client.id} />
         )}
         
-        {/* Google Ads Campaign Status Panel (admin only) */}
-        {!isClientView && (isAutomationComplete || hasCampaignError || hasPartialCampaign) && (
-          <Card className={cn(
-            "border",
-            hasCampaignError || hasPartialCampaign 
-              ? "border-amber-500/30 bg-amber-500/5" 
-              : !client.google_campaign_id 
-                ? "border-amber-500/30 bg-amber-500/5"
-                : "border-green-500/30 bg-green-500/5"
-          )}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                {hasCampaignError || hasPartialCampaign || !client.google_campaign_id ? (
-                  <>
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                    Google Ads Campaign Status
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    Google Ads Campaign Ready
-                  </>
-                )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {/* Status indicators */}
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-1.5">
-                  {campaignStatus.campaignCreated ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className={campaignStatus.campaignCreated ? "text-foreground" : "text-muted-foreground"}>
-                    Campaign
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {campaignStatus.adgroupCreated ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className={campaignStatus.adgroupCreated ? "text-foreground" : "text-muted-foreground"}>
-                    Ad Group
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {campaignStatus.adCreated ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  ) : (
-                    <XCircle className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className={campaignStatus.adCreated ? "text-foreground" : "text-muted-foreground"}>
-                    Ad
-                  </span>
-                </div>
-              </div>
-              
-              {/* Error message if present */}
-              {campaignStatus.error && (
-                <div className="text-xs text-amber-700 bg-amber-100/50 p-2 rounded">
-                  <strong>Error:</strong> {campaignStatus.error}
-                </div>
-              )}
-              
-              {/* Last attempt timestamp */}
-              {campaignStatus.lastAttempt && (
-                <p className="text-xs text-muted-foreground">
-                  Last attempt: {new Date(campaignStatus.lastAttempt).toLocaleString()}
-                </p>
-              )}
-              
-              {/* Action buttons */}
-              {(!client.google_campaign_id || hasCampaignError || hasPartialCampaign) && client.states && client.ad_spend_budget && (
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => handleRetryGoogleCampaign('full')}
-                    disabled={isCreatingCampaign}
-                    className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10"
-                  >
-                    {isCreatingCampaign ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      'Rebuild Full Campaign'
-                    )}
-                  </Button>
-                  {hasPartialCampaign && !campaignStatus.adgroupCreated && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleRetryGoogleCampaign('adgroup')}
-                      disabled={isCreatingCampaign}
-                    >
-                      Retry Ad Group Only
-                    </Button>
-                  )}
-                  {hasPartialCampaign && campaignStatus.adgroupCreated && !campaignStatus.adCreated && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={() => handleRetryGoogleCampaign('ad')}
-                      disabled={isCreatingCampaign}
-                    >
-                      Retry Ad Only
-                    </Button>
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* A2P Registration Status (admin only) */}
-        {!isClientView && client.subaccount_id && (
-          <Card className={cn(
-            "border",
-            client.a2p_brand_status === 'approved' && client.a2p_campaign_status === 'approved'
-              ? "border-green-500/30 bg-green-500/5"
-              : client.a2p_brand_status === 'rejected' || client.a2p_campaign_status === 'rejected'
-                ? "border-red-500/30 bg-red-500/5"
-                : client.a2p_brand_status || client.a2p_campaign_status
-                  ? "border-amber-500/30 bg-amber-500/5"
-                  : "border-border/50"
-          )}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Phone className="h-4 w-4" />
-                A2P SMS Registration Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Brand:</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button type="button" className="focus:outline-none">
-                        <Badge 
-                          variant={
-                            client.a2p_brand_status === 'approved' ? 'default' :
-                            client.a2p_brand_status === 'pending' ? 'secondary' :
-                            client.a2p_brand_status === 'rejected' ? 'destructive' : 'outline'
-                          } 
-                          className="capitalize cursor-pointer flex items-center gap-1"
-                        >
-                          {client.a2p_brand_status || 'Not submitted'}
-                          <ChevronDown className="w-3 h-3" />
-                        </Badge>
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="bg-popover border border-border">
-                      {['approved', 'pending', 'rejected', null].map((status) => (
-                        <DropdownMenuItem
-                          key={status || 'none'}
-                          onClick={async () => {
-                            try {
-                              await updateClient.mutateAsync({ 
-                                clientId: id!, 
-                                updates: { a2p_brand_status: status } as any 
-                              });
-                              toast.success(`A2P brand status updated to ${status || 'not submitted'}`);
-                            } catch (error) {
-                              toast.error('Failed to update A2P brand status');
-                            }
-                          }}
-                          className={cn("cursor-pointer capitalize", client.a2p_brand_status === status && "bg-muted")}
-                        >
-                          {status || 'Not submitted'}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Campaign:</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button type="button" className="focus:outline-none">
-                        <Badge 
-                          variant={
-                            client.a2p_campaign_status === 'approved' ? 'default' :
-                            client.a2p_campaign_status === 'pending' ? 'secondary' :
-                            client.a2p_campaign_status === 'rejected' ? 'destructive' : 'outline'
-                          } 
-                          className="capitalize cursor-pointer flex items-center gap-1"
-                        >
-                          {client.a2p_campaign_status || 'Not submitted'}
-                          <ChevronDown className="w-3 h-3" />
-                        </Badge>
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="bg-popover border border-border">
-                      {['approved', 'pending', 'rejected', null].map((status) => (
-                        <DropdownMenuItem
-                          key={status || 'none'}
-                          onClick={async () => {
-                            try {
-                              await updateClient.mutateAsync({ 
-                                clientId: id!, 
-                                updates: { a2p_campaign_status: status } as any 
-                              });
-                              toast.success(`A2P campaign status updated to ${status || 'not submitted'}`);
-                            } catch (error) {
-                              toast.error('Failed to update A2P campaign status');
-                            }
-                          }}
-                          className={cn("cursor-pointer capitalize", client.a2p_campaign_status === status && "bg-muted")}
-                        >
-                          {status || 'Not submitted'}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Client Details Summary Bar (admin only) */}
         {!isClientView && (
           <div className="space-y-3">
@@ -1084,28 +856,6 @@ export default function PortalAdminClientDetail() {
                 clientCreatedAt={client.created_at}
                 clientName={client.name}
                 onOpenPaymentWizard={() => setPaymentWizardOpen(true)}
-              />
-            )}
-
-            {/* Hero Stats Card - All Time Stats */}
-            {allTimeMetrics && showPerformance && (
-              allTimeMetrics.submittedApps > 0 || 
-              allTimeMetrics.issuedPaidCount > 0 || 
-              allTimeMetrics.totalSubmittedPremium > 0 || 
-              allTimeMetrics.totalIssuedPremium > 0
-            ) && (
-              <HeroStatsCard
-                totalSubmittedPremium={allTimeMetrics.totalSubmittedPremium}
-                totalIssuedPremium={allTimeMetrics.totalIssuedPremium}
-                submittedApps={allTimeMetrics.submittedApps}
-                issuedPaidCount={allTimeMetrics.issuedPaidCount}
-                alphaRoi={allTimeMetrics.alphaRoi}
-                adSpend={allTimeMetrics.adSpend}
-                isLoading={allTimeMetricsLoading}
-                commissionContractPercent={client?.commission_contract_percent ?? 100}
-                onCommissionChange={!isClientView ? async (value) => {
-                  await handleSaveField('commission_contract_percent', String(value));
-                } : undefined}
               />
             )}
 
@@ -1597,6 +1347,225 @@ export default function PortalAdminClientDetail() {
                 )}
               </div>
             </div>
+
+            {/* Google Ads Campaign Status (moved from pre-tabs) */}
+            {!isClientView && (isAutomationComplete || hasCampaignError || hasPartialCampaign) && (
+              <Card className={cn(
+                "border",
+                hasCampaignError || hasPartialCampaign
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : !client.google_campaign_id
+                    ? "border-amber-500/30 bg-amber-500/5"
+                    : "border-green-500/30 bg-green-500/5"
+              )}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    {hasCampaignError || hasPartialCampaign || !client.google_campaign_id ? (
+                      <>
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        Google Ads Campaign Status
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        Google Ads Campaign Ready
+                      </>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="flex items-center gap-1.5">
+                      {campaignStatus.campaignCreated ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className={campaignStatus.campaignCreated ? "text-foreground" : "text-muted-foreground"}>
+                        Campaign
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {campaignStatus.adgroupCreated ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className={campaignStatus.adgroupCreated ? "text-foreground" : "text-muted-foreground"}>
+                        Ad Group
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {campaignStatus.adCreated ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className={campaignStatus.adCreated ? "text-foreground" : "text-muted-foreground"}>
+                        Ad
+                      </span>
+                    </div>
+                  </div>
+                  {campaignStatus.error && (
+                    <div className="text-xs text-amber-700 bg-amber-100/50 p-2 rounded">
+                      <strong>Error:</strong> {campaignStatus.error}
+                    </div>
+                  )}
+                  {campaignStatus.lastAttempt && (
+                    <p className="text-xs text-muted-foreground">
+                      Last attempt: {new Date(campaignStatus.lastAttempt).toLocaleString()}
+                    </p>
+                  )}
+                  {(!client.google_campaign_id || hasCampaignError || hasPartialCampaign) && client.states && client.ad_spend_budget && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRetryGoogleCampaign('full')}
+                        disabled={isCreatingCampaign}
+                        className="border-amber-500/30 text-amber-700 hover:bg-amber-500/10"
+                      >
+                        {isCreatingCampaign ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                            Creating...
+                          </>
+                        ) : (
+                          'Rebuild Full Campaign'
+                        )}
+                      </Button>
+                      {hasPartialCampaign && !campaignStatus.adgroupCreated && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRetryGoogleCampaign('adgroup')}
+                          disabled={isCreatingCampaign}
+                        >
+                          Retry Ad Group Only
+                        </Button>
+                      )}
+                      {hasPartialCampaign && campaignStatus.adgroupCreated && !campaignStatus.adCreated && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleRetryGoogleCampaign('ad')}
+                          disabled={isCreatingCampaign}
+                        >
+                          Retry Ad Only
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* A2P SMS Registration Status (moved from pre-tabs) */}
+            {!isClientView && client.subaccount_id && (
+              <Card className={cn(
+                "border",
+                client.a2p_brand_status === 'approved' && client.a2p_campaign_status === 'approved'
+                  ? "border-green-500/30 bg-green-500/5"
+                  : client.a2p_brand_status === 'rejected' || client.a2p_campaign_status === 'rejected'
+                    ? "border-red-500/30 bg-red-500/5"
+                    : client.a2p_brand_status || client.a2p_campaign_status
+                      ? "border-amber-500/30 bg-amber-500/5"
+                      : "border-border/50"
+              )}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    A2P SMS Registration Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Brand:</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="focus:outline-none">
+                            <Badge
+                              variant={
+                                client.a2p_brand_status === 'approved' ? 'default' :
+                                client.a2p_brand_status === 'pending' ? 'secondary' :
+                                client.a2p_brand_status === 'rejected' ? 'destructive' : 'outline'
+                              }
+                              className="capitalize cursor-pointer flex items-center gap-1"
+                            >
+                              {client.a2p_brand_status || 'Not submitted'}
+                              <ChevronDown className="w-3 h-3" />
+                            </Badge>
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="bg-popover border border-border">
+                          {['approved', 'pending', 'rejected', null].map((status) => (
+                            <DropdownMenuItem
+                              key={status || 'none'}
+                              onClick={async () => {
+                                try {
+                                  await updateClient.mutateAsync({
+                                    clientId: id!,
+                                    updates: { a2p_brand_status: status } as any
+                                  });
+                                  toast.success(`A2P brand status updated to ${status || 'not submitted'}`);
+                                } catch (error) {
+                                  toast.error('Failed to update A2P brand status');
+                                }
+                              }}
+                              className={cn("cursor-pointer capitalize", client.a2p_brand_status === status && "bg-muted")}
+                            >
+                              {status || 'Not submitted'}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Campaign:</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button type="button" className="focus:outline-none">
+                            <Badge
+                              variant={
+                                client.a2p_campaign_status === 'approved' ? 'default' :
+                                client.a2p_campaign_status === 'pending' ? 'secondary' :
+                                client.a2p_campaign_status === 'rejected' ? 'destructive' : 'outline'
+                              }
+                              className="capitalize cursor-pointer flex items-center gap-1"
+                            >
+                              {client.a2p_campaign_status || 'Not submitted'}
+                              <ChevronDown className="w-3 h-3" />
+                            </Badge>
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="bg-popover border border-border">
+                          {['approved', 'pending', 'rejected', null].map((status) => (
+                            <DropdownMenuItem
+                              key={status || 'none'}
+                              onClick={async () => {
+                                try {
+                                  await updateClient.mutateAsync({
+                                    clientId: id!,
+                                    updates: { a2p_campaign_status: status } as any
+                                  });
+                                  toast.success(`A2P campaign status updated to ${status || 'not submitted'}`);
+                                } catch (error) {
+                                  toast.error('Failed to update A2P campaign status');
+                                }
+                              }}
+                              className={cn("cursor-pointer capitalize", client.a2p_campaign_status === status && "bg-muted")}
+                            >
+                              {status || 'Not submitted'}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Admin Actions: Preview + Delete */}
             {!isClientView && isAdmin && (
