@@ -292,11 +292,11 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
             {/* Middle: Monthly Max Progress (inline) */}
             {monthlyCap && monthlyCap > 0 && (
-              <div className="hidden sm:flex flex-col gap-1 flex-1 min-w-0 max-w-sm">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <Target className="w-3.5 h-3.5 text-violet-400" />
-                    <span className="text-muted-foreground">Monthly Max</span>
+              <div className="hidden sm:flex flex-col gap-1.5 flex-1 min-w-0 max-w-lg">
+                <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <Target className="w-4 h-4 text-violet-400" />
+                    <span className="text-muted-foreground font-medium">Monthly Max</span>
                   </div>
                   <span className={cn(
                     'font-semibold',
@@ -310,21 +310,21 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                   <Progress
                     value={monthlyCapPercent}
                     className={cn(
-                      'h-2.5 rounded-full',
+                      'h-4 rounded-full',
                       monthlyCapPercent >= 90 ? '[&>div]:bg-red-500' : monthlyCapPercent >= 75 ? '[&>div]:bg-orange-500' : '[&>div]:bg-violet-500'
                     )}
                   />
                   {capPeriodDaysElapsed <= capPeriodDaysTotal && (
                     <div
-                      className="absolute top-0 h-2.5 border-r-2 border-white/30"
+                      className="absolute top-0 h-4 border-r-2 border-white/40"
                       style={{ left: `${Math.min(100, (capPeriodDaysElapsed / capPeriodDaysTotal) * 100)}%` }}
                       title={`Day ${capPeriodDaysElapsed} of ${capPeriodDaysTotal}`}
                     />
                   )}
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} left</span>
-                  <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)}/{capPeriodDaysTotal}</span>
+                  <span>${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining</span>
+                  <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)} of {capPeriodDaysTotal}</span>
                 </div>
               </div>
             )}

@@ -614,7 +614,7 @@ export default function PortalAdminClientDetail() {
   const hasCampaignError = !!campaignStatus.error;
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6 overflow-x-hidden">
       {/* Header Bar */}
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
         {/* Left: Back + Client Info */}
@@ -706,9 +706,8 @@ export default function PortalAdminClientDetail() {
           </div>
         </div>
 
-        {/* Right: Pill Links + Ticket Button + Preview + Refresh (admin-only) */}
-        <div className="flex items-center gap-2 flex-nowrap shrink-0">
-          {/* For clients, only show safe links (hide lander_link, thankyou_link) */}
+        {/* Right: Pill Links + Refresh (admin-only) */}
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           <PillLinks
             landerLink={isClientView ? undefined : (client as any).lander_link}
             thankyouLink={isClientView ? undefined : (client as any).thankyou_link}
@@ -717,21 +716,27 @@ export default function PortalAdminClientDetail() {
             crmLink={client.crm_link}
             tfwpProfileLink={(client as any).tfwp_profile_link}
             agreementLink={(client as any).agreement_link}
-            googleCampaignId={isClientView ? undefined : client.google_campaign_id}
           />
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing}
           >
             <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
           </Button>
-          
         </div>
       </div>
 
-      {/* Alpha Results (Hero Stats) - Top of page */}
+      {/* Full-width Ad Spend Wallet (visibility controlled) */}
+      {showWallet && (
+        <AdSpendWalletHorizontal
+          clientId={client.id}
+          mtdAdSpend={client.mtd_ad_spend || 0}
+        />
+      )}
+
+      {/* Alpha Results (Hero Stats) */}
       {allTimeMetrics && showPerformance && (
         allTimeMetrics.submittedApps > 0 ||
         allTimeMetrics.issuedPaidCount > 0 ||
@@ -753,14 +758,6 @@ export default function PortalAdminClientDetail() {
         />
       )}
 
-      {/* Full-width Ad Spend Wallet (visibility controlled) */}
-      {showWallet && (
-        <AdSpendWalletHorizontal
-          clientId={client.id}
-          mtdAdSpend={client.mtd_ad_spend || 0}
-        />
-      )}
-
       {/* Upcoming Payments Due (visibility controlled) */}
       {showBilling && <UpcomingPaymentsWidget clientId={client.id} />}
 
@@ -771,57 +768,6 @@ export default function PortalAdminClientDetail() {
           <OnboardingStageProgress clientId={client.id} />
         )}
         
-        {/* Client Details Summary Bar (admin only) */}
-        {!isClientView && (
-          <div className="space-y-3">
-            {client.team && (
-              <div className="flex items-center gap-2 text-sm px-1">
-                <span className="text-muted-foreground">Team:</span>
-                <span className="text-foreground font-medium">{client.team}</span>
-              </div>
-            )}
-            {campaigns.length > 0 ? (
-              <CampaignPanel
-                clientId={client.id}
-                campaigns={campaigns as any}
-                trackingStartDate={walletTrackingStartDate}
-                onRefresh={handleRefresh}
-                onUpdateStates={async (states) => {
-                  if (!id) return;
-                  await updateClient.mutateAsync({ clientId: id, updates: { states } });
-                }}
-              />
-            ) : (
-              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Daily Budget:</span>
-                  <span className="text-foreground font-medium">
-                    {client.target_daily_spend ? `$${client.target_daily_spend}` : '—'}
-                  </span>
-                  <EditBudgetDialog
-                    clientId={client.id}
-                    currentBudget={client.target_daily_spend}
-                    googleCampaignId={(client as any).google_campaign_id}
-                    onSuccess={handleRefresh}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">States:</span>
-                  <StateSelector
-                    value={client.states}
-                    clientId={client.id}
-                    googleCampaignId={(client as any).google_campaign_id}
-                    onSave={async (states) => {
-                      if (!id) return;
-                      await updateClient.mutateAsync({ clientId: id, updates: { states } });
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Tabs - Full Width */}
         <Tabs defaultValue={showPerformance ? "overview" : showBilling ? "billing" : "support"} className="w-full">
           <TabsList className="w-full justify-start mb-6 bg-muted/50">
@@ -834,6 +780,57 @@ export default function PortalAdminClientDetail() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Campaign Panel */}
+            {!isClientView && (
+              <div className="space-y-3">
+                {client.team && (
+                  <div className="flex items-center gap-2 text-sm px-1">
+                    <span className="text-muted-foreground">Team:</span>
+                    <span className="text-foreground font-medium">{client.team}</span>
+                  </div>
+                )}
+                {campaigns.length > 0 ? (
+                  <CampaignPanel
+                    clientId={client.id}
+                    campaigns={campaigns as any}
+                    trackingStartDate={walletTrackingStartDate}
+                    onRefresh={handleRefresh}
+                    onUpdateStates={async (states) => {
+                      if (!id) return;
+                      await updateClient.mutateAsync({ clientId: id, updates: { states } });
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Daily Budget:</span>
+                      <span className="text-foreground font-medium">
+                        {client.target_daily_spend ? `$${client.target_daily_spend}` : '—'}
+                      </span>
+                      <EditBudgetDialog
+                        clientId={client.id}
+                        currentBudget={client.target_daily_spend}
+                        googleCampaignId={(client as any).google_campaign_id}
+                        onSuccess={handleRefresh}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">States:</span>
+                      <StateSelector
+                        value={client.states}
+                        clientId={client.id}
+                        googleCampaignId={(client as any).google_campaign_id}
+                        onSave={async (states) => {
+                          if (!id) return;
+                          await updateClient.mutateAsync({ clientId: id, updates: { states } });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Agreement Signing Widget - Only show if NOT signed */}
             {client && !hasSignedAgreement && (
               <AgreementSigningWidget clientId={client.id} />
