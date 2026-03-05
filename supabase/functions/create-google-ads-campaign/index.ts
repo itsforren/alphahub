@@ -970,22 +970,27 @@ Deno.serve(async (req) => {
 
     // Determine the campaign ID to use
     let newCampaignId: string;
-    
+
+    // When templateType is explicitly set, the user is building a NEW campaign
+    // (e.g., a second campaign for dual-campaign support) — skip reuse logic
+    const forceNewCampaign = !!templateType;
+
     // If we have an existing campaign, reuse it (don't create a duplicate)
-    if (existingCampaignId && (retryStep === 'adgroup' || retryStep === 'ad')) {
+    // BUT if templateType is set, always create a new one
+    if (!forceNewCampaign && existingCampaignId && (retryStep === 'adgroup' || retryStep === 'ad')) {
       console.log(`Using existing campaign ${existingCampaignId} for ${retryStep} rebuild`);
       newCampaignId = existingCampaignId;
-      
+
       // Mark campaign as already created
       await supabase
         .from('clients')
         .update({ gads_campaign_created: true })
         .eq('id', clientId);
-    } else if (existingCampaignId) {
+    } else if (!forceNewCampaign && existingCampaignId) {
       // Campaign already exists — reuse it for any rebuild (full or initial re-run)
       console.log(`Campaign already exists (${existingCampaignId}), reusing — will rebuild ad groups/ads only`);
       newCampaignId = existingCampaignId;
-      
+
       // Mark campaign as already created
       await supabase
         .from('clients')
