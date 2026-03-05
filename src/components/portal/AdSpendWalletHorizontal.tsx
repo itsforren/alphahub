@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card } from '@/components/ui/card';
@@ -9,11 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, AlertTriangle, Settings, Loader2, Calendar, TrendingDown, DollarSign, Zap } from 'lucide-react';
+import { Wallet, AlertTriangle, Settings, Loader2, Calendar, TrendingDown, DollarSign, Zap, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { format, differenceInDays, parseISO } from 'date-fns';
+import { format, differenceInDays, parseISO, startOfMonth, subDays } from 'date-fns';
 
 interface AdSpendWalletHorizontalProps {
   clientId: string;
@@ -24,21 +24,70 @@ interface AdSpendWalletHorizontalProps {
 export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWalletHorizontalProps) {
   const queryClient = useQueryClient();
   const { data: wallet, isLoading: walletLoading } = useClientWallet(clientId);
-  const { 
-    totalDeposits, 
-    displayedSpend, 
-    remainingBalance, 
-    trackingStartDate, 
+  const {
+    totalDeposits,
+    displayedSpend,
+    remainingBalance,
+    trackingStartDate,
     isLoading: computedLoading,
     refetch: refetchComputedBalance
   } = useComputedWalletBalance(clientId);
   const createOrUpdateWallet = useCreateOrUpdateWallet();
-  
+
+  // Fetch client billing info for monthly cap period calculation
+  const { data: clientBilling } = useQuery({
+    queryKey: ['client-billing-info', clientId],
+    queryFn: async () => {
+      if (!clientId) return null;
+      const { data, error } = await supabase
+        .from('clients')
+        .select('billing_cycle_start_at, billing_frequency')
+        .eq('id', clientId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!clientId,
+  });
+
+  // Calculate the 30-day cap period start date
+  const capPeriodStart = (() => {
+    const cycleStart = clientBilling?.billing_cycle_start_at;
+    if (!cycleStart) return format(startOfMonth(new Date()), 'yyyy-MM-dd');
+    const cycleDate = parseISO(cycleStart);
+    // For bi-weekly, go back 14 days to get the first of the two cycles in the 30-day window
+    if (clientBilling?.billing_frequency === 'bi_weekly') {
+      return format(subDays(cycleDate, 14), 'yyyy-MM-dd');
+    }
+    return format(cycleDate, 'yyyy-MM-dd');
+  })();
+
+  // Ad spend since cap period start for monthly cap progress
+  const { data: capPeriodSpend = 0 } = useQuery({
+    queryKey: ['cap-period-spend', clientId, capPeriodStart],
+    queryFn: async () => {
+      if (!clientId) return 0;
+      const { data, error } = await supabase
+        .from('ad_spend_daily')
+        .select('cost')
+        .eq('client_id', clientId)
+        .gte('spend_date', capPeriodStart);
+      if (error) throw error;
+      return data?.reduce((sum, day) => sum + Number(day.cost || 0), 0) ?? 0;
+    },
+    enabled: !!clientId,
+  });
+
+  const monthlyCap = wallet?.monthly_ad_spend_cap ?? null;
+  const monthlyCapPercent = monthlyCap ? Math.min(100, (capPeriodSpend / monthlyCap) * 100) : 0;
+  const capPeriodDaysElapsed = differenceInDays(new Date(), parseISO(capPeriodStart));
+  const capPeriodDaysTotal = 30;
+
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [threshold, setThreshold] = useState('');
   const [autoCharge, setAutoCharge] = useState('');
   const [editTrackingDate, setEditTrackingDate] = useState('');
-  const [monthlyCap, setMonthlyCap] = useState('');
+  const [monthlyCapInput, setMonthlyCapInput] = useState('');
   const [isSavingDate, setIsSavingDate] = useState(false);
 
   const isLoading = walletLoading || computedLoading;
@@ -50,15 +99,12 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     : 0;
 
   // Recharge cycle calculations
-  // cycleAmount = what gets charged each time (auto_charge_amount, else threshold itself)
   const cycleAmount = wallet?.auto_charge_amount || wallet?.low_balance_threshold || 0;
   const lastRechargeAt = wallet?.last_auto_charge_at ?? null;
-  // Use last recharge date or tracking start — whichever is more recent
   const cycleSinceDate = lastRechargeAt || trackingStartDate;
   const daysSinceCycle = cycleSinceDate
     ? differenceInDays(new Date(), parseISO(cycleSinceDate))
     : null;
-  // How much of current recharge has been consumed
   const cycleUsed = cycleAmount > 0
     ? Math.max(0, Math.min(cycleAmount, cycleAmount - remainingBalance))
     : 0;
@@ -72,25 +118,22 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
   const handleSaveSettings = async () => {
     try {
-      // Update threshold and auto-charge
       await createOrUpdateWallet.mutateAsync({
         client_id: clientId,
         low_balance_threshold: parseFloat(threshold) || 150,
         auto_charge_amount: autoCharge ? parseFloat(autoCharge) : null,
-        monthly_ad_spend_cap: monthlyCap ? parseFloat(monthlyCap) : null,
+        monthly_ad_spend_cap: monthlyCapInput ? parseFloat(monthlyCapInput) : null,
       });
 
-      // Update tracking_start_date if changed
       if (editTrackingDate && editTrackingDate !== trackingStartDate) {
         setIsSavingDate(true);
         const { error } = await supabase
           .from('client_wallets')
           .update({ tracking_start_date: editTrackingDate })
           .eq('client_id', clientId);
-        
+
         if (error) throw error;
-        
-        // Invalidate all wallet/spend related queries so UI updates immediately
+
         queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
         queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId], exact: false });
         queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId], exact: false });
@@ -98,8 +141,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         queryClient.invalidateQueries({ queryKey: ['ad-spend-daily', clientId] });
         queryClient.invalidateQueries({ queryKey: ['campaigns'], exact: false });
         queryClient.invalidateQueries({ queryKey: ['command-center-stats'], exact: false });
-
-        // Also refetch computed balance directly
         refetchComputedBalance();
       }
 
@@ -115,7 +156,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const openSettings = () => {
     setThreshold(wallet?.low_balance_threshold?.toString() || '150');
     setAutoCharge(wallet?.auto_charge_amount?.toString() || '');
-    setMonthlyCap((wallet as any)?.monthly_ad_spend_cap?.toString() || '');
+    setMonthlyCapInput((wallet as any)?.monthly_ad_spend_cap?.toString() || '');
     setEditTrackingDate(trackingStartDate || '');
     setSettingsModalOpen(true);
   };
@@ -142,7 +183,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">Ad Spend Wallet</p>
               <p className="text-xs text-muted-foreground">
-                {isAdmin 
+                {isAdmin
                   ? 'Tracking starts when the first ad spend invoice is marked as paid'
                   : 'Ad spend tracking has not started yet'}
               </p>
@@ -228,9 +269,9 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
       )}>
         <div className={cn(
           'px-6 py-5',
-          isNegative 
+          isNegative
             ? 'bg-gradient-to-r from-red-500/15 via-red-500/5 to-transparent'
-            : isLowBalance 
+            : isLowBalance
               ? 'bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-transparent'
               : 'bg-gradient-to-r from-blue-500/10 via-cyan-500/5 to-transparent'
         )}>
@@ -242,12 +283,12 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                 isNegative ? 'bg-red-500/20' : isLowBalance ? 'bg-orange-500/20' : 'bg-blue-500/20'
               )}>
                 <Wallet className={cn(
-                  'w-6 h-6', 
+                  'w-6 h-6',
                   isNegative ? 'text-red-400' : isLowBalance ? 'text-orange-400' : 'text-blue-400'
                 )} />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Remaining Balance</p>
+                <p className="text-xs text-muted-foreground mb-0.5">Wallet Balance</p>
                 <div className={cn(
                   'text-3xl font-bold',
                   isNegative ? 'text-red-400' : isLowBalance ? 'text-orange-400' : 'text-foreground'
@@ -281,8 +322,8 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                   Deposited: ${totalDeposits.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </span>
               </div>
-              <Progress 
-                value={isNegative ? 100 : balancePercent} 
+              <Progress
+                value={isNegative ? 100 : balancePercent}
                 className={cn(
                   'h-3',
                   isNegative ? '[&>div]:bg-red-500' : isLowBalance ? '[&>div]:bg-orange-500' : '[&>div]:bg-blue-500'
@@ -309,9 +350,9 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
               {isAdmin && (
                 <div className="flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={openSettings}
                     className="h-9 w-9"
                   >
@@ -322,8 +363,54 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             </div>
           </div>
         </div>
-        {/* Recharge Cycle Row */}
-        {cycleAmount > 0 && (
+
+        {/* Monthly Budget Bar — shown when cap exists */}
+        {monthlyCap && monthlyCap > 0 && (
+          <div className="px-6 py-4 border-t border-white/5 bg-gradient-to-r from-violet-500/5 via-transparent to-transparent">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-violet-400" />
+                <span className="text-sm font-medium text-foreground">Monthly Max</span>
+              </div>
+              <span className={cn(
+                'text-sm font-semibold',
+                monthlyCapPercent >= 90 ? 'text-red-400' : monthlyCapPercent >= 75 ? 'text-orange-400' : 'text-violet-400'
+              )}>
+                ${capPeriodSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                <span className="text-muted-foreground font-normal"> / ${monthlyCap.toLocaleString()}</span>
+              </span>
+            </div>
+            <div className="relative">
+              <Progress
+                value={monthlyCapPercent}
+                className={cn(
+                  'h-3 rounded-full',
+                  monthlyCapPercent >= 90 ? '[&>div]:bg-red-500' : monthlyCapPercent >= 75 ? '[&>div]:bg-orange-500' : '[&>div]:bg-violet-500'
+                )}
+              />
+              {/* Day marker on the bar */}
+              {capPeriodDaysElapsed <= capPeriodDaysTotal && (
+                <div
+                  className="absolute top-0 h-3 border-r-2 border-white/30"
+                  style={{ left: `${Math.min(100, (capPeriodDaysElapsed / capPeriodDaysTotal) * 100)}%` }}
+                  title={`Day ${capPeriodDaysElapsed} of ${capPeriodDaysTotal}`}
+                />
+              )}
+            </div>
+            <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
+              <span>
+                ${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining
+              </span>
+              <div className="flex items-center gap-3">
+                <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)} of {capPeriodDaysTotal}</span>
+                <span>~${Math.round(monthlyCap / 30)}/day target</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recharge Cycle Row — only when no monthly cap */}
+        {!monthlyCap && cycleAmount > 0 && (
           <div className="px-6 py-3 border-t border-white/5 bg-muted/20">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
@@ -401,20 +488,20 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Monthly Ad Spend Cap (Optional)</Label>
+              <Label>Monthly Ad Spend Cap</Label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                 <Input
                   type="number"
                   step="100"
-                  value={monthlyCap}
-                  onChange={(e) => setMonthlyCap(e.target.value)}
+                  value={monthlyCapInput}
+                  onChange={(e) => setMonthlyCapInput(e.target.value)}
                   className="pl-7"
                   placeholder="4000"
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Max total ad spend charges per month. Leave empty for no cap.
+                Max total ad spend per 30-day billing cycle. Leave empty for no cap.
               </p>
             </div>
             <div className="space-y-2">
