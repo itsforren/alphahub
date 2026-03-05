@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { BillingTypeBadge } from './BillingTypeBadge';
 import { BillingStatusBadge } from './BillingStatusBadge';
 import { BillingDetailPopup } from './BillingDetailPopup';
-import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2, Archive, RotateCcw } from 'lucide-react';
+import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2, Archive, RotateCcw, SquareArrowOutUpRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -95,6 +95,18 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
     } catch (error) {
       toast.error('Failed to restore record');
     }
+  };
+
+  const getStripeUrl = (record: BillingRecord): string | null => {
+    if (record.stripe_invoice_id) return `https://dashboard.stripe.com/invoices/${record.stripe_invoice_id}`;
+    if (record.stripe_payment_intent_id) return `https://dashboard.stripe.com/payments/${record.stripe_payment_intent_id}`;
+    return null;
+  };
+
+  const getStripeRefLabel = (record: BillingRecord): string | null => {
+    if (record.stripe_invoice_id) return record.stripe_invoice_id.slice(0, 14) + '…';
+    if (record.stripe_payment_intent_id) return record.stripe_payment_intent_id.slice(0, 14) + '…';
+    return null;
   };
 
   const formatCurrency = (amount: number) => {
@@ -437,19 +449,35 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
 
                 {/* Ref ID */}
                 <TableCell className="text-sm">
-                  {record.stripe_invoice_id ? (
-                    <span className="text-foreground font-mono text-xs bg-muted px-1.5 py-0.5 rounded" title={record.stripe_invoice_id}>
-                      {record.stripe_invoice_id.slice(0, 14)}…
-                    </span>
-                  ) : record.payment_reference ? (
-                    <span className="text-foreground font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
-                      {record.payment_reference.length > 12
-                        ? `${record.payment_reference.slice(0, 12)}...`
-                        : record.payment_reference}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  {(() => {
+                    const stripeUrl = getStripeUrl(record);
+                    const refLabel = getStripeRefLabel(record);
+                    const fullId = record.stripe_invoice_id || record.stripe_payment_intent_id;
+                    if (stripeUrl && refLabel) {
+                      return (
+                        <a
+                          href={stripeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={fullId || undefined}
+                          className="inline-flex items-center gap-1 font-mono text-xs bg-muted px-1.5 py-0.5 rounded hover:bg-muted/70 hover:text-blue-400 transition-colors"
+                        >
+                          {refLabel}
+                          <SquareArrowOutUpRight className="w-2.5 h-2.5 flex-shrink-0" />
+                        </a>
+                      );
+                    }
+                    if (record.payment_reference) {
+                      return (
+                        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                          {record.payment_reference.length > 12
+                            ? `${record.payment_reference.slice(0, 12)}...`
+                            : record.payment_reference}
+                        </span>
+                      );
+                    }
+                    return <span className="text-muted-foreground">—</span>;
+                  })()}
                 </TableCell>
 
                 {/* Actions dropdown */}
