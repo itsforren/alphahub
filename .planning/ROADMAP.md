@@ -39,7 +39,7 @@ Plans:
 - [x] 01-03-PLAN.md — Dark design system, Inter font, haptics, glass effects, floating pill tab bar, role-based tab navigation, PrivacyInfo.xcprivacy
 
 ### Phase 2: Core Value
-**Goal**: Client can check their wallet balance, view billing history, and see key business metrics -- the daily-use features that justify installing the app
+**Goal**: Client can check their wallet balance, view billing history, see key business metrics, browse campaign spend charts, and access their leads pipeline -- the daily-use features that justify installing the app
 **Depends on**: Phase 1
 **Requirements**: DASH-01, DASH-02, DASH-03, DASH-04, DASH-05, DASH-06, DASH-07, BILL-01, BILL-02, BILL-03, BILL-04, BILL-05, BILL-06
 **Success Criteria** (what must be TRUE):
@@ -48,11 +48,13 @@ Plans:
   3. Client can browse their full billing history grouped by month, filter by type (All/Ad Spend/Management), and tap any transaction for details
   4. Client can see their payment methods on file (card brand, last 4, expiry) with a link to manage them on the web
   5. Dashboard loads with skeleton states on first load and supports pull-to-refresh with haptic feedback
-**Plans**: TBD
+**Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 02-01: Dashboard screen -- wallet hero card, metrics cards, sparkline chart, upcoming payments, quick actions
-- [ ] 02-02: Billing screen -- transaction list, filters, status badges, payment methods, transaction detail sheet
+- [ ] 02-01-PLAN.md — Data layer: Codable models, DataManager, formatters, shared components (shimmer, status pill, metric card)
+- [ ] 02-02-PLAN.md — Dashboard top: wallet hero card, welcome greeting, quick-link pills, business results section
+- [ ] 02-03-PLAN.md — Billing screen: transaction list, month grouping, filters, status badges, detail sheet, payment methods
+- [ ] 02-04-PLAN.md — Dashboard bottom: campaign spend chart, cost metrics grid, leads pipeline list, lead detail sheet
 
 ### Phase 3: Communication
 **Goal**: Client can have real-time conversations with support and receive push notifications for important events -- the features that make the app sticky
@@ -132,7 +134,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-03-05 |
-| 2. Core Value | 0/2 | Not started | - |
+| 2. Core Value | 0/4 | Planned | - |
 | 3. Communication | 0/3 | Not started | - |
 | 4. Learning & Activation | 0/4 | Not started | - |
 | 5. Growth & Polish | 0/4 | Not started | - |
