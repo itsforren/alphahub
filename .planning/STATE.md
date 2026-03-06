@@ -5,34 +5,34 @@
 See: .planning/PROJECT.md (updated 2025-03-05)
 
 **Core value:** Clients can manage their entire Alpha Hub experience from their phone -- wallet, chat, courses, referrals -- with real-time sync to the web app.
-**Current focus:** Phase 2: Core Value
+**Current focus:** Phase 2: Core Value (COMPLETE)
 
 ## Current Position
 
 Phase: 2 of 6 (Core Value)
-Plan: 3 of 4 in current phase
-Status: In progress
-Last activity: 2026-03-06 -- Completed 02-03-PLAN.md (billing screen with transaction list, filters, payment methods)
+Plan: 4 of 4 in current phase
+Status: Phase complete
+Last activity: 2026-03-06 -- Completed 02-04-PLAN.md (campaign chart, cost metrics, leads pipeline)
 
-Progress: [######░░░░] ~35%
+Progress: [########░░] ~41%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 6
-- Average duration: ~13min
-- Total execution time: ~80 min
+- Total plans completed: 7
+- Average duration: ~12min
+- Total execution time: ~86 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | ~66min | ~22min |
-| 02-core-value | 3/4 | ~14min | ~5min |
+| 02-core-value | 4/4 | ~20min | ~5min |
 
 **Recent Trend:**
-- Last 5 plans: 01-03 (35min), 02-01 (6min), 02-02 (4min), 02-03 (4min)
-- Trend: accelerating (UI plans very fast with established patterns)
+- Last 5 plans: 02-01 (6min), 02-02 (4min), 02-03 (4min), 02-04 (6min)
+- Trend: consistent ~5min for UI plans with established patterns
 
 *Updated after each plan completion*
 
@@ -65,6 +65,9 @@ Recent decisions affecting current work:
 - 02-03: PaymentMethodCards stub in Task 1, full implementation in Task 2 (same pattern as 02-02)
 - 02-03: Month sorting uses parse-back-to-Date for chronological order (not alphabetical)
 - 02-03: UISegmentedControl.appearance() for dark theme segmented control styling
+- 02-04: Custom inline search bar instead of .searchable (requires List context; dashboard uses ScrollView)
+- 02-04: LeadStatusPill accepts raw String for flexibility with unknown statuses
+- 02-04: Chart handles single data point with PointMark (LineMark invisible with 1 point)
 
 ### Pending Todos
 
@@ -79,5 +82,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 02-03-PLAN.md (billing screen with transaction list, filters, payment methods)
+Stopped at: Completed 02-04-PLAN.md (campaign chart, cost metrics, leads pipeline) -- Phase 2 complete
 Resume file: None
