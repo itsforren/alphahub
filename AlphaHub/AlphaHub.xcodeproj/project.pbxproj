@@ -26,6 +26,17 @@
 		B10000010000000000000013 /* ParticleBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000013 /* ParticleBackground.swift */; };
 		B10000010000000000000014 /* BiometricLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000014 /* BiometricLockView.swift */; };
 		B10000010000000000000015 /* PrivacyBlurModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000015 /* PrivacyBlurModifier.swift */; };
+		C10300010000000000000001 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000001 /* Theme.swift */; };
+		C10300010000000000000002 /* Fonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000002 /* Fonts.swift */; };
+		C10300010000000000000003 /* AppSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000003 /* AppSpacing.swift */; };
+		C10300010000000000000004 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000004 /* HapticManager.swift */; };
+		C10300010000000000000005 /* GlassCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000005 /* GlassCard.swift */; };
+		C10300010000000000000006 /* HeroNumber.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000006 /* HeroNumber.swift */; };
+		C10300010000000000000007 /* GlassEffect.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000007 /* GlassEffect.swift */; };
+		C10300010000000000000011 /* Inter-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000011 /* Inter-Regular.ttf */; };
+		C10300010000000000000012 /* Inter-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000012 /* Inter-Medium.ttf */; };
+		C10300010000000000000013 /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000013 /* Inter-SemiBold.ttf */; };
+		C10300010000000000000014 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000014 /* Inter-Bold.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +55,17 @@
 		B20000010000000000000013 /* ParticleBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParticleBackground.swift; sourceTree = "<group>"; };
 		B20000010000000000000014 /* BiometricLockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricLockView.swift; sourceTree = "<group>"; };
 		B20000010000000000000015 /* PrivacyBlurModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyBlurModifier.swift; sourceTree = "<group>"; };
+		C20300010000000000000001 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		C20300010000000000000002 /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
+		C20300010000000000000003 /* AppSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSpacing.swift; sourceTree = "<group>"; };
+		C20300010000000000000004 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
+		C20300010000000000000005 /* GlassCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassCard.swift; sourceTree = "<group>"; };
+		C20300010000000000000006 /* HeroNumber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroNumber.swift; sourceTree = "<group>"; };
+		C20300010000000000000007 /* GlassEffect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassEffect.swift; sourceTree = "<group>"; };
+		C20300010000000000000011 /* Inter-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Regular.ttf"; sourceTree = "<group>"; };
+		C20300010000000000000012 /* Inter-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Medium.ttf"; sourceTree = "<group>"; };
+		C20300010000000000000013 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
+		C20300010000000000000014 /* Inter-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Bold.ttf"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -116,6 +138,10 @@
 		D10000010000000000000006 /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				C20300010000000000000001 /* Theme.swift */,
+				C20300010000000000000002 /* Fonts.swift */,
+				C20300010000000000000003 /* AppSpacing.swift */,
+				C20300010000000000000004 /* HapticManager.swift */,
 			);
 			path = Design;
 			sourceTree = "<group>";
@@ -177,6 +203,8 @@
 		D10000010000000000000013 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				C20300010000000000000005 /* GlassCard.swift */,
+				C20300010000000000000006 /* HeroNumber.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -192,6 +220,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000010000000000000015 /* PrivacyBlurModifier.swift */,
+				C20300010000000000000007 /* GlassEffect.swift */,
 			);
 			path = Modifiers;
 			sourceTree = "<group>";
@@ -208,6 +237,10 @@
 		D10000010000000000000017 /* Fonts */ = {
 			isa = PBXGroup;
 			children = (
+				C20300010000000000000011 /* Inter-Regular.ttf */,
+				C20300010000000000000012 /* Inter-Medium.ttf */,
+				C20300010000000000000013 /* Inter-SemiBold.ttf */,
+				C20300010000000000000014 /* Inter-Bold.ttf */,
 			);
 			path = Fonts;
 			sourceTree = "<group>";
@@ -282,6 +315,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000010000000000000004 /* Assets.xcassets in Resources */,
+				C10300010000000000000011 /* Inter-Regular.ttf in Resources */,
+				C10300010000000000000012 /* Inter-Medium.ttf in Resources */,
+				C10300010000000000000013 /* Inter-SemiBold.ttf in Resources */,
+				C10300010000000000000014 /* Inter-Bold.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,6 +341,13 @@
 				B10000010000000000000013 /* ParticleBackground.swift in Sources */,
 				B10000010000000000000014 /* BiometricLockView.swift in Sources */,
 				B10000010000000000000015 /* PrivacyBlurModifier.swift in Sources */,
+				C10300010000000000000001 /* Theme.swift in Sources */,
+				C10300010000000000000002 /* Fonts.swift in Sources */,
+				C10300010000000000000003 /* AppSpacing.swift in Sources */,
+				C10300010000000000000004 /* HapticManager.swift in Sources */,
+				C10300010000000000000005 /* GlassCard.swift in Sources */,
+				C10300010000000000000006 /* HeroNumber.swift in Sources */,
+				C10300010000000000000007 /* GlassEffect.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
