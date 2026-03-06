@@ -52,6 +52,11 @@
 		D10201010000000000000006 /* MetricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000006 /* MetricsModels.swift */; };
 		D10201010000000000000007 /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000007 /* CurrencyFormatter.swift */; };
 		D10201010000000000000008 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000008 /* DateFormatting.swift */; };
+		D10201010000000000000009 /* DataManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000009 /* DataManager.swift */; };
+		D10201010000000000000010 /* ShimmerModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000010 /* ShimmerModifier.swift */; };
+		D10201010000000000000011 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000011 /* StatusPill.swift */; };
+		D10201010000000000000012 /* MetricCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000012 /* MetricCard.swift */; };
+		D10201010000000000000013 /* SectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000013 /* SectionHeader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +101,11 @@
 		D20201010000000000000006 /* MetricsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsModels.swift; sourceTree = "<group>"; };
 		D20201010000000000000007 /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
 		D20201010000000000000008 /* DateFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFormatting.swift; sourceTree = "<group>"; };
+		D20201010000000000000009 /* DataManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataManager.swift; sourceTree = "<group>"; };
+		D20201010000000000000010 /* ShimmerModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShimmerModifier.swift; sourceTree = "<group>"; };
+		D20201010000000000000011 /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
+		D20201010000000000000012 /* MetricCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricCard.swift; sourceTree = "<group>"; };
+		D20201010000000000000013 /* SectionHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionHeader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -191,6 +201,7 @@
 		D10201020000000000000001 /* Data */ = {
 			isa = PBXGroup;
 			children = (
+				D20201010000000000000009 /* DataManager.swift */,
 				D10201020000000000000002 /* Models */,
 			);
 			path = Data;
@@ -274,6 +285,10 @@
 			children = (
 				C20300010000000000000005 /* GlassCard.swift */,
 				C20300010000000000000006 /* HeroNumber.swift */,
+				D20201010000000000000012 /* MetricCard.swift */,
+				D20201010000000000000013 /* SectionHeader.swift */,
+				D20201010000000000000010 /* ShimmerModifier.swift */,
+				D20201010000000000000011 /* StatusPill.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -432,6 +447,11 @@
 				D10201010000000000000006 /* MetricsModels.swift in Sources */,
 				D10201010000000000000007 /* CurrencyFormatter.swift in Sources */,
 				D10201010000000000000008 /* DateFormatting.swift in Sources */,
+				D10201010000000000000009 /* DataManager.swift in Sources */,
+				D10201010000000000000010 /* ShimmerModifier.swift in Sources */,
+				D10201010000000000000011 /* StatusPill.swift in Sources */,
+				D10201010000000000000012 /* MetricCard.swift in Sources */,
+				D10201010000000000000013 /* SectionHeader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

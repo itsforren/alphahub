@@ -5,6 +5,7 @@ struct AlphaHubApp: App {
     @State private var authManager = AuthManager()
     @State private var biometricManager = BiometricManager()
     @State private var router = AppRouter()
+    @State private var dataManager = DataManager()
 
     init() {
         AppFonts.registerFonts()
@@ -16,6 +17,7 @@ struct AlphaHubApp: App {
                 .environment(authManager)
                 .environment(biometricManager)
                 .environment(router)
+                .environment(dataManager)
                 .task {
                     await authManager.startListening()
                 }
@@ -26,6 +28,7 @@ struct AlphaHubApp: App {
 struct RootView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(BiometricManager.self) private var biometric
+    @Environment(DataManager.self) private var dataManager
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -46,6 +49,13 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 biometric.lock()
+            }
+        }
+        .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated {
+                Task {
+                    await dataManager.loadAllData()
+                }
             }
         }
     }
