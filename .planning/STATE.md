@@ -5,33 +5,34 @@
 See: .planning/PROJECT.md (updated 2025-03-05)
 
 **Core value:** Clients can manage their entire Alpha Hub experience from their phone -- wallet, chat, courses, referrals -- with real-time sync to the web app.
-**Current focus:** Phase 1: Foundation
+**Current focus:** Phase 2: Core Value
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-03-05 -- Completed 01-03-PLAN.md (design system and tab navigation)
+Phase: 2 of 6 (Core Value)
+Plan: 1 of 4 in current phase
+Status: In progress
+Last activity: 2026-03-06 -- Completed 02-01-PLAN.md (data layer, models, shared components)
 
-Progress: [###░░░░░░░] ~17%
+Progress: [####░░░░░░] ~24%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: ~22min
-- Total execution time: ~66 min
+- Total plans completed: 4
+- Average duration: ~18min
+- Total execution time: ~72 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | ~66min | ~22min |
+| 02-core-value | 1/4 | ~6min | ~6min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (25min), 01-02 (6min), 01-03 (35min)
-- Trend: stable
+- Last 5 plans: 01-01 (25min), 01-02 (6min), 01-03 (35min), 02-01 (6min)
+- Trend: accelerating
 
 *Updated after each plan completion*
 
@@ -55,6 +56,9 @@ Recent decisions affecting current work:
 - 01-03: Used .ultraThinMaterial for glass effects — .glassEffect() is iOS 26+ only
 - 01-03: Inter TTFs converted from WOFF2 via fonttools (Google Fonts no longer serves raw TTF)
 - 01-03: FloatingTabBar overlays hidden native TabView; NavigationStack inside each tab
+- 02-01: nonisolated(unsafe) for non-Sendable Foundation formatters in Swift 6 strict concurrency
+- 02-01: LeadStatus rawValues use snake_case matching DB values directly
+- 02-01: DataManager.loadAllData() triggered from RootView .onChange(of: auth.isAuthenticated)
 
 ### Pending Todos
 
@@ -68,6 +72,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: Completed 01-03-PLAN.md (design system and tab navigation) — Phase 1 complete
+Last session: 2026-03-06
+Stopped at: Completed 02-01-PLAN.md (data layer, models, shared components)
 Resume file: None
