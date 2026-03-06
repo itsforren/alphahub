@@ -17,10 +17,7 @@ struct ClientTabView: View {
                 .tag(ClientTab.home)
 
                 NavigationStack {
-                    PlaceholderView(
-                        title: "Wallet",
-                        icon: "wallet.pass.fill"
-                    )
+                    BillingView()
                 }
                 .tag(ClientTab.wallet)
 
