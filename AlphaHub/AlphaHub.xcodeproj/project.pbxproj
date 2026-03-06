@@ -61,6 +61,16 @@
 		E10202010000000000000002 /* WalletHeroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000002 /* WalletHeroCard.swift */; };
 		E10202010000000000000003 /* QuickLinkPills.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000003 /* QuickLinkPills.swift */; };
 		E10202010000000000000004 /* BusinessResultsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000004 /* BusinessResultsSection.swift */; };
+		F10203010000000000000001 /* BillingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20203010000000000000001 /* BillingView.swift */; };
+		F10203010000000000000002 /* BillingFilterBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20203010000000000000002 /* BillingFilterBar.swift */; };
+		F10203010000000000000003 /* BillingTransactionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20203010000000000000003 /* BillingTransactionRow.swift */; };
+		F10203010000000000000004 /* TransactionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20203010000000000000004 /* TransactionDetailSheet.swift */; };
+		F10203010000000000000005 /* PaymentMethodCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20203010000000000000005 /* PaymentMethodCards.swift */; };
+		F10204010000000000000001 /* CampaignSpendChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000001 /* CampaignSpendChart.swift */; };
+		F10204010000000000000002 /* CostMetricsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000002 /* CostMetricsSection.swift */; };
+		F10204010000000000000003 /* LeadsPipelineList.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000003 /* LeadsPipelineList.swift */; };
+		F10204010000000000000004 /* LeadDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000004 /* LeadDetailSheet.swift */; };
+		F10204010000000000000005 /* LeadStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000005 /* LeadStatusPill.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -114,6 +124,16 @@
 		E20202010000000000000002 /* WalletHeroCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletHeroCard.swift; sourceTree = "<group>"; };
 		E20202010000000000000003 /* QuickLinkPills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLinkPills.swift; sourceTree = "<group>"; };
 		E20202010000000000000004 /* BusinessResultsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessResultsSection.swift; sourceTree = "<group>"; };
+		F20203010000000000000001 /* BillingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingView.swift; sourceTree = "<group>"; };
+		F20203010000000000000002 /* BillingFilterBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingFilterBar.swift; sourceTree = "<group>"; };
+		F20203010000000000000003 /* BillingTransactionRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingTransactionRow.swift; sourceTree = "<group>"; };
+		F20203010000000000000004 /* TransactionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionDetailSheet.swift; sourceTree = "<group>"; };
+		F20203010000000000000005 /* PaymentMethodCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaymentMethodCards.swift; sourceTree = "<group>"; };
+		F20204010000000000000001 /* CampaignSpendChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignSpendChart.swift; sourceTree = "<group>"; };
+		F20204010000000000000002 /* CostMetricsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CostMetricsSection.swift; sourceTree = "<group>"; };
+		F20204010000000000000003 /* LeadsPipelineList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsPipelineList.swift; sourceTree = "<group>"; };
+		F20204010000000000000004 /* LeadDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadDetailSheet.swift; sourceTree = "<group>"; };
+		F20204010000000000000005 /* LeadStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadStatusPill.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -240,12 +260,35 @@
 		D10000010000000000000008 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				F10203020000000000000001 /* Billing */,
 				E10202020000000000000001 /* Dashboard */,
+				F10204020000000000000001 /* Leads */,
 				D10000010000000000000009 /* Login */,
 				D10000010000000000000010 /* Shell */,
 				D10000010000000000000011 /* Placeholder */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		F10204020000000000000001 /* Leads */ = {
+			isa = PBXGroup;
+			children = (
+				F20204010000000000000004 /* LeadDetailSheet.swift */,
+				F20204010000000000000005 /* LeadStatusPill.swift */,
+			);
+			path = Leads;
+			sourceTree = "<group>";
+		};
+		F10203020000000000000001 /* Billing */ = {
+			isa = PBXGroup;
+			children = (
+				F20203010000000000000001 /* BillingView.swift */,
+				F20203010000000000000002 /* BillingFilterBar.swift */,
+				F20203010000000000000003 /* BillingTransactionRow.swift */,
+				F20203010000000000000004 /* TransactionDetailSheet.swift */,
+				F20203010000000000000005 /* PaymentMethodCards.swift */,
+			);
+			path = Billing;
 			sourceTree = "<group>";
 		};
 		E10202020000000000000001 /* Dashboard */ = {
@@ -255,6 +298,9 @@
 				E20202010000000000000002 /* WalletHeroCard.swift */,
 				E20202010000000000000003 /* QuickLinkPills.swift */,
 				E20202010000000000000004 /* BusinessResultsSection.swift */,
+				F20204010000000000000001 /* CampaignSpendChart.swift */,
+				F20204010000000000000002 /* CostMetricsSection.swift */,
+				F20204010000000000000003 /* LeadsPipelineList.swift */,
 			);
 			path = Dashboard;
 			sourceTree = "<group>";
@@ -476,6 +522,16 @@
 				E10202010000000000000002 /* WalletHeroCard.swift in Sources */,
 				E10202010000000000000003 /* QuickLinkPills.swift in Sources */,
 				E10202010000000000000004 /* BusinessResultsSection.swift in Sources */,
+				F10203010000000000000001 /* BillingView.swift in Sources */,
+				F10203010000000000000002 /* BillingFilterBar.swift in Sources */,
+				F10203010000000000000003 /* BillingTransactionRow.swift in Sources */,
+				F10203010000000000000004 /* TransactionDetailSheet.swift in Sources */,
+				F10203010000000000000005 /* PaymentMethodCards.swift in Sources */,
+				F10204010000000000000001 /* CampaignSpendChart.swift in Sources */,
+				F10204010000000000000002 /* CostMetricsSection.swift in Sources */,
+				F10204010000000000000003 /* LeadsPipelineList.swift in Sources */,
+				F10204010000000000000004 /* LeadDetailSheet.swift in Sources */,
+				F10204010000000000000005 /* LeadStatusPill.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
