@@ -7,22 +7,22 @@
 
 ### Authentication & Security
 
-- [ ] **AUTH-01**: Client can log in with existing email/password (Supabase Auth)
-- [ ] **AUTH-02**: Client can unlock app with Face ID / Touch ID after initial login
-- [ ] **AUTH-03**: App falls back to device passcode when biometrics fail
-- [ ] **AUTH-04**: App shows blur overlay when entering background (protects financial data)
-- [ ] **AUTH-05**: Session persists across app launches (Keychain storage)
-- [ ] **AUTH-06**: Client can sign out from any screen
+- [x] **AUTH-01**: Client can log in with existing email/password (Supabase Auth)
+- [x] **AUTH-02**: Client can unlock app with Face ID / Touch ID after initial login
+- [x] **AUTH-03**: App falls back to device passcode when biometrics fail
+- [x] **AUTH-04**: App shows blur overlay when entering background (protects financial data)
+- [x] **AUTH-05**: Session persists across app launches (Keychain storage)
+- [x] **AUTH-06**: Client can sign out from any screen
 
 ### Dashboard
 
-- [ ] **DASH-01**: Wallet balance hero card showing remaining balance, tracked spend, total deposits
-- [ ] **DASH-02**: Key metrics cards -- leads count, cost-per-lead, total ad spend
-- [ ] **DASH-03**: Daily ad spend sparkline chart (last 30 days, mobile-optimized)
-- [ ] **DASH-04**: Upcoming payment indicator with due date and amount
-- [ ] **DASH-05**: Quick action navigation buttons (Chat, Courses, Billing, Referrals)
-- [ ] **DASH-06**: Pull-to-refresh with haptic feedback on completion
-- [ ] **DASH-07**: Skeleton loading states on first load
+- [x] **DASH-01**: Wallet balance hero card showing remaining balance, tracked spend, total deposits
+- [x] **DASH-02**: Key metrics cards -- leads count, cost-per-lead, total ad spend
+- [x] **DASH-03**: Daily ad spend sparkline chart (last 30 days, mobile-optimized)
+- [x] **DASH-04**: Upcoming payment indicator with due date and amount
+- [x] **DASH-05**: Quick action navigation buttons (Chat, Courses, Billing, Referrals)
+- [x] **DASH-06**: Pull-to-refresh with haptic feedback on completion
+- [x] **DASH-07**: Skeleton loading states on first load
 
 ### Leads
 
@@ -31,12 +31,12 @@
 
 ### Billing & Wallet
 
-- [ ] **BILL-01**: Transaction list grouped by month (scrollable)
-- [ ] **BILL-02**: Filter by type -- All / Ad Spend / Management (segmented control)
-- [ ] **BILL-03**: Status badges on each record (paid, pending, overdue)
-- [ ] **BILL-04**: Payment method cards displayed (view-only -- card brand, last 4, expiry)
-- [ ] **BILL-05**: Transaction detail bottom sheet on tap
-- [ ] **BILL-06**: "Manage payment methods on alphaagent.io" link
+- [x] **BILL-01**: Transaction list grouped by month (scrollable)
+- [x] **BILL-02**: Filter by type -- All / Ad Spend / Management (segmented control)
+- [x] **BILL-03**: Status badges on each record (paid, pending, overdue)
+- [x] **BILL-04**: Payment method cards displayed (view-only -- card brand, last 4, expiry)
+- [x] **BILL-05**: Transaction detail bottom sheet on tap
+- [x] **BILL-06**: "Manage payment methods on alphaagent.io" link
 
 ### Real-Time Chat
 
@@ -97,10 +97,10 @@
 
 ### Design System
 
-- [ ] **DSGN-01**: Dark-first design system -- near-black backgrounds, elevated surfaces, bold accent colors
-- [ ] **DSGN-02**: Haptic feedback throughout -- taps, pull-to-refresh, success/error states
-- [ ] **DSGN-03**: OLED-optimized dark theme (true black where appropriate)
-- [ ] **DSGN-04**: Consistent typography, spacing, and color tokens
+- [x] **DSGN-01**: Dark-first design system -- near-black backgrounds, elevated surfaces, bold accent colors
+- [x] **DSGN-02**: Haptic feedback throughout -- taps, pull-to-refresh, success/error states
+- [x] **DSGN-03**: OLED-optimized dark theme (true black where appropriate)
+- [x] **DSGN-04**: Consistent typography, spacing, and color tokens
 
 ### Widgets
 
@@ -162,27 +162,27 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| AUTH-01 | Phase 1 | Pending |
-| AUTH-02 | Phase 1 | Pending |
-| AUTH-03 | Phase 1 | Pending |
-| AUTH-04 | Phase 1 | Pending |
-| AUTH-05 | Phase 1 | Pending |
-| AUTH-06 | Phase 1 | Pending |
-| DASH-01 | Phase 2 | Pending |
-| DASH-02 | Phase 2 | Pending |
-| DASH-03 | Phase 2 | Pending |
-| DASH-04 | Phase 2 | Pending |
-| DASH-05 | Phase 2 | Pending |
-| DASH-06 | Phase 2 | Pending |
-| DASH-07 | Phase 2 | Pending |
+| AUTH-01 | Phase 1 | Complete |
+| AUTH-02 | Phase 1 | Complete |
+| AUTH-03 | Phase 1 | Complete |
+| AUTH-04 | Phase 1 | Complete |
+| AUTH-05 | Phase 1 | Complete |
+| AUTH-06 | Phase 1 | Complete |
+| DASH-01 | Phase 2 | Complete |
+| DASH-02 | Phase 2 | Complete |
+| DASH-03 | Phase 2 | Complete |
+| DASH-04 | Phase 2 | Complete |
+| DASH-05 | Phase 2 | Complete |
+| DASH-06 | Phase 2 | Complete |
+| DASH-07 | Phase 2 | Complete |
 | LEAD-01 | Phase 5 | Pending |
 | LEAD-02 | Phase 5 | Pending |
-| BILL-01 | Phase 2 | Pending |
-| BILL-02 | Phase 2 | Pending |
-| BILL-03 | Phase 2 | Pending |
-| BILL-04 | Phase 2 | Pending |
-| BILL-05 | Phase 2 | Pending |
-| BILL-06 | Phase 2 | Pending |
+| BILL-01 | Phase 2 | Complete |
+| BILL-02 | Phase 2 | Complete |
+| BILL-03 | Phase 2 | Complete |
+| BILL-04 | Phase 2 | Complete |
+| BILL-05 | Phase 2 | Complete |
+| BILL-06 | Phase 2 | Complete |
 | CHAT-01 | Phase 3 | Pending |
 | CHAT-02 | Phase 3 | Pending |
 | CHAT-03 | Phase 3 | Pending |
@@ -219,13 +219,13 @@
 | PROF-01 | Phase 5 | Pending |
 | PROF-02 | Phase 5 | Pending |
 | PROF-03 | Phase 5 | Pending |
-| DSGN-01 | Phase 1 | Pending |
-| DSGN-02 | Phase 1 | Pending |
-| DSGN-03 | Phase 1 | Pending |
-| DSGN-04 | Phase 1 | Pending |
+| DSGN-01 | Phase 1 | Complete |
+| DSGN-02 | Phase 1 | Complete |
+| DSGN-03 | Phase 1 | Complete |
+| DSGN-04 | Phase 1 | Complete |
 | WDGT-01 | Phase 5 | Pending |
 | WDGT-02 | Phase 5 | Pending |
-| STOR-01 | Phase 1 | Pending |
+| STOR-01 | Phase 1 | Complete |
 | STOR-02 | Phase 6 | Pending |
 | STOR-03 | Phase 6 | Pending |
 | STOR-04 | Phase 6 | Pending |

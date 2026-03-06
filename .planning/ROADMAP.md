@@ -51,10 +51,10 @@ Plans:
 **Plans**: 4 plans in 3 waves
 
 Plans:
-- [ ] 02-01-PLAN.md — Data layer: Codable models, DataManager, formatters, shared components (shimmer, status pill, metric card)
-- [ ] 02-02-PLAN.md — Dashboard top: wallet hero card, welcome greeting, quick-link pills, business results section
-- [ ] 02-03-PLAN.md — Billing screen: transaction list, month grouping, filters, status badges, detail sheet, payment methods
-- [ ] 02-04-PLAN.md — Dashboard bottom: campaign spend chart, cost metrics grid, leads pipeline list, lead detail sheet
+- [x] 02-01-PLAN.md — Data layer: Codable models, DataManager, formatters, shared components (shimmer, status pill, metric card)
+- [x] 02-02-PLAN.md — Dashboard top: wallet hero card, welcome greeting, quick-link pills, business results section
+- [x] 02-03-PLAN.md — Billing screen: transaction list, month grouping, filters, status badges, detail sheet, payment methods
+- [x] 02-04-PLAN.md — Dashboard bottom: campaign spend chart, cost metrics grid, leads pipeline list, lead detail sheet
 
 ### Phase 3: Communication
 **Goal**: Client can have real-time conversations with support and receive push notifications for important events -- the features that make the app sticky
@@ -134,7 +134,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 3/3 | Complete | 2026-03-05 |
-| 2. Core Value | 0/4 | Planned | - |
+| 2. Core Value | 4/4 | Complete | 2026-03-06 |
 | 3. Communication | 0/3 | Not started | - |
 | 4. Learning & Activation | 0/4 | Not started | - |
 | 5. Growth & Polish | 0/4 | Not started | - |
