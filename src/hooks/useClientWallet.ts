@@ -9,7 +9,7 @@ export interface ClientWallet {
   auto_charge_amount: number | null;
   auto_billing_enabled: boolean;
   monthly_ad_spend_cap: number | null;
-  billing_mode: 'manual' | 'auto_stripe';
+  billing_mode: 'manual' | 'auto_stripe' | 'admin_exempt';
   last_calculated_at: string;
   last_auto_charge_at: string | null;
   last_charge_failed_at: string | null;
@@ -80,7 +80,7 @@ export function useCreateOrUpdateWallet() {
       auto_charge_amount?: number | null;
       auto_billing_enabled?: boolean;
       monthly_ad_spend_cap?: number | null;
-      billing_mode?: 'manual' | 'auto_stripe';
+      billing_mode?: 'manual' | 'auto_stripe' | 'admin_exempt';
     }) => {
       // Check if wallet exists
       const { data: existing } = await supabase

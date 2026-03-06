@@ -195,10 +195,16 @@ serve(async (req) => {
       // Get wallet tracking start date and low balance threshold
       const { data: wallet } = await supabase
         .from('client_wallets')
-        .select('tracking_start_date, low_balance_threshold')
+        .select('tracking_start_date, low_balance_threshold, billing_mode')
         .eq('client_id', client.id)
         .maybeSingle();
-      
+
+      // Admin exempt accounts bypass wallet-based safe mode
+      if (wallet?.billing_mode === 'admin_exempt') {
+        console.log(`Client ${client.name}: admin_exempt — skipping wallet safe mode check`);
+        continue;
+      }
+
       // Use per-client threshold or default
       const lowBalanceThreshold = wallet?.low_balance_threshold ?? DEFAULT_LOW_BALANCE_THRESHOLD;
 

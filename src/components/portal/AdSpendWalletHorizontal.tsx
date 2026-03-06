@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
+import { useClientWallet, useCreateOrUpdateWallet, useAddWalletDeposit } from '@/hooks/useClientWallet';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target, Plus, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -31,6 +32,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     refetch: refetchComputedBalance
   } = useComputedWalletBalance(clientId);
   const createOrUpdateWallet = useCreateOrUpdateWallet();
+  const addWalletDeposit = useAddWalletDeposit();
 
   // Fetch client billing info for monthly cap period calculation
   const { data: clientBilling } = useQuery({
@@ -82,16 +84,21 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const capPeriodDaysTotal = 30;
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditNote, setCreditNote] = useState('');
   const [threshold, setThreshold] = useState('');
   const [autoCharge, setAutoCharge] = useState('');
   const [editTrackingDate, setEditTrackingDate] = useState('');
   const [monthlyCapInput, setMonthlyCapInput] = useState('');
+  const [billingModeInput, setBillingModeInput] = useState<string>('');
   const [isSavingDate, setIsSavingDate] = useState(false);
 
   const isLoading = walletLoading || computedLoading;
+  const isAdminExempt = wallet?.billing_mode === 'admin_exempt';
   const lowThreshold = wallet?.low_balance_threshold ?? 150;
-  const isLowBalance = remainingBalance <= lowThreshold;
-  const isNegative = remainingBalance < 0;
+  const isLowBalance = !isAdminExempt && remainingBalance <= lowThreshold;
+  const isNegative = !isAdminExempt && remainingBalance < 0;
 
   const handleSaveSettings = async () => {
     try {
@@ -100,6 +107,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         low_balance_threshold: parseFloat(threshold) || 150,
         auto_charge_amount: autoCharge ? parseFloat(autoCharge) : null,
         monthly_ad_spend_cap: monthlyCapInput ? parseFloat(monthlyCapInput) : null,
+        ...(billingModeInput && { billing_mode: billingModeInput as 'manual' | 'auto_stripe' | 'admin_exempt' }),
       });
 
       if (editTrackingDate && editTrackingDate !== trackingStartDate) {
@@ -134,8 +142,43 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     setThreshold(wallet?.low_balance_threshold?.toString() || '150');
     setAutoCharge(wallet?.auto_charge_amount?.toString() || '');
     setMonthlyCapInput((wallet as any)?.monthly_ad_spend_cap?.toString() || '');
+    setBillingModeInput(wallet?.billing_mode || 'manual');
     setEditTrackingDate(trackingStartDate || '');
     setSettingsModalOpen(true);
+  };
+
+  const handleAddCredit = async () => {
+    const amount = parseFloat(creditAmount);
+    if (!amount || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    try {
+      // Ensure tracking_start_date is set so balance computes
+      if (!trackingStartDate) {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        await supabase
+          .from('client_wallets')
+          .update({ tracking_start_date: today })
+          .eq('client_id', clientId);
+      }
+      await addWalletDeposit.mutateAsync({
+        client_id: clientId,
+        amount,
+        description: `Admin credit${creditNote ? ' — ' + creditNote : ''}`,
+      });
+      // Invalidate computed balance
+      queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId], exact: false });
+      queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', clientId], exact: false });
+      queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId], exact: false });
+      refetchComputedBalance();
+      toast.success(`$${amount.toLocaleString()} credit added`);
+      setCreditModalOpen(false);
+      setCreditAmount('');
+      setCreditNote('');
+    } catch (error) {
+      toast.error('Failed to add credit');
+    }
   };
 
   if (isLoading) {
@@ -331,27 +374,45 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
             {/* Right: Threshold + Recharge + Settings */}
             <div className="flex items-center gap-3 shrink-0">
-              <div className="hidden sm:flex items-center gap-3">
-                <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
-                  <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
-                  <div className="text-xs text-muted-foreground">Threshold</div>
+              {isAdminExempt ? (
+                <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-medium text-emerald-400">Admin Account</span>
                 </div>
-                {rechargeAmount > 0 && (
+              ) : (
+                <div className="hidden sm:flex items-center gap-3">
                   <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
-                    <div className="text-lg font-semibold text-foreground">${rechargeAmount.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground">Recharge</div>
+                    <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
+                    <div className="text-xs text-muted-foreground">Threshold</div>
                   </div>
-                )}
-              </div>
+                  {rechargeAmount > 0 && (
+                    <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
+                      <div className="text-lg font-semibold text-foreground">${rechargeAmount.toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">Recharge</div>
+                    </div>
+                  )}
+                </div>
+              )}
               {isAdmin && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={openSettings}
-                  className="h-9 w-9"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCreditModalOpen(true)}
+                    className="h-9 w-9"
+                    title="Add credit"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={openSettings}
+                    className="h-9 w-9"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -414,6 +475,22 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
               </p>
             </div>
             <div className="space-y-2">
+              <Label>Billing Mode</Label>
+              <Select value={billingModeInput} onValueChange={setBillingModeInput}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="auto_stripe">Auto Stripe</SelectItem>
+                  <SelectItem value="admin_exempt">Admin Exempt</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Admin Exempt bypasses wallet safe mode — campaigns keep running regardless of balance.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Tracking Start Date</Label>
               <Input
                 type="date"
@@ -430,6 +507,50 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             <Button onClick={handleSaveSettings} disabled={createOrUpdateWallet.isPending || isSavingDate}>
               {(createOrUpdateWallet.isPending || isSavingDate) && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Save Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Credit Modal */}
+      <Dialog open={creditModalOpen} onOpenChange={setCreditModalOpen}>
+        <DialogContent className="sm:max-w-[360px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-emerald-500" />
+              Add Wallet Credit
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  className="pl-7"
+                  placeholder="500"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Note (optional)</Label>
+              <Input
+                value={creditNote}
+                onChange={(e) => setCreditNote(e.target.value)}
+                placeholder="e.g. Admin comp, refund, etc."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddCredit} disabled={addWalletDeposit.isPending}>
+              {addWalletDeposit.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Add Credit
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1074,12 +1074,13 @@ serve(async (req) => {
         // ============ WALLET CALCULATION ============
         const { data: wallet } = await supabase
           .from('client_wallets')
-          .select('tracking_start_date, low_balance_threshold')
+          .select('tracking_start_date, low_balance_threshold, billing_mode')
           .eq('client_id', client.id)
           .maybeSingle();
-        
+
         // Use per-client threshold or default to 150
-        const lowBalanceThreshold = wallet?.low_balance_threshold ?? 150;
+        // Admin exempt accounts use -Infinity so SAFE_WALLET never triggers
+        const lowBalanceThreshold = wallet?.billing_mode === 'admin_exempt' ? -Infinity : (wallet?.low_balance_threshold ?? 150);
 
         const { data: deposits } = await supabase
           .from('wallet_transactions')
