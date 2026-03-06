@@ -1,37 +1,46 @@
 import SwiftUI
 
 struct PlaceholderView: View {
+    var title: String = "Alpha Hub"
+    var icon: String = "bolt.fill"
+    var showSignOut: Bool = false
+
     @Environment(AuthManager.self) private var authManager
 
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "bolt.fill")
+            AppColors.pureBlack.ignoresSafeArea()
+
+            VStack(spacing: AppSpacing.md) {
+                Spacer()
+
+                Image(systemName: icon)
                     .font(.system(size: 48))
-                    .foregroundColor(.white)
-                Text("Alpha Hub")
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    .foregroundColor(AppColors.textTertiary)
+
+                Text(title)
+                    .font(AppTypography.heading2)
+                    .foregroundColor(AppColors.textPrimary)
+
                 Text("Coming soon")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                    .font(AppTypography.caption)
+                    .foregroundColor(AppColors.textSecondary)
 
                 Spacer()
-                    .frame(height: 40)
 
-                Button {
-                    Task {
-                        try? await authManager.signOut()
+                if showSignOut {
+                    Button {
+                        Task {
+                            try? await authManager.signOut()
+                        }
+                    } label: {
+                        Text("Sign Out")
+                            .font(AppTypography.body)
+                            .foregroundColor(AppColors.error.opacity(0.8))
                     }
-                } label: {
-                    Text("Sign Out")
-                        .font(.subheadline)
-                        .foregroundColor(.red.opacity(0.8))
+                    .padding(.bottom, 100) // Clear the floating tab bar
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }

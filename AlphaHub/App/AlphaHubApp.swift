@@ -4,12 +4,18 @@ import SwiftUI
 struct AlphaHubApp: App {
     @State private var authManager = AuthManager()
     @State private var biometricManager = BiometricManager()
+    @State private var router = AppRouter()
+
+    init() {
+        AppFonts.registerFonts()
+    }
 
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(authManager)
                 .environment(biometricManager)
+                .environment(router)
                 .task {
                     await authManager.startListening()
                 }
@@ -30,7 +36,7 @@ struct RootView: View {
             } else if !biometric.isUnlocked {
                 BiometricLockView()
             } else {
-                PlaceholderView()
+                MainTabView(role: auth.userRole)
             }
         }
         .privacyBlur()
@@ -41,15 +47,14 @@ struct RootView: View {
 struct LaunchScreenView: View {
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 16) {
+            AppColors.pureBlack.ignoresSafeArea()
+            VStack(spacing: AppSpacing.md) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 48))
-                    .foregroundColor(.white)
+                    .foregroundColor(AppColors.textPrimary)
                 Text("Alpha Hub")
-                    .font(.title)
-                    .fontWeight(.bold)
-                    .foregroundColor(.white)
+                    .font(AppTypography.heading1)
+                    .foregroundColor(AppColors.textPrimary)
                 ProgressView()
                     .tint(.white)
             }

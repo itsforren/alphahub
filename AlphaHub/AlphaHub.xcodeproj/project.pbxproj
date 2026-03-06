@@ -37,6 +37,13 @@
 		C10300010000000000000012 /* Inter-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000012 /* Inter-Medium.ttf */; };
 		C10300010000000000000013 /* Inter-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000013 /* Inter-SemiBold.ttf */; };
 		C10300010000000000000014 /* Inter-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C20300010000000000000014 /* Inter-Bold.ttf */; };
+		C10300020000000000000001 /* Tab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000001 /* Tab.swift */; };
+		C10300020000000000000002 /* AppRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000002 /* AppRouter.swift */; };
+		C10300020000000000000003 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000003 /* MainTabView.swift */; };
+		C10300020000000000000004 /* ClientTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000004 /* ClientTabView.swift */; };
+		C10300020000000000000005 /* AdminTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000005 /* AdminTabView.swift */; };
+		C10300020000000000000006 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000006 /* FloatingTabBar.swift */; };
+		C10300020000000000000007 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000007 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -66,6 +73,13 @@
 		C20300010000000000000012 /* Inter-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Medium.ttf"; sourceTree = "<group>"; };
 		C20300010000000000000013 /* Inter-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-SemiBold.ttf"; sourceTree = "<group>"; };
 		C20300010000000000000014 /* Inter-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Inter-Bold.ttf"; sourceTree = "<group>"; };
+		C20300020000000000000001 /* Tab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tab.swift; sourceTree = "<group>"; };
+		C20300020000000000000002 /* AppRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRouter.swift; sourceTree = "<group>"; };
+		C20300020000000000000003 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		C20300020000000000000004 /* ClientTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientTabView.swift; sourceTree = "<group>"; };
+		C20300020000000000000005 /* AdminTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminTabView.swift; sourceTree = "<group>"; };
+		C20300020000000000000006 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
+		C20300020000000000000007 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -102,6 +116,7 @@
 				D10000010000000000000012 /* Shared */,
 				D10000010000000000000016 /* Resources */,
 				A20000010000000000000005 /* Info.plist */,
+				C20300020000000000000007 /* PrivacyInfo.xcprivacy */,
 			);
 			name = "";
 			sourceTree = "<group>";
@@ -149,6 +164,8 @@
 		D10000010000000000000007 /* Navigation */ = {
 			isa = PBXGroup;
 			children = (
+				C20300020000000000000001 /* Tab.swift */,
+				C20300020000000000000002 /* AppRouter.swift */,
 			);
 			path = Navigation;
 			sourceTree = "<group>";
@@ -178,6 +195,10 @@
 		D10000010000000000000010 /* Shell */ = {
 			isa = PBXGroup;
 			children = (
+				C20300020000000000000003 /* MainTabView.swift */,
+				C20300020000000000000004 /* ClientTabView.swift */,
+				C20300020000000000000005 /* AdminTabView.swift */,
+				C20300020000000000000006 /* FloatingTabBar.swift */,
 			);
 			path = Shell;
 			sourceTree = "<group>";
@@ -319,6 +340,7 @@
 				C10300010000000000000012 /* Inter-Medium.ttf in Resources */,
 				C10300010000000000000013 /* Inter-SemiBold.ttf in Resources */,
 				C10300010000000000000014 /* Inter-Bold.ttf in Resources */,
+				C10300020000000000000007 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -348,6 +370,12 @@
 				C10300010000000000000005 /* GlassCard.swift in Sources */,
 				C10300010000000000000006 /* HeroNumber.swift in Sources */,
 				C10300010000000000000007 /* GlassEffect.swift in Sources */,
+				C10300020000000000000001 /* Tab.swift in Sources */,
+				C10300020000000000000002 /* AppRouter.swift in Sources */,
+				C10300020000000000000003 /* MainTabView.swift in Sources */,
+				C10300020000000000000004 /* ClientTabView.swift in Sources */,
+				C10300020000000000000005 /* AdminTabView.swift in Sources */,
+				C10300020000000000000006 /* FloatingTabBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
