@@ -269,19 +269,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Deduplication: skip if already charged today ──
-        const { data: existingToday } = await supabase
+        // ── Cooldown: skip if recharged within the last 2.5 hours ──
+        const cooldownMs = 2.5 * 60 * 60 * 1000; // 2.5 hours
+        const cooldownCutoff = new Date(now.getTime() - cooldownMs).toISOString();
+        const { data: recentCharge } = await supabase
           .from('billing_records')
-          .select('id, status')
+          .select('id, status, paid_at, created_at')
           .eq('client_id', clientId)
           .eq('billing_type', 'ad_spend')
-          .eq('billing_period_start', today)
           .in('status', ['pending', 'paid'])
+          .or(`paid_at.gte.${cooldownCutoff},created_at.gte.${cooldownCutoff}`)
+          .order('created_at', { ascending: false })
+          .limit(1)
           .maybeSingle();
 
-        if (existingToday) {
-          console.log(`${client.name}: already recharged today (${existingToday.status}), skipping`);
-          results.push({ client: client.name, action: 'skipped', reason: 'already_recharged_today' });
+        if (recentCharge) {
+          const chargeTime = recentCharge.paid_at || recentCharge.created_at;
+          console.log(`${client.name}: recharged recently at ${chargeTime} (${recentCharge.status}), cooldown active`);
+          results.push({ client: client.name, action: 'skipped', reason: 'cooldown_active', last_charge: chargeTime });
           continue;
         }
 

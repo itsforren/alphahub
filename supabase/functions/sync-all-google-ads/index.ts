@@ -16,7 +16,14 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    console.log('Starting sync for all Google Ads clients...');
+    // Accept optional daysBack from request body (default 30 for daily, 3 for hourly)
+    let requestedDaysBack = 30;
+    try {
+      const body = await req.json();
+      if (body?.daysBack) requestedDaysBack = body.daysBack;
+    } catch { /* empty body is fine, use default */ }
+
+    console.log(`Starting sync for all Google Ads clients (daysBack: ${requestedDaysBack})...`);
 
     // Get all active clients with Google Ads campaigns
     const { data: clients, error: clientsError } = await supabase
@@ -51,7 +58,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({ 
             clientId: client.id,
-            daysBack: 30, // Fetch 30 days of historical data
+            daysBack: requestedDaysBack,
           }),
         });
 
