@@ -56,12 +56,23 @@ Client can check their wallet balance, view billing history, and see key busines
 - Pull-to-refresh refreshes the entire dashboard at once
 - Haptic feedback on pull-to-refresh
 
+### Design Direction
+- **Tesla-clean aesthetic** — bold, bright numbers that pop against dark backgrounds, ultra-minimal chrome
+- Numbers are the star: large, bright, killer figures that are super easy to see at a glance
+- No tacky-looking cards or heavy decoration — modern, futuristic, badass
+- Simple > ornate. Every element earns its space.
+- Shimmer placeholders on first load — animated shimmer bars matching layout shapes
+- Empty billing history: friendly illustration + message
+- Pull-to-refresh refreshes ALL data at once with haptic feedback
+
 ### Claude's Discretion
 - Metrics card arrangement (grid vs stacked) — must look cohesive, not thrown together
 - Filter sticky behavior (sticky vs top of screen)
 - Skeleton loading pattern (simultaneous vs cascade)
 - Quick link pill styling and exact placement
 - Chart and radial graph placement throughout dashboard
+- Payment method display style and "manage on web" implementation
+- Zero wallet balance presentation
 - All visual design decisions — must be modern, bespoke, futuristic, tasteful, and timeless
 - NOT vibe-coded looking — should feel intentional and elegant
 
@@ -70,8 +81,12 @@ Client can check their wallet balance, view billing history, and see key busines
 <specifics>
 ## Specific Ideas
 
-- "I want it to look modern, beautiful, futuristic, tasteful, and timeless — not like vibe code"
+- "Bright, killer numbers that are super easy to see" — numbers should be the dominant visual element
+- Tesla as design reference — futuristic, minimal, confident
+- "Not a bunch of tacky-looking cards" — avoid heavy card borders, shadows, or ornamental UI
+- "Modern, beautiful, futuristic, tasteful, and timeless — not like vibe code"
 - "Simple, elegant, modern, bespoke — should look in place, as it should be"
+- Bold type for key figures, subdued labels, generous whitespace
 - Design should flow correctly, not look tacky or thrown together
 - All data points already exist on the web app — reference existing screenshots for data structure but design completely fresh for iOS
 - Wallet section reference (data points only, NOT style): balance, monthly max progress, remaining, day X of 30, threshold, recharge
