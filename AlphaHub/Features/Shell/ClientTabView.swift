@@ -12,10 +12,7 @@ struct ClientTabView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $router.clientTab) {
                 NavigationStack {
-                    PlaceholderView(
-                        title: "Home",
-                        icon: "chart.bar.fill"
-                    )
+                    DashboardView()
                 }
                 .tag(ClientTab.home)
 
