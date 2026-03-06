@@ -66,12 +66,12 @@ Plans:
   3. Client can send image and file attachments in chat and see link previews for URLs
   4. Client receives push notifications for new chat messages, payment reminders, low wallet balance, and new course content
   5. Tapping a push notification opens the app directly to the relevant screen (deep linking)
-**Plans**: TBD
+**Plans**: 3 plans in 2 waves
 
 Plans:
-- [ ] 03-01: RealtimeManager lifecycle, chat UI (bubbles, typing, read receipts, business hours)
-- [ ] 03-02: Chat attachments (image/file upload via Supabase Storage) and link previews
-- [ ] 03-03: APNs setup, PushNotificationManager, notification types, deep link routing, badge management
+- [ ] 03-01-PLAN.md — RealtimeManager, ChatModels, ChatViewModel, ChatView with bubbles, typing, read receipts, business hours, date separators
+- [ ] 03-02-PLAN.md — Chat attachments (image/file upload via Supabase Storage), link previews, fullscreen image viewer
+- [ ] 03-03-PLAN.md — APNs registration, PushNotificationManager, AppDelegate, deep link routing, unread badge, badge management
 
 ### Phase 4: Learning & Activation
 **Goal**: Client can watch course videos, complete onboarding tasks, and sign their agreement -- the activation features that drive long-term engagement and new client setup
