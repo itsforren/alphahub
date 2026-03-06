@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Main dashboard screen showing wallet hero, quick links, and business results.
+/// Main dashboard screen: wallet hero, quick links, business results,
+/// campaign spend chart, cost metrics, and leads pipeline.
 /// Replaces the Home tab placeholder in ClientTabView.
 /// Uses @Environment(DataManager.self) for reactive data observation.
 struct DashboardView: View {
@@ -40,6 +41,15 @@ struct DashboardView: View {
 
             // Business results section
             BusinessResultsSection()
+
+            // Campaign spend chart
+            CampaignSpendChart()
+
+            // Cost metrics grid
+            CostMetricsSection()
+
+            // Leads pipeline list
+            LeadsPipelineList()
 
             // Bottom padding to clear floating tab bar
             Spacer()
