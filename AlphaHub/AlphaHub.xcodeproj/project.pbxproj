@@ -44,6 +44,14 @@
 		C10300020000000000000005 /* AdminTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000005 /* AdminTabView.swift */; };
 		C10300020000000000000006 /* FloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000006 /* FloatingTabBar.swift */; };
 		C10300020000000000000007 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C20300020000000000000007 /* PrivacyInfo.xcprivacy */; };
+		D10201010000000000000001 /* ClientProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000001 /* ClientProfile.swift */; };
+		D10201010000000000000002 /* WalletModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000002 /* WalletModels.swift */; };
+		D10201010000000000000003 /* BillingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000003 /* BillingModels.swift */; };
+		D10201010000000000000004 /* LeadModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000004 /* LeadModels.swift */; };
+		D10201010000000000000005 /* CampaignModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000005 /* CampaignModels.swift */; };
+		D10201010000000000000006 /* MetricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000006 /* MetricsModels.swift */; };
+		D10201010000000000000007 /* CurrencyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000007 /* CurrencyFormatter.swift */; };
+		D10201010000000000000008 /* DateFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000008 /* DateFormatting.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,6 +88,14 @@
 		C20300020000000000000005 /* AdminTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminTabView.swift; sourceTree = "<group>"; };
 		C20300020000000000000006 /* FloatingTabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingTabBar.swift; sourceTree = "<group>"; };
 		C20300020000000000000007 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		D20201010000000000000001 /* ClientProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientProfile.swift; sourceTree = "<group>"; };
+		D20201010000000000000002 /* WalletModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletModels.swift; sourceTree = "<group>"; };
+		D20201010000000000000003 /* BillingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillingModels.swift; sourceTree = "<group>"; };
+		D20201010000000000000004 /* LeadModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadModels.swift; sourceTree = "<group>"; };
+		D20201010000000000000005 /* CampaignModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CampaignModels.swift; sourceTree = "<group>"; };
+		D20201010000000000000006 /* MetricsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsModels.swift; sourceTree = "<group>"; };
+		D20201010000000000000007 /* CurrencyFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CurrencyFormatter.swift; sourceTree = "<group>"; };
+		D20201010000000000000008 /* DateFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateFormatting.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -134,7 +150,9 @@
 			isa = PBXGroup;
 			children = (
 				D10000010000000000000005 /* Auth */,
+				D10201020000000000000001 /* Data */,
 				D10000010000000000000006 /* Design */,
+				D10201020000000000000003 /* Formatting */,
 				D10000010000000000000007 /* Navigation */,
 			);
 			path = Core;
@@ -168,6 +186,36 @@
 				C20300020000000000000002 /* AppRouter.swift */,
 			);
 			path = Navigation;
+			sourceTree = "<group>";
+		};
+		D10201020000000000000001 /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				D10201020000000000000002 /* Models */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+		D10201020000000000000002 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D20201010000000000000001 /* ClientProfile.swift */,
+				D20201010000000000000002 /* WalletModels.swift */,
+				D20201010000000000000003 /* BillingModels.swift */,
+				D20201010000000000000004 /* LeadModels.swift */,
+				D20201010000000000000005 /* CampaignModels.swift */,
+				D20201010000000000000006 /* MetricsModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		D10201020000000000000003 /* Formatting */ = {
+			isa = PBXGroup;
+			children = (
+				D20201010000000000000007 /* CurrencyFormatter.swift */,
+				D20201010000000000000008 /* DateFormatting.swift */,
+			);
+			path = Formatting;
 			sourceTree = "<group>";
 		};
 		D10000010000000000000008 /* Features */ = {
@@ -376,6 +424,14 @@
 				C10300020000000000000004 /* ClientTabView.swift in Sources */,
 				C10300020000000000000005 /* AdminTabView.swift in Sources */,
 				C10300020000000000000006 /* FloatingTabBar.swift in Sources */,
+				D10201010000000000000001 /* ClientProfile.swift in Sources */,
+				D10201010000000000000002 /* WalletModels.swift in Sources */,
+				D10201010000000000000003 /* BillingModels.swift in Sources */,
+				D10201010000000000000004 /* LeadModels.swift in Sources */,
+				D10201010000000000000005 /* CampaignModels.swift in Sources */,
+				D10201010000000000000006 /* MetricsModels.swift in Sources */,
+				D10201010000000000000007 /* CurrencyFormatter.swift in Sources */,
+				D10201010000000000000008 /* DateFormatting.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
