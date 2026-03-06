@@ -12,7 +12,7 @@ Build a native Swift iOS app that gives Alpha Hub insurance agent clients full a
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Xcode project, Supabase auth, biometric security, dark-first design system, navigation
+- [x] **Phase 1: Foundation** - Xcode project, Supabase auth, biometric security, dark-first design system, navigation
 - [ ] **Phase 2: Core Value** - Dashboard with wallet/metrics and billing history with transactions/payments
 - [ ] **Phase 3: Communication** - Real-time chat with attachments and push notifications with deep linking
 - [ ] **Phase 4: Learning & Activation** - Course video player, onboarding checklist, agreement signing
@@ -34,9 +34,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans in 3 waves (sequential)
 
 Plans:
-- [ ] 01-01-PLAN.md — Xcode project skeleton, SPM dependencies (supabase-swift, KeychainAccess, Kingfisher), folder structure, Info.plist
-- [ ] 01-02-PLAN.md — Supabase auth (email/password), Keychain session persistence, Face ID biometric gating, login screen with particle background, password reset (OTP), privacy blur, sign out
-- [ ] 01-03-PLAN.md — Dark design system (color tokens, Inter font, haptics, glass effects), floating pill tab bar, role-based tab navigation (client 5-tab / admin 4-tab), PrivacyInfo.xcprivacy
+- [x] 01-01-PLAN.md — Xcode project skeleton, SPM dependencies, folder structure, Info.plist
+- [x] 01-02-PLAN.md — Supabase auth, Keychain session persistence, Face ID biometric gating, login screen, password reset, privacy blur, sign out
+- [x] 01-03-PLAN.md — Dark design system, Inter font, haptics, glass effects, floating pill tab bar, role-based tab navigation, PrivacyInfo.xcprivacy
 
 ### Phase 2: Core Value
 **Goal**: Client can check their wallet balance, view billing history, and see key business metrics -- the daily-use features that justify installing the app
@@ -131,7 +131,7 @@ Phases execute in numeric order: 1 > 2 > 3 > 4 > 5 > 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/3 | Not started | - |
+| 1. Foundation | 3/3 | Complete | 2026-03-05 |
 | 2. Core Value | 0/2 | Not started | - |
 | 3. Communication | 0/3 | Not started | - |
 | 4. Learning & Activation | 0/4 | Not started | - |
