@@ -57,6 +57,10 @@
 		D10201010000000000000011 /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000011 /* StatusPill.swift */; };
 		D10201010000000000000012 /* MetricCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000012 /* MetricCard.swift */; };
 		D10201010000000000000013 /* SectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20201010000000000000013 /* SectionHeader.swift */; };
+		E10202010000000000000001 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000001 /* DashboardView.swift */; };
+		E10202010000000000000002 /* WalletHeroCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000002 /* WalletHeroCard.swift */; };
+		E10202010000000000000003 /* QuickLinkPills.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000003 /* QuickLinkPills.swift */; };
+		E10202010000000000000004 /* BusinessResultsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20202010000000000000004 /* BusinessResultsSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -106,6 +110,10 @@
 		D20201010000000000000011 /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
 		D20201010000000000000012 /* MetricCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricCard.swift; sourceTree = "<group>"; };
 		D20201010000000000000013 /* SectionHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionHeader.swift; sourceTree = "<group>"; };
+		E20202010000000000000001 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		E20202010000000000000002 /* WalletHeroCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletHeroCard.swift; sourceTree = "<group>"; };
+		E20202010000000000000003 /* QuickLinkPills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLinkPills.swift; sourceTree = "<group>"; };
+		E20202010000000000000004 /* BusinessResultsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessResultsSection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -232,11 +240,23 @@
 		D10000010000000000000008 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				E10202020000000000000001 /* Dashboard */,
 				D10000010000000000000009 /* Login */,
 				D10000010000000000000010 /* Shell */,
 				D10000010000000000000011 /* Placeholder */,
 			);
 			path = Features;
+			sourceTree = "<group>";
+		};
+		E10202020000000000000001 /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				E20202010000000000000001 /* DashboardView.swift */,
+				E20202010000000000000002 /* WalletHeroCard.swift */,
+				E20202010000000000000003 /* QuickLinkPills.swift */,
+				E20202010000000000000004 /* BusinessResultsSection.swift */,
+			);
+			path = Dashboard;
 			sourceTree = "<group>";
 		};
 		D10000010000000000000009 /* Login */ = {
@@ -452,6 +472,10 @@
 				D10201010000000000000011 /* StatusPill.swift in Sources */,
 				D10201010000000000000012 /* MetricCard.swift in Sources */,
 				D10201010000000000000013 /* SectionHeader.swift in Sources */,
+				E10202010000000000000001 /* DashboardView.swift in Sources */,
+				E10202010000000000000002 /* WalletHeroCard.swift in Sources */,
+				E10202010000000000000003 /* QuickLinkPills.swift in Sources */,
+				E10202010000000000000004 /* BusinessResultsSection.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -84,6 +84,15 @@ final class DataManager {
         )
     }
 
+    /// Next upcoming payment: first billing record with status "pending" or "upcoming", sorted by due_date ascending.
+    var nextUpcomingPayment: BillingRecord? {
+        billingRecords
+            .filter { $0.status == "pending" || $0.status == "upcoming" }
+            .filter { $0.dueDate != nil }
+            .sorted { ($0.dueDate ?? "") < ($1.dueDate ?? "") }
+            .first
+    }
+
     /// Computed dashboard metrics from leads + client profile + ad spend.
     var dashboardMetrics: DashboardMetrics {
         DashboardMetrics(
