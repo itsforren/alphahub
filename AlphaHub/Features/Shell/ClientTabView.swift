@@ -22,10 +22,7 @@ struct ClientTabView: View {
                 .tag(ClientTab.wallet)
 
                 NavigationStack {
-                    PlaceholderView(
-                        title: "Chat",
-                        icon: "bubble.left.and.bubble.right.fill"
-                    )
+                    ChatView()
                 }
                 .tag(ClientTab.chat)
 
