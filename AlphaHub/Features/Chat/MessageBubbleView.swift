@@ -16,12 +16,6 @@ struct BubbleShape: Shape {
         let bottomLeft = isClient ? radius : flatRadius
         let bottomRight = isClient ? flatRadius : radius
 
-        let path = UIBezierPath(
-            roundedRect: rect,
-            byRoundingCorners: .allCorners,
-            cornerRadii: CGSize(width: radius, height: radius)
-        )
-        // Use RoundedRectangle with custom corners instead
         return Path { p in
             let w = rect.width
             let h = rect.height
@@ -41,12 +35,14 @@ struct BubbleShape: Shape {
 
 // MARK: - Message Bubble View
 
-/// Renders a single chat message with bubble styling, timestamps, and read receipts.
+/// Renders a single chat message with bubble styling, timestamps, read receipts,
+/// inline image previews, file attachment cards, and link preview cards.
 struct MessageBubbleView: View {
     let message: ChatMessage
     var showAvatar: Bool = true
 
     @State private var showTimestamp = false
+    @State private var showImagePreview = false
 
     // MARK: - Formatters
 
@@ -79,23 +75,20 @@ struct MessageBubbleView: View {
             }
 
             VStack(alignment: message.isClient ? .trailing : .leading, spacing: 2) {
-                // Message bubble
-                Text(message.message)
-                    .font(AppTypography.body)
-                    .foregroundColor(message.isClient ? .black : AppColors.textPrimary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        message.isClient
-                            ? AppColors.accent
-                            : AppColors.surfaceElevated
-                    )
+                // Message bubble content
+                bubbleContent
                     .clipShape(BubbleShape(isClient: message.isClient))
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showTimestamp.toggle()
                         }
                     }
+
+                // Link preview (below bubble)
+                if let preview = message.linkPreview, preview.title != nil {
+                    LinkPreviewCard(preview: preview)
+                        .frame(maxWidth: 250)
+                }
 
                 // Timestamp + Read receipt
                 if showTimestamp {
@@ -128,6 +121,127 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, 1)
+        .fullScreenCover(isPresented: $showImagePreview) {
+            if let urlString = message.attachmentUrl, let url = URL(string: urlString) {
+                ImagePreviewView(imageURL: url)
+            }
+        }
+    }
+
+    // MARK: - Bubble Content
+
+    @ViewBuilder
+    private var bubbleContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Image attachment
+            if let urlString = message.attachmentUrl,
+               message.attachmentType == "image",
+               let imageURL = URL(string: urlString) {
+                imageAttachmentView(url: imageURL)
+            }
+
+            // File (PDF) attachment
+            if message.attachmentType == "file",
+               let fileName = message.attachmentName {
+                fileAttachmentView(fileName: fileName)
+            }
+
+            // Text content
+            if !message.message.isEmpty {
+                Text(message.message)
+                    .font(AppTypography.body)
+                    .foregroundColor(message.isClient ? .black : AppColors.textPrimary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
+        }
+        .background(
+            message.isClient
+                ? AppColors.accent
+                : AppColors.surfaceElevated
+        )
+    }
+
+    // MARK: - Image Attachment
+
+    private func imageAttachmentView(url: URL) -> some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: 250)
+                    .frame(maxHeight: 200)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        showImagePreview = true
+                    }
+            case .failure:
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundColor(AppColors.textTertiary)
+                    Text("Image unavailable")
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textTertiary)
+                }
+                .padding(AppSpacing.md)
+            case .empty:
+                Rectangle()
+                    .fill(AppColors.surfaceOverlay)
+                    .frame(maxWidth: 250)
+                    .frame(height: 150)
+                    .overlay {
+                        ProgressView()
+                            .tint(AppColors.textTertiary)
+                    }
+            @unknown default:
+                EmptyView()
+            }
+        }
+    }
+
+    // MARK: - File Attachment
+
+    private func fileAttachmentView(fileName: String) -> some View {
+        Button {
+            if let urlString = message.attachmentUrl, let url = URL(string: urlString) {
+                UIApplication.shared.open(url)
+            }
+        } label: {
+            HStack(spacing: AppSpacing.sm) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(message.isClient ? Color.black.opacity(0.15) : AppColors.surfaceOverlay)
+                        .frame(width: 36, height: 36)
+
+                    Image(systemName: "doc.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(message.isClient ? .black.opacity(0.7) : AppColors.textSecondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(fileName)
+                        .font(AppTypography.caption)
+                        .foregroundColor(message.isClient ? .black : AppColors.textPrimary)
+                        .lineLimit(1)
+
+                    Text("PDF")
+                        .font(AppTypography.captionSmall)
+                        .foregroundColor(message.isClient ? .black.opacity(0.6) : AppColors.textTertiary)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.down.circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(message.isClient ? .black.opacity(0.5) : AppColors.textTertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Avatar

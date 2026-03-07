@@ -82,6 +82,8 @@
 		G10301010000000000000009 /* BusinessHoursBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000009 /* BusinessHoursBanner.swift */; };
 		G10301010000000000000010 /* ChatEmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000010 /* ChatEmptyStateView.swift */; };
 		G10302010000000000000001 /* AttachmentPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20302010000000000000001 /* AttachmentPickerSheet.swift */; };
+		G10302010000000000000002 /* ImagePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20302010000000000000002 /* ImagePreviewView.swift */; };
+		G10302010000000000000003 /* LinkPreviewCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20302010000000000000003 /* LinkPreviewCard.swift */; };
 		H10303010000000000000001 /* NotificationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20303010000000000000001 /* NotificationModels.swift */; };
 		H10303010000000000000002 /* PushNotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20303010000000000000002 /* PushNotificationManager.swift */; };
 		H10303010000000000000003 /* AppDelegate+Push.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20303010000000000000003 /* AppDelegate+Push.swift */; };
@@ -159,6 +161,8 @@
 		G20301010000000000000009 /* BusinessHoursBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessHoursBanner.swift; sourceTree = "<group>"; };
 		G20301010000000000000010 /* ChatEmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEmptyStateView.swift; sourceTree = "<group>"; };
 		G20302010000000000000001 /* AttachmentPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentPickerSheet.swift; sourceTree = "<group>"; };
+		G20302010000000000000002 /* ImagePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePreviewView.swift; sourceTree = "<group>"; };
+		G20302010000000000000003 /* LinkPreviewCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkPreviewCard.swift; sourceTree = "<group>"; };
 		H20303010000000000000001 /* NotificationModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationModels.swift; sourceTree = "<group>"; };
 		H20303010000000000000002 /* PushNotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationManager.swift; sourceTree = "<group>"; };
 		H20303010000000000000003 /* AppDelegate+Push.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppDelegate+Push.swift"; sourceTree = "<group>"; };
@@ -457,6 +461,8 @@
 				G20301010000000000000009 /* BusinessHoursBanner.swift */,
 				G20301010000000000000010 /* ChatEmptyStateView.swift */,
 				G20302010000000000000001 /* AttachmentPickerSheet.swift */,
+				G20302010000000000000002 /* ImagePreviewView.swift */,
+				G20302010000000000000003 /* LinkPreviewCard.swift */,
 			);
 			path = Chat;
 			sourceTree = "<group>";
@@ -609,6 +615,8 @@
 				G10301010000000000000009 /* BusinessHoursBanner.swift in Sources */,
 				G10301010000000000000010 /* ChatEmptyStateView.swift in Sources */,
 				G10302010000000000000001 /* AttachmentPickerSheet.swift in Sources */,
+				G10302010000000000000002 /* ImagePreviewView.swift in Sources */,
+				G10302010000000000000003 /* LinkPreviewCard.swift in Sources */,
 				H10303010000000000000001 /* NotificationModels.swift in Sources */,
 				H10303010000000000000002 /* PushNotificationManager.swift in Sources */,
 				H10303010000000000000003 /* AppDelegate+Push.swift in Sources */,
