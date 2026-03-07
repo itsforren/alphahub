@@ -157,7 +157,7 @@ serve(async (req) => {
         .select('id, name, google_campaign_id, target_daily_spend')
         .eq('id', clientId)
         .single();
-      
+
       if (error) throw error;
       if (data) clientsToCheck = [data];
     } else {
@@ -166,9 +166,25 @@ serve(async (req) => {
         .from('clients')
         .select('id, name, google_campaign_id, target_daily_spend')
         .not('google_campaign_id', 'is', null);
-      
+
       if (error) throw error;
       clientsToCheck = data || [];
+    }
+
+    // Pre-load ALL campaigns from campaigns table for multi-campaign support
+    const clientIds = clientsToCheck.map(c => c.id);
+    const { data: allCampaignRows } = await supabase
+      .from('campaigns')
+      .select('id, client_id, google_customer_id, google_campaign_id, current_daily_budget, safe_mode, ignored')
+      .in('client_id', clientIds);
+
+    // Group campaigns by client_id
+    const campaignsByClient = new Map<string, typeof allCampaignRows>();
+    for (const row of (allCampaignRows || [])) {
+      if (!campaignsByClient.has(row.client_id)) {
+        campaignsByClient.set(row.client_id, []);
+      }
+      campaignsByClient.get(row.client_id)!.push(row);
     }
 
     console.log(`Checking ${clientsToCheck.length} clients for low balance`);
@@ -177,11 +193,7 @@ serve(async (req) => {
     let accessToken: string | null = null;
 
     for (const client of clientsToCheck) {
-      // Skip if already in safe mode (at minimum budget)
-      if (client.target_daily_spend && client.target_daily_spend <= SAFE_MODE_BUDGETS[SAFE_MODE_BUDGETS.length - 1]) {
-        console.log(`Client ${client.name} already in Safe Mode, skipping`);
-        continue;
-      }
+      // Per-campaign skip logic is handled below when building campaignsToProcess
 
       // Get wallet deposits total
       const { data: deposits } = await supabase
@@ -237,35 +249,90 @@ serve(async (req) => {
       console.log(`Client ${client.name}: Balance = $${remainingBalance.toFixed(2)}`);
 
       // Check if balance is at or below per-client threshold
-      if (remainingBalance <= lowBalanceThreshold && client.google_campaign_id) {
+      if (remainingBalance <= lowBalanceThreshold) {
         console.log(`Client ${client.name} has low balance ($${remainingBalance.toFixed(2)}) below threshold ($${lowBalanceThreshold}), entering Safe Mode`);
 
-        // Parse google_campaign_id
-        const rawCampaignField = String(client.google_campaign_id).trim();
-        if (rawCampaignField.includes(':')) {
-          const [customerPart, campaignPart] = rawCampaignField.split(':');
-          const customerId = customerPart.replace(/\D/g, '');
-          const campaignId = campaignPart.replace(/\D/g, '');
+        // Build list of ALL campaigns to penny — from campaigns table + fallback to clients.google_campaign_id
+        const campaignsToProcess: { customerId: string; campaignId: string; campaignDbId?: string; currentBudget?: number }[] = [];
 
-          if (customerId && campaignId) {
-            // Get access token only once
-            if (!accessToken) {
-              accessToken = await getAccessToken();
+        // First: campaigns table (multi-campaign support)
+        const clientCampaigns = campaignsByClient.get(client.id) || [];
+        for (const row of clientCampaigns) {
+          if (row.ignored) continue; // Skip ignored campaigns
+          if (row.safe_mode && row.current_daily_budget != null && row.current_daily_budget <= SAFE_MODE_BUDGETS[SAFE_MODE_BUDGETS.length - 1]) {
+            console.log(`  Campaign ${row.google_campaign_id} already in Safe Mode at $${row.current_daily_budget}, skipping`);
+            continue;
+          }
+          if (row.google_customer_id && row.google_campaign_id) {
+            campaignsToProcess.push({
+              customerId: row.google_customer_id.replace(/\D/g, ''),
+              campaignId: row.google_campaign_id.replace(/\D/g, ''),
+              campaignDbId: row.id,
+              currentBudget: row.current_daily_budget,
+            });
+          }
+        }
+
+        // Fallback: if no campaigns in table, use clients.google_campaign_id
+        if (campaignsToProcess.length === 0 && client.google_campaign_id) {
+          const rawCampaignField = String(client.google_campaign_id).trim();
+          if (rawCampaignField.includes(':')) {
+            const [customerPart, campaignPart] = rawCampaignField.split(':');
+            const cId = customerPart.replace(/\D/g, '');
+            const campId = campaignPart.replace(/\D/g, '');
+            if (cId && campId) {
+              campaignsToProcess.push({ customerId: cId, campaignId: campId });
             }
+          }
+        }
 
-            const result = await updateGoogleAdsBudget(accessToken, customerId, campaignId, SAFE_MODE_BUDGETS[0]);
-            
-            if (result.success) {
-              // Update client with safe mode info
-              await supabase
-                .from('clients')
-                .update({ 
-                  target_daily_spend: result.budgetUsed,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq('id', client.id);
+        if (campaignsToProcess.length === 0) {
+          results.push({
+            clientId: client.id,
+            clientName: client.name,
+            action: 'Low balance but no Google Ads campaign configured',
+            balance: remainingBalance,
+          });
 
-              // Update campaigns table with safe mode status
+          await postAdsManagerWebhook({
+            text: `💰 Low balance (no campaign): ${client.name}`,
+            blocks: [
+              { type: 'header', text: { type: 'plain_text', text: '💰 Low Balance Warning' } },
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)} (threshold $${lowBalanceThreshold})\n*Note:* No Google Ads campaign configured.`,
+                },
+              },
+            ],
+          });
+          continue;
+        }
+
+        console.log(`  Processing ${campaignsToProcess.length} campaign(s) for Safe Mode`);
+
+        // Get access token only once
+        if (!accessToken) {
+          accessToken = await getAccessToken();
+        }
+
+        let allSucceeded = true;
+        const campaignResults: { campaignId: string; success: boolean; budgetUsed: number }[] = [];
+
+        for (const camp of campaignsToProcess) {
+          console.log(`  Setting campaign ${camp.campaignId} to Safe Mode...`);
+          const result = await updateGoogleAdsBudget(accessToken, camp.customerId, camp.campaignId, SAFE_MODE_BUDGETS[0]);
+
+          campaignResults.push({
+            campaignId: camp.campaignId,
+            success: result.success,
+            budgetUsed: result.budgetUsed,
+          });
+
+          if (result.success) {
+            // Update campaigns table row if we have a DB id
+            if (camp.campaignDbId) {
               await supabase
                 .from('campaigns')
                 .update({
@@ -273,105 +340,108 @@ serve(async (req) => {
                   safe_mode_triggered_at: new Date().toISOString(),
                   safe_mode_reason: 'SAFE_WALLET',
                   safe_mode_budget_used: result.budgetUsed,
-                  pre_safe_mode_budget: client.target_daily_spend,
+                  pre_safe_mode_budget: camp.currentBudget,
+                  current_daily_budget: result.budgetUsed,
+                  last_budget_change_at: new Date().toISOString(),
+                  last_budget_change_by: 'SAFE_MODE',
                   updated_at: new Date().toISOString(),
                 })
-                .eq('client_id', client.id);
-
-              // Create audit log entry
-              await supabase.from('campaign_audit_log').insert([{
-                client_id: client.id,
-                action: 'SAFE_MODE_TRIGGERED',
-                actor: 'system',
-                reason_codes: ['LOW_WALLET_BALANCE'],
-                old_value: { target_daily_spend: client.target_daily_spend },
-                new_value: { target_daily_spend: result.budgetUsed, safe_mode: true },
-                notes: `Safe Mode activated due to low wallet balance ($${remainingBalance.toFixed(2)}). Budget set to $${result.budgetUsed}.`,
-              }]);
-
-              // Create decision event
-              await supabase.from('decision_events').insert([{
-                client_id: client.id,
-                decision_type: 'AUTO_SAFE_MODE',
-                status_at_decision: 'low_balance',
-                reason_codes: ['LOW_WALLET_BALANCE'],
-                proposed_action_type: 'SAFE_MODE',
-                proposed_daily_budget: result.budgetUsed,
-                was_approved: true,
-                decision_at: new Date().toISOString(),
-                decision_outcome: 'AUTO_APPROVED',
-                primary_reason_category: 'WALLET_PROTECTION',
-                specific_reason_codes: ['BALANCE_BELOW_THRESHOLD'],
-                next_action: 'MONITOR',
-                features_at_decision: { wallet_balance: remainingBalance, threshold: lowBalanceThreshold },
-                ai_provider: 'system',
-              }]);
-
-              results.push({
-                clientId: client.id,
-                clientName: client.name,
-                action: `Safe Mode activated at $${result.budgetUsed}/day`,
-                balance: remainingBalance,
-              });
-
-              await postAdsManagerWebhook({
-                text: `💰 Low balance → Safe Mode: ${client.name}`,
-                blocks: [
-                  { type: 'header', text: { type: 'plain_text', text: '💰 Low Balance: Safe Mode Activated' } },
-                  {
-                    type: 'section',
-                    text: {
-                      type: 'mrkdwn',
-                      text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)} (threshold $${lowBalanceThreshold})\n*Budget set:* $${result.budgetUsed}/day`,
-                    },
-                  },
-                ],
-              });
-            } else {
-              results.push({
-                clientId: client.id,
-                clientName: client.name,
-                action: 'Failed to enter Safe Mode - all budget levels rejected',
-                balance: remainingBalance,
-              });
-
-              await postAdsManagerWebhook({
-                text: `❌ Safe Mode failed: ${client.name}`,
-                blocks: [
-                  { type: 'header', text: { type: 'plain_text', text: '❌ Safe Mode Failed' } },
-                  {
-                    type: 'section',
-                    text: {
-                      type: 'mrkdwn',
-                      text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)}\n*Result:* All Safe Mode budget attempts were rejected by Google Ads.`,
-                    },
-                  },
-                ],
-              });
+                .eq('id', camp.campaignDbId);
             }
+
+            // Create audit log entry per campaign
+            await supabase.from('campaign_audit_log').insert([{
+              client_id: client.id,
+              campaign_id: camp.campaignDbId || null,
+              action: 'SAFE_MODE_TRIGGERED',
+              actor: 'system',
+              reason_codes: ['LOW_WALLET_BALANCE'],
+              old_value: { target_daily_spend: camp.currentBudget || client.target_daily_spend },
+              new_value: { target_daily_spend: result.budgetUsed, safe_mode: true },
+              notes: `Safe Mode activated for campaign ${camp.campaignId} due to low wallet balance ($${remainingBalance.toFixed(2)}). Budget set to $${result.budgetUsed}.`,
+            }]);
+          } else {
+            allSucceeded = false;
           }
         }
-      } else if (remainingBalance <= lowBalanceThreshold) {
-        results.push({
-          clientId: client.id,
-          clientName: client.name,
-          action: 'Low balance but no Google Ads campaign configured',
-          balance: remainingBalance,
-        });
 
-        await postAdsManagerWebhook({
-          text: `💰 Low balance (no campaign): ${client.name}`,
-          blocks: [
-            { type: 'header', text: { type: 'plain_text', text: '💰 Low Balance Warning' } },
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)} (threshold $${lowBalanceThreshold})\n*Note:* No Google Ads campaign configured.`,
-              },
+        // Update client-level target_daily_spend as sum of all campaign budgets
+        const successfulResults = campaignResults.filter(r => r.success);
+        if (successfulResults.length > 0) {
+          const totalBudget = successfulResults.reduce((sum, r) => sum + r.budgetUsed, 0);
+          await supabase
+            .from('clients')
+            .update({
+              target_daily_spend: totalBudget,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', client.id);
+
+          // Create decision event
+          await supabase.from('decision_events').insert([{
+            client_id: client.id,
+            decision_type: 'AUTO_SAFE_MODE',
+            status_at_decision: 'low_balance',
+            reason_codes: ['LOW_WALLET_BALANCE'],
+            proposed_action_type: 'SAFE_MODE',
+            proposed_daily_budget: totalBudget,
+            was_approved: true,
+            decision_at: new Date().toISOString(),
+            decision_outcome: 'AUTO_APPROVED',
+            primary_reason_category: 'WALLET_PROTECTION',
+            specific_reason_codes: ['BALANCE_BELOW_THRESHOLD'],
+            next_action: 'MONITOR',
+            features_at_decision: {
+              wallet_balance: remainingBalance,
+              threshold: lowBalanceThreshold,
+              campaigns_processed: campaignsToProcess.length,
+              campaigns_succeeded: successfulResults.length,
             },
-          ],
-        });
+            ai_provider: 'system',
+          }]);
+
+          const campaignSummary = campaignResults.map(r =>
+            `Campaign ${r.campaignId}: ${r.success ? `$${r.budgetUsed}/day` : 'FAILED'}`
+          ).join('\n');
+
+          results.push({
+            clientId: client.id,
+            clientName: client.name,
+            action: `Safe Mode activated on ${successfulResults.length}/${campaignsToProcess.length} campaigns`,
+            balance: remainingBalance,
+          });
+
+          await postAdsManagerWebhook({
+            text: `💰 Low balance → Safe Mode: ${client.name} (${successfulResults.length}/${campaignsToProcess.length} campaigns)`,
+            blocks: [
+              { type: 'header', text: { type: 'plain_text', text: '💰 Low Balance: Safe Mode Activated' } },
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)} (threshold $${lowBalanceThreshold})\n*Campaigns:* ${successfulResults.length}/${campaignsToProcess.length} set to penny\n${campaignSummary}`,
+                },
+              },
+            ],
+          });
+        }
+
+        if (!allSucceeded) {
+          const failedCount = campaignResults.filter(r => !r.success).length;
+          await postAdsManagerWebhook({
+            text: `❌ Safe Mode partially failed: ${client.name} (${failedCount} campaign(s) failed)`,
+            blocks: [
+              { type: 'header', text: { type: 'plain_text', text: '❌ Safe Mode Failed (Partial)' } },
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: `*Client:* ${client.name}\n*Balance:* $${remainingBalance.toFixed(2)}\n*Result:* ${failedCount} campaign(s) failed to enter Safe Mode.`,
+                },
+              },
+            ],
+          });
+        }
       }
     }
 

@@ -5,81 +5,98 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
 };
 
-// ── Helper: Restore campaign budget after safe mode ──
+// ── Helper: Restore ALL campaign budgets after safe mode ──
 async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
   try {
-    const { data: campaign } = await supabase
+    // Get ALL campaigns in safe mode for this client
+    const { data: campaigns } = await supabase
       .from('campaigns')
-      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id')
+      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id, current_daily_budget')
       .eq('client_id', clientId)
-      .maybeSingle();
+      .eq('safe_mode', true);
 
-    if (!campaign || !campaign.safe_mode) return;
+    if (!campaigns || campaigns.length === 0) return;
 
-    let restoreBudget = campaign.pre_safe_mode_budget;
-    if (!restoreBudget) {
-      const { data: client } = await supabase
-        .from('clients')
-        .select('ad_spend_budget')
-        .eq('id', clientId)
-        .single();
-      restoreBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
-    }
-
-    if (!restoreBudget || restoreBudget <= 0.01) {
-      console.log(`No valid restore budget for client ${clientId}, skipping safe mode exit`);
-      return;
-    }
-
-    const budgetRes = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ clientId, newDailyBudget: restoreBudget }),
-    });
-    const budgetResult = await budgetRes.json();
-
-    if (!budgetRes.ok) {
-      console.error(`Failed to restore budget for client ${clientId}:`, budgetResult);
-      return;
-    }
-
-    await supabase
-      .from('campaigns')
-      .update({
-        safe_mode: false,
-        safe_mode_reason: null,
-        safe_mode_triggered_at: null,
-        safe_mode_budget_used: null,
-        pre_safe_mode_budget: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('client_id', clientId);
-
-    await supabase
+    // Fallback budget from client's ad_spend_budget
+    const { data: client } = await supabase
       .from('clients')
-      .update({ target_daily_spend: restoreBudget, updated_at: new Date().toISOString() })
-      .eq('id', clientId);
+      .select('ad_spend_budget')
+      .eq('id', clientId)
+      .single();
+    const fallbackDailyBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
 
-    await supabase.from('campaign_audit_log').insert([{
-      client_id: clientId,
-      campaign_id: campaign.id,
-      action: 'SAFE_MODE_EXITED',
-      actor: 'system',
-      reason_codes: ['WALLET_REFILLED'],
-      old_value: { safe_mode: true, budget: 0.01 },
-      new_value: { safe_mode: false, budget: restoreBudget },
-      notes: `Campaign budget restored to $${restoreBudget}/day after successful ad spend payment`,
-    }]);
+    let totalRestoredBudget = 0;
+    let restoredCount = 0;
 
-    console.log(`✅ Campaign budget restored to $${restoreBudget}/day for client ${clientId}`);
+    for (const campaign of campaigns) {
+      let restoreBudget = campaign.pre_safe_mode_budget;
+      if (!restoreBudget || restoreBudget <= 0.01) {
+        restoreBudget = fallbackDailyBudget;
+      }
+      if (!restoreBudget || restoreBudget <= 0.01) {
+        console.log(`No valid restore budget for campaign ${campaign.id}, skipping`);
+        continue;
+      }
+
+      console.log(`Restoring campaign ${campaign.google_campaign_id} to $${restoreBudget}/day...`);
+
+      const budgetRes = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget }),
+      });
+
+      if (!budgetRes.ok) {
+        const budgetResult = await budgetRes.json();
+        console.error(`Failed to restore budget for campaign ${campaign.id}:`, budgetResult);
+        continue;
+      }
+
+      await supabase
+        .from('campaigns')
+        .update({
+          safe_mode: false,
+          safe_mode_reason: null,
+          safe_mode_triggered_at: null,
+          safe_mode_budget_used: null,
+          pre_safe_mode_budget: null,
+          current_daily_budget: restoreBudget,
+          last_budget_change_at: new Date().toISOString(),
+          last_budget_change_by: 'SAFE_MODE_EXIT',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', campaign.id);
+
+      await supabase.from('campaign_audit_log').insert([{
+        client_id: clientId,
+        campaign_id: campaign.id,
+        action: 'SAFE_MODE_EXITED',
+        actor: 'system',
+        reason_codes: ['WALLET_REFILLED'],
+        old_value: { safe_mode: true, budget: campaign.current_daily_budget },
+        new_value: { safe_mode: false, budget: restoreBudget },
+        notes: `Campaign ${campaign.google_campaign_id} restored to $${restoreBudget}/day after successful payment`,
+      }]);
+
+      totalRestoredBudget += restoreBudget;
+      restoredCount++;
+    }
+
+    if (restoredCount > 0) {
+      await supabase
+        .from('clients')
+        .update({ target_daily_spend: totalRestoredBudget, updated_at: new Date().toISOString() })
+        .eq('id', clientId);
+      console.log(`✅ ${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
+    }
   } catch (err) {
-    console.error(`Error restoring campaign budget for client ${clientId}:`, err);
+    console.error(`Error restoring campaign budgets for client ${clientId}:`, err);
   }
 }
 

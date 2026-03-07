@@ -1350,7 +1350,7 @@ serve(async (req) => {
         // Handle Safe Mode (AUTO EXECUTE ALWAYS)
         if (rulesResult.safeModeTriggered) {
           console.log(`  🚨 Executing Safe Mode...`);
-          
+
           const safeModeResult = await applySafeModeBudget(accessToken, customerId, campaignId);
 
           await supabase
@@ -1360,15 +1360,81 @@ serve(async (req) => {
               safe_mode_triggered_at: new Date().toISOString(),
               safe_mode_reason: rulesResult.safeModeReason,
               safe_mode_budget_used: safeModeResult.budgetUsed,
+              pre_safe_mode_budget: currentBudget,
               current_daily_budget: safeModeResult.budgetUsed || 0.01,
               last_budget_change_at: new Date().toISOString(),
               last_budget_change_by: 'SAFE_MODE',
             })
             .eq('id', campaignDbId);
 
+          // MULTI-CAMPAIGN: Also penny ALL other campaigns for this client
+          const { data: otherCampaigns } = await supabase
+            .from('campaigns')
+            .select('id, google_customer_id, google_campaign_id, current_daily_budget, safe_mode, ignored')
+            .eq('client_id', client.id)
+            .neq('id', campaignDbId);
+
+          let otherCampaignsPennied = 0;
+          for (const otherCamp of (otherCampaigns || [])) {
+            if (otherCamp.ignored) continue;
+            if (otherCamp.safe_mode && otherCamp.current_daily_budget != null && otherCamp.current_daily_budget <= 1.00) {
+              console.log(`  ↳ Campaign ${otherCamp.google_campaign_id} already in safe mode, skipping`);
+              continue;
+            }
+            if (!otherCamp.google_customer_id || !otherCamp.google_campaign_id) continue;
+
+            console.log(`  ↳ Also pennying campaign ${otherCamp.google_campaign_id}...`);
+            const otherResult = await applySafeModeBudget(
+              accessToken,
+              otherCamp.google_customer_id.replace(/-/g, ''),
+              otherCamp.google_campaign_id.replace(/-/g, '')
+            );
+
+            await supabase
+              .from('campaigns')
+              .update({
+                safe_mode: true,
+                safe_mode_triggered_at: new Date().toISOString(),
+                safe_mode_reason: rulesResult.safeModeReason,
+                safe_mode_budget_used: otherResult.budgetUsed,
+                pre_safe_mode_budget: otherCamp.current_daily_budget,
+                current_daily_budget: otherResult.budgetUsed || 0.01,
+                last_budget_change_at: new Date().toISOString(),
+                last_budget_change_by: 'SAFE_MODE',
+              })
+              .eq('id', otherCamp.id);
+
+            if (otherResult.success) {
+              otherCampaignsPennied++;
+              await supabase.from('campaign_audit_log').insert({
+                campaign_id: otherCamp.id,
+                client_id: client.id,
+                actor: 'SAFE_MODE',
+                action: 'SAFE_MODE_TRIGGERED',
+                old_value: { budget: otherCamp.current_daily_budget },
+                new_value: { budget: otherResult.budgetUsed, reason: rulesResult.safeModeReason },
+                reason_codes: rulesResult.reasonCodes,
+                notes: `Multi-campaign safe mode: also pennied campaign ${otherCamp.google_campaign_id}`,
+              });
+            } else {
+              console.error(`  ↳ Failed to penny campaign ${otherCamp.google_campaign_id}`);
+            }
+          }
+
+          if (otherCampaignsPennied > 0) {
+            console.log(`  ✅ Also pennied ${otherCampaignsPennied} additional campaign(s)`);
+          }
+
+          // Update client target_daily_spend as sum of all (now-pennied) campaign budgets
+          const { data: allClientCampaigns } = await supabase
+            .from('campaigns')
+            .select('current_daily_budget')
+            .eq('client_id', client.id);
+          const totalClientBudget = allClientCampaigns?.reduce((sum: number, c: any) => sum + (Number(c.current_daily_budget) || 0), 0) || (safeModeResult.budgetUsed || 0.01);
+
           await supabase
             .from('clients')
-            .update({ target_daily_spend: safeModeResult.budgetUsed || 0.01 })
+            .update({ target_daily_spend: totalClientBudget })
             .eq('id', client.id);
 
           const { data: proposal } = await supabase
@@ -1435,22 +1501,24 @@ serve(async (req) => {
             },
           });
 
+          const multiCampaignNote = otherCampaignsPennied > 0 ? `\n**Additional campaigns pennied:** ${otherCampaignsPennied}` : '';
           await supabase.from('admin_channel_messages').insert({
             channel_id: '00000000-0000-0000-0000-000000000001',
             sender_id: '00000000-0000-0000-0000-000000000000',
-            message: `🚨 **SAFE MODE ACTIVATED**\n\n**Client:** ${client.name}\n**Reason:** ${rulesResult.safeModeReason}\n**Budget:** $${currentBudget} → $${safeModeResult.budgetUsed}\n**Health Score:** ${healthResult.totalScore}/95 (${healthResult.healthLabel})\n\n${aiResult.diagnosis}`,
+            message: `🚨 **SAFE MODE ACTIVATED**\n\n**Client:** ${client.name}\n**Reason:** ${rulesResult.safeModeReason}\n**Budget:** $${currentBudget} → $${safeModeResult.budgetUsed}${multiCampaignNote}\n**Health Score:** ${healthResult.totalScore}/95 (${healthResult.healthLabel})\n\n${aiResult.diagnosis}`,
           });
 
           // Slack feed
+          const slackMultiNote = otherCampaignsPennied > 0 ? `\n*Additional campaigns pennied:* ${otherCampaignsPennied}` : '';
           await postAdsManagerWebhook({
-            text: `🚨 SAFE MODE: ${client.name}`,
+            text: `🚨 SAFE MODE: ${client.name}${otherCampaignsPennied > 0 ? ` (${1 + otherCampaignsPennied} campaigns)` : ''}`,
             blocks: [
               { type: 'header', text: { type: 'plain_text', text: '🚨 Safe Mode Activated' } },
               {
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `*Client:* ${client.name}\n*Reason:* ${rulesResult.safeModeReason || 'Unknown'}\n*Budget:* $${Number(currentBudget).toFixed(2)} → $${Number(safeModeResult.budgetUsed || 0.01).toFixed(2)}\n*Health:* ${healthResult.totalScore}/95 (${healthResult.healthLabel})\n\n*Diagnosis:* ${aiResult.diagnosis || aiResult.summary || ''}`,
+                  text: `*Client:* ${client.name}\n*Reason:* ${rulesResult.safeModeReason || 'Unknown'}\n*Budget:* $${Number(currentBudget).toFixed(2)} → $${Number(safeModeResult.budgetUsed || 0.01).toFixed(2)}${slackMultiNote}\n*Health:* ${healthResult.totalScore}/95 (${healthResult.healthLabel})\n\n*Diagnosis:* ${aiResult.diagnosis || aiResult.summary || ''}`,
                 },
               },
               {
@@ -1466,11 +1534,11 @@ serve(async (req) => {
             ],
           });
 
-          results.push({ 
-            clientId: client.id, 
-            clientName: client.name, 
-            status: 'safe_mode', 
-            action: `Budget set to $${safeModeResult.budgetUsed}`,
+          results.push({
+            clientId: client.id,
+            clientName: client.name,
+            status: 'safe_mode',
+            action: `Budget set to $${safeModeResult.budgetUsed}${otherCampaignsPennied > 0 ? ` (+${otherCampaignsPennied} other campaigns)` : ''}`,
             healthScore: healthResult.totalScore
           });
 

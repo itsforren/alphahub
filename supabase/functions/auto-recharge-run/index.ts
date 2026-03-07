@@ -90,60 +90,83 @@ async function ensureWalletDeposit(
   });
 }
 
-// ── Restore campaign budget if client is in safe mode ──
+// ── Restore ALL campaign budgets if client is in safe mode ──
 async function restoreCampaignIfSafeMode(supabase: any, supabaseUrl: string, supabaseServiceKey: string, clientId: string): Promise<void> {
   try {
-    const { data: campaign } = await supabase
+    // Get ALL campaigns in safe mode for this client
+    const { data: campaigns } = await supabase
       .from('campaigns')
-      .select('id, safe_mode, pre_safe_mode_budget')
+      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id, current_daily_budget')
       .eq('client_id', clientId)
-      .maybeSingle();
+      .eq('safe_mode', true);
 
-    if (!campaign?.safe_mode) return;
+    if (!campaigns || campaigns.length === 0) return;
 
-    let restoreBudget = campaign.pre_safe_mode_budget;
-    if (!restoreBudget) {
-      const { data: client } = await supabase.from('clients').select('ad_spend_budget').eq('id', clientId).single();
-      restoreBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
+    // Fallback budget from client's ad_spend_budget
+    const { data: client } = await supabase.from('clients').select('ad_spend_budget').eq('id', clientId).single();
+    const fallbackDailyBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
+
+    let totalRestoredBudget = 0;
+    let restoredCount = 0;
+
+    for (const campaign of campaigns) {
+      let restoreBudget = campaign.pre_safe_mode_budget;
+      if (!restoreBudget || restoreBudget <= 0.01) {
+        restoreBudget = fallbackDailyBudget;
+      }
+      if (!restoreBudget || restoreBudget <= 0.01) {
+        console.log(`No valid restore budget for campaign ${campaign.id}, skipping`);
+        continue;
+      }
+
+      console.log(`Restoring campaign ${campaign.google_campaign_id} to $${restoreBudget}/day...`);
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget }),
+      });
+
+      if (!res.ok) {
+        console.error(`Failed to restore budget for campaign ${campaign.id}`);
+        continue;
+      }
+
+      await supabase.from('campaigns').update({
+        safe_mode: false,
+        safe_mode_reason: null,
+        safe_mode_triggered_at: null,
+        safe_mode_budget_used: null,
+        pre_safe_mode_budget: null,
+        current_daily_budget: restoreBudget,
+        last_budget_change_at: new Date().toISOString(),
+        last_budget_change_by: 'SAFE_MODE_EXIT',
+        updated_at: new Date().toISOString(),
+      }).eq('id', campaign.id);
+
+      await supabase.from('campaign_audit_log').insert([{
+        client_id: clientId,
+        campaign_id: campaign.id,
+        action: 'SAFE_MODE_EXITED',
+        actor: 'system',
+        reason_codes: ['WALLET_REFILLED'],
+        old_value: { safe_mode: true, budget: campaign.current_daily_budget },
+        new_value: { safe_mode: false, budget: restoreBudget },
+        notes: `Campaign ${campaign.google_campaign_id} restored to $${restoreBudget}/day after auto-recharge`,
+      }]);
+
+      totalRestoredBudget += restoreBudget;
+      restoredCount++;
     }
 
-    if (!restoreBudget || restoreBudget <= 0.01) return;
-
-    const res = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clientId, newDailyBudget: restoreBudget }),
-    });
-
-    if (!res.ok) { console.error('Failed to restore budget for', clientId); return; }
-
-    await supabase.from('campaigns').update({
-      safe_mode: false,
-      safe_mode_reason: null,
-      safe_mode_triggered_at: null,
-      safe_mode_budget_used: null,
-      pre_safe_mode_budget: null,
-      updated_at: new Date().toISOString(),
-    }).eq('client_id', clientId);
-
-    await supabase.from('clients')
-      .update({ target_daily_spend: restoreBudget, updated_at: new Date().toISOString() })
-      .eq('id', clientId);
-
-    await supabase.from('campaign_audit_log').insert([{
-      client_id: clientId,
-      campaign_id: campaign.id,
-      action: 'SAFE_MODE_EXITED',
-      actor: 'system',
-      reason_codes: ['WALLET_REFILLED'],
-      old_value: { safe_mode: true },
-      new_value: { safe_mode: false, budget: restoreBudget },
-      notes: `Campaign budget restored to $${restoreBudget}/day after auto-recharge`,
-    }]);
-
-    console.log(`✅ Campaign restored to $${restoreBudget}/day for client ${clientId}`);
+    if (restoredCount > 0) {
+      await supabase.from('clients')
+        .update({ target_daily_spend: totalRestoredBudget, updated_at: new Date().toISOString() })
+        .eq('id', clientId);
+      console.log(`✅ ${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
+    }
   } catch (err) {
-    console.error('Error restoring campaign for client', clientId, err);
+    console.error('Error restoring campaigns for client', clientId, err);
   }
 }
 

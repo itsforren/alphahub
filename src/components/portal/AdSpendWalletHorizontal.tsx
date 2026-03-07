@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useClientWallet, useCreateOrUpdateWallet, useAddWalletDeposit } from '@/hooks/useClientWallet';
+import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     refetch: refetchComputedBalance
   } = useComputedWalletBalance(clientId);
   const createOrUpdateWallet = useCreateOrUpdateWallet();
-  const addWalletDeposit = useAddWalletDeposit();
+  const [isAddingCredit, setIsAddingCredit] = useState(false);
 
   // Fetch client billing info for monthly cap period calculation
   const { data: clientBilling } = useQuery({
@@ -153,21 +153,21 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
       toast.error('Enter a valid amount');
       return;
     }
+    setIsAddingCredit(true);
     try {
-      // Ensure tracking_start_date is set so balance computes
-      if (!trackingStartDate) {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        await supabase
-          .from('client_wallets')
-          .update({ tracking_start_date: today })
-          .eq('client_id', clientId);
-      }
-      await addWalletDeposit.mutateAsync({
-        client_id: clientId,
-        amount,
-        description: `Admin credit${creditNote ? ' — ' + creditNote : ''}`,
+      const { data, error } = await supabase.functions.invoke('add-wallet-credit', {
+        body: {
+          client_id: clientId,
+          amount,
+          description: `Admin credit${creditNote ? ' — ' + creditNote : ''}`,
+        },
       });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
       // Invalidate computed balance
+      queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
       queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId], exact: false });
       queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', clientId], exact: false });
       queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId], exact: false });
@@ -177,7 +177,10 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
       setCreditAmount('');
       setCreditNote('');
     } catch (error) {
+      console.error('Add credit error:', error);
       toast.error('Failed to add credit');
+    } finally {
+      setIsAddingCredit(false);
     }
   };
 
@@ -548,8 +551,8 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddCredit} disabled={addWalletDeposit.isPending}>
-              {addWalletDeposit.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button onClick={handleAddCredit} disabled={isAddingCredit}>
+              {isAddingCredit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Add Credit
             </Button>
           </DialogFooter>
