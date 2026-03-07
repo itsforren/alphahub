@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2025-03-05)
 
 **Core value:** Clients can manage their entire Alpha Hub experience from their phone -- wallet, chat, courses, referrals -- with real-time sync to the web app.
-**Current focus:** Phase 2: Core Value (COMPLETE)
+**Current focus:** Phase 3: Communication (In Progress)
 
 ## Current Position
 
-Phase: 2 of 6 (Core Value)
-Plan: 4 of 4 in current phase
-Status: Phase complete
-Last activity: 2026-03-06 -- Completed 02-04-PLAN.md (campaign chart, cost metrics, leads pipeline)
+Phase: 3 of 6 (Communication)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-03-07 -- Completed 03-01-PLAN.md (chat core: models, realtime, UI)
 
-Progress: [########░░] ~41%
+Progress: [########░░░] ~47%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~12min
-- Total execution time: ~86 min
+- Total execution time: ~95 min
 
 **By Phase:**
 
@@ -29,10 +29,11 @@ Progress: [########░░] ~41%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | ~66min | ~22min |
 | 02-core-value | 4/4 | ~20min | ~5min |
+| 03-communication | 1/3 | ~9min | ~9min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (6min), 02-02 (4min), 02-03 (4min), 02-04 (6min)
-- Trend: consistent ~5min for UI plans with established patterns
+- Last 5 plans: 02-02 (4min), 02-03 (4min), 02-04 (6min), 03-01 (9min)
+- Trend: chat plan took longer due to Realtime API research and WebSocket integration
 
 *Updated after each plan completion*
 
@@ -68,6 +69,10 @@ Recent decisions affecting current work:
 - 02-04: Custom inline search bar instead of .searchable (requires List context; dashboard uses ScrollView)
 - 02-04: LeadStatusPill accepts raw String for flexibility with unknown statuses
 - 02-04: Chart handles single data point with PointMark (LineMark invisible with 1 point)
+- 03-01: AsyncStream-based Realtime API (postgresChange returns AsyncStream, iterated in Tasks)
+- 03-01: White accent client bubbles, elevated surface admin bubbles (Tesla dark aesthetic)
+- 03-01: Direct await for markMessagesAsRead (PostgrestResponse<Void> not Sendable)
+- 03-01: supabase.functions.invoke for chat notifications (fire-and-forget)
 
 ### Pending Todos
 
@@ -75,12 +80,12 @@ None.
 
 ### Blockers/Concerns
 
-- Phase 3: Supabase Realtime Swift client has documented WebSocket disconnect issues on iOS background/foreground -- needs proof-of-concept before building chat
+- Phase 3 blocker RESOLVED: Supabase Realtime Swift client WebSocket disconnect issues handled via explicit disconnect on background, reconnect + catch-up on foreground
 - Phase 4: Bunny CDN video URL format must be confirmed (HLS stream vs iframe embed) before building course video player
 - Phase 5: Universal Links for referral sharing require AASA file deployment on alphaagent.io (server-side coordination)
 
 ## Session Continuity
 
-Last session: 2026-03-06
-Stopped at: Completed 02-04-PLAN.md (campaign chart, cost metrics, leads pipeline) -- Phase 2 complete
+Last session: 2026-03-07
+Stopped at: Completed 03-01-PLAN.md (chat core: models, realtime, UI)
 Resume file: None
