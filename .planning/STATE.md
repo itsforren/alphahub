@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2025-03-05)
 ## Current Position
 
 Phase: 3 of 6 (Communication)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-03-07 -- Completed 03-01-PLAN.md (chat core: models, realtime, UI)
+Last activity: 2026-03-07 -- Completed 03-02-PLAN.md (chat attachments & link previews)
 
-Progress: [########░░░] ~47%
+Progress: [#########░░] ~53%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: ~12min
-- Total execution time: ~95 min
+- Total execution time: ~106 min
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [########░░░] ~47%
 |-------|-------|-------|----------|
 | 01-foundation | 3/3 | ~66min | ~22min |
 | 02-core-value | 4/4 | ~20min | ~5min |
-| 03-communication | 1/3 | ~9min | ~9min |
+| 03-communication | 2/3 | ~20min | ~10min |
 
 **Recent Trend:**
-- Last 5 plans: 02-02 (4min), 02-03 (4min), 02-04 (6min), 03-01 (9min)
-- Trend: chat plan took longer due to Realtime API research and WebSocket integration
+- Last 5 plans: 02-03 (4min), 02-04 (6min), 03-01 (9min), 03-02 (11min)
+- Trend: chat plans slightly longer due to Swift 6 concurrency fixes and multi-file coordination
 
 *Updated after each plan completion*
 
@@ -73,6 +73,11 @@ Recent decisions affecting current work:
 - 03-01: White accent client bubbles, elevated surface admin bubbles (Tesla dark aesthetic)
 - 03-01: Direct await for markMessagesAsRead (PostgrestResponse<Void> not Sendable)
 - 03-01: supabase.functions.invoke for chat notifications (fire-and-forget)
+- 03-02: AttachmentOptionRow extracted to separate struct for Swift 6 PhotosPicker label isolation
+- 03-02: AttachmentData marked Sendable for cross-isolation safety
+- 03-02: Progressive JPEG compression (0.8 -> 0.1 quality) targeting < 1MB uploads
+- 03-02: Link preview detection via NSDataDetector fire-and-forget to edge function
+- 03-02: PDF files open in Safari; QuickLook deferred
 
 ### Pending Todos
 
@@ -87,5 +92,5 @@ None.
 ## Session Continuity
 
 Last session: 2026-03-07
-Stopped at: Completed 03-01-PLAN.md (chat core: models, realtime, UI)
+Stopped at: Completed 03-02-PLAN.md (chat attachments & link previews)
 Resume file: None
