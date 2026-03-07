@@ -71,6 +71,16 @@
 		F10204010000000000000003 /* LeadsPipelineList.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000003 /* LeadsPipelineList.swift */; };
 		F10204010000000000000004 /* LeadDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000004 /* LeadDetailSheet.swift */; };
 		F10204010000000000000005 /* LeadStatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = F20204010000000000000005 /* LeadStatusPill.swift */; };
+		G10301010000000000000001 /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000001 /* ChatModels.swift */; };
+		G10301010000000000000002 /* RealtimeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000002 /* RealtimeManager.swift */; };
+		G10301010000000000000003 /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000003 /* ChatViewModel.swift */; };
+		G10301010000000000000004 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000004 /* ChatView.swift */; };
+		G10301010000000000000005 /* MessageBubbleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000005 /* MessageBubbleView.swift */; };
+		G10301010000000000000006 /* ChatInputBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000006 /* ChatInputBar.swift */; };
+		G10301010000000000000007 /* DateSeparatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000007 /* DateSeparatorView.swift */; };
+		G10301010000000000000008 /* TypingIndicatorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000008 /* TypingIndicatorView.swift */; };
+		G10301010000000000000009 /* BusinessHoursBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000009 /* BusinessHoursBanner.swift */; };
+		G10301010000000000000010 /* ChatEmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20301010000000000000010 /* ChatEmptyStateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -134,6 +144,16 @@
 		F20204010000000000000003 /* LeadsPipelineList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadsPipelineList.swift; sourceTree = "<group>"; };
 		F20204010000000000000004 /* LeadDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadDetailSheet.swift; sourceTree = "<group>"; };
 		F20204010000000000000005 /* LeadStatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeadStatusPill.swift; sourceTree = "<group>"; };
+		G20301010000000000000001 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
+		G20301010000000000000002 /* RealtimeManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeManager.swift; sourceTree = "<group>"; };
+		G20301010000000000000003 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
+		G20301010000000000000004 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		G20301010000000000000005 /* MessageBubbleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubbleView.swift; sourceTree = "<group>"; };
+		G20301010000000000000006 /* ChatInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatInputBar.swift; sourceTree = "<group>"; };
+		G20301010000000000000007 /* DateSeparatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateSeparatorView.swift; sourceTree = "<group>"; };
+		G20301010000000000000008 /* TypingIndicatorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingIndicatorView.swift; sourceTree = "<group>"; };
+		G20301010000000000000009 /* BusinessHoursBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessHoursBanner.swift; sourceTree = "<group>"; };
+		G20301010000000000000010 /* ChatEmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatEmptyStateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -192,6 +212,7 @@
 				D10000010000000000000006 /* Design */,
 				D10201020000000000000003 /* Formatting */,
 				D10000010000000000000007 /* Navigation */,
+				G10301020000000000000001 /* Realtime */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -244,6 +265,7 @@
 				D20201010000000000000004 /* LeadModels.swift */,
 				D20201010000000000000005 /* CampaignModels.swift */,
 				D20201010000000000000006 /* MetricsModels.swift */,
+				G20301010000000000000001 /* ChatModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -261,6 +283,7 @@
 			isa = PBXGroup;
 			children = (
 				F10203020000000000000001 /* Billing */,
+				G10301020000000000000002 /* Chat */,
 				E10202020000000000000001 /* Dashboard */,
 				F10204020000000000000001 /* Leads */,
 				D10000010000000000000009 /* Login */,
@@ -393,6 +416,29 @@
 				C20300010000000000000014 /* Inter-Bold.ttf */,
 			);
 			path = Fonts;
+			sourceTree = "<group>";
+		};
+		G10301020000000000000001 /* Realtime */ = {
+			isa = PBXGroup;
+			children = (
+				G20301010000000000000002 /* RealtimeManager.swift */,
+			);
+			path = Realtime;
+			sourceTree = "<group>";
+		};
+		G10301020000000000000002 /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				G20301010000000000000003 /* ChatViewModel.swift */,
+				G20301010000000000000004 /* ChatView.swift */,
+				G20301010000000000000005 /* MessageBubbleView.swift */,
+				G20301010000000000000006 /* ChatInputBar.swift */,
+				G20301010000000000000007 /* DateSeparatorView.swift */,
+				G20301010000000000000008 /* TypingIndicatorView.swift */,
+				G20301010000000000000009 /* BusinessHoursBanner.swift */,
+				G20301010000000000000010 /* ChatEmptyStateView.swift */,
+			);
+			path = Chat;
 			sourceTree = "<group>";
 		};
 		D10000010000000000000099 /* Products */ = {
@@ -532,6 +578,16 @@
 				F10204010000000000000003 /* LeadsPipelineList.swift in Sources */,
 				F10204010000000000000004 /* LeadDetailSheet.swift in Sources */,
 				F10204010000000000000005 /* LeadStatusPill.swift in Sources */,
+				G10301010000000000000001 /* ChatModels.swift in Sources */,
+				G10301010000000000000002 /* RealtimeManager.swift in Sources */,
+				G10301010000000000000003 /* ChatViewModel.swift in Sources */,
+				G10301010000000000000004 /* ChatView.swift in Sources */,
+				G10301010000000000000005 /* MessageBubbleView.swift in Sources */,
+				G10301010000000000000006 /* ChatInputBar.swift in Sources */,
+				G10301010000000000000007 /* DateSeparatorView.swift in Sources */,
+				G10301010000000000000008 /* TypingIndicatorView.swift in Sources */,
+				G10301010000000000000009 /* BusinessHoursBanner.swift in Sources */,
+				G10301010000000000000010 /* ChatEmptyStateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

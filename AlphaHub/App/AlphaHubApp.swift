@@ -6,6 +6,7 @@ struct AlphaHubApp: App {
     @State private var biometricManager = BiometricManager()
     @State private var router = AppRouter()
     @State private var dataManager = DataManager()
+    @State private var realtimeManager = RealtimeManager()
 
     init() {
         AppFonts.registerFonts()
@@ -18,6 +19,7 @@ struct AlphaHubApp: App {
                 .environment(biometricManager)
                 .environment(router)
                 .environment(dataManager)
+                .environment(realtimeManager)
                 .task {
                     await authManager.startListening()
                 }

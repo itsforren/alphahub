@@ -27,6 +27,10 @@ final class DataManager {
     var billingRecords: [BillingRecord] = []
     var paymentMethods: [PaymentMethod] = []
 
+    // MARK: - Chat Data
+
+    var unreadChatCount: Int = 0
+
     // MARK: - Loading State
 
     var isInitialLoad = true
@@ -130,6 +134,7 @@ final class DataManager {
                 group.addTask { await self.fetchCampaigns(clientId: profile.id) }
                 group.addTask { await self.fetchPaymentMethods(clientId: profile.id) }
                 group.addTask { await self.fetchPerformancePercentage() }
+                group.addTask { await self.fetchUnreadChatCount(clientId: profile.id) }
             }
 
             self.isInitialLoad = false
@@ -286,5 +291,24 @@ final class DataManager {
             .value
 
         self.performancePercentage = Double(row?.settingValue ?? "") ?? 0
+    }
+
+    /// Fetch unread chat message count for the badge on the Chat tab.
+    private func fetchUnreadChatCount(clientId: String) async {
+        struct UnreadRow: Decodable {
+            let unreadCountClient: Int
+            enum CodingKeys: String, CodingKey {
+                case unreadCountClient = "unread_count_client"
+            }
+        }
+
+        let rows: [UnreadRow] = (try? await supabase
+            .from("chat_conversations")
+            .select("unread_count_client")
+            .eq("client_id", value: clientId)
+            .execute()
+            .value) ?? []
+
+        self.unreadChatCount = rows.reduce(0) { $0 + $1.unreadCountClient }
     }
 }
