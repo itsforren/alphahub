@@ -5,6 +5,7 @@ import SwiftUI
 struct ClientTabView: View {
     @Environment(AppRouter.self) private var router
     @Environment(AuthManager.self) private var authManager
+    @Environment(DataManager.self) private var dataManager
 
     var body: some View {
         @Bindable var router = router
@@ -47,7 +48,8 @@ struct ClientTabView: View {
 
             FloatingTabBar(
                 selection: $router.clientTab,
-                tabs: Array(ClientTab.allCases)
+                tabs: Array(ClientTab.allCases),
+                badgeCounts: [.chat: dataManager.unreadChatCount]
             )
         }
     }

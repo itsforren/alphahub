@@ -151,8 +151,14 @@ struct ChatView: View {
         .onAppear {
             isWithinBusinessHours = BusinessHoursBanner.checkBusinessHours()
             loadChat()
+            // Track chat screen visibility for foreground notification suppression
+            PushNotificationManager.shared.isOnChatScreen = true
+            Task {
+                await PushNotificationManager.shared.clearBadge()
+            }
         }
         .onDisappear {
+            PushNotificationManager.shared.isOnChatScreen = false
             Task {
                 await realtimeManager.disconnect()
             }
