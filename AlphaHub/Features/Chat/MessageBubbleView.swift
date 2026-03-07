@@ -150,15 +150,22 @@ struct MessageBubbleView: View {
             if !message.message.isEmpty {
                 Text(message.message)
                     .font(AppTypography.body)
-                    .foregroundColor(message.isClient ? .black : AppColors.textPrimary)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
             }
         }
         .background(
             message.isClient
-                ? AppColors.accent
+                ? AppColors.accentDark
                 : AppColors.surfaceElevated
+        )
+        .overlay(
+            // Subtle border on admin bubbles
+            !message.isClient
+                ? BubbleShape(isClient: false)
+                    .stroke(AppColors.border, lineWidth: 0.5)
+                : nil
         )
     }
 
@@ -213,30 +220,30 @@ struct MessageBubbleView: View {
             HStack(spacing: AppSpacing.sm) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(message.isClient ? Color.black.opacity(0.15) : AppColors.surfaceOverlay)
+                        .fill(message.isClient ? Color.white.opacity(0.15) : AppColors.surfaceOverlay)
                         .frame(width: 36, height: 36)
 
                     Image(systemName: "doc.fill")
                         .font(.system(size: 16))
-                        .foregroundColor(message.isClient ? .black.opacity(0.7) : AppColors.textSecondary)
+                        .foregroundColor(message.isClient ? .white.opacity(0.7) : AppColors.textSecondary)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(fileName)
                         .font(AppTypography.caption)
-                        .foregroundColor(message.isClient ? .black : AppColors.textPrimary)
+                        .foregroundColor(.white)
                         .lineLimit(1)
 
                     Text("PDF")
                         .font(AppTypography.captionSmall)
-                        .foregroundColor(message.isClient ? .black.opacity(0.6) : AppColors.textTertiary)
+                        .foregroundColor(message.isClient ? .white.opacity(0.6) : AppColors.textTertiary)
                 }
 
                 Spacer(minLength: 0)
 
                 Image(systemName: "arrow.down.circle")
                     .font(.system(size: 18))
-                    .foregroundColor(message.isClient ? .black.opacity(0.5) : AppColors.textTertiary)
+                    .foregroundColor(message.isClient ? .white.opacity(0.5) : AppColors.textTertiary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -301,10 +308,10 @@ struct PendingMessageBubble: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(pending.text)
                     .font(AppTypography.body)
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(AppColors.accent.opacity(0.6))
+                    .background(AppColors.accentDark.opacity(0.6))
                     .clipShape(BubbleShape(isClient: true))
 
                 switch pending.status {

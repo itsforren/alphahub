@@ -16,7 +16,7 @@ enum BillingFilter: String, CaseIterable {
 }
 
 /// Three-segment filter control for billing transactions.
-/// Uses native Picker with `.segmented` style, styled for dark theme.
+/// Crimson tint on selected segment.
 struct BillingFilterBar: View {
     @Binding var selectedFilter: BillingFilter
 
@@ -29,8 +29,8 @@ struct BillingFilterBar: View {
         }
         .pickerStyle(.segmented)
         .onAppear {
-            // Style segmented control for dark theme
-            UISegmentedControl.appearance().selectedSegmentTintColor = UIColor.white.withAlphaComponent(0.15)
+            let crimson = UIColor(red: 196/255, green: 30/255, blue: 58/255, alpha: 1.0)
+            UISegmentedControl.appearance().selectedSegmentTintColor = crimson.withAlphaComponent(0.25)
             UISegmentedControl.appearance().setTitleTextAttributes(
                 [.foregroundColor: UIColor.white],
                 for: .selected

@@ -9,7 +9,13 @@ struct ChatEmptyStateView: View {
 
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 56))
-                .foregroundColor(AppColors.textTertiary)
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [AppColors.accent, AppColors.accentDark],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
 
             VStack(spacing: AppSpacing.sm) {
                 Text("Welcome to Alpha Hub Support")

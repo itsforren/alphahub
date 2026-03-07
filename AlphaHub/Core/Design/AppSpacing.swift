@@ -8,4 +8,5 @@ enum AppSpacing {
     static let xl: CGFloat = 32
     static let xxl: CGFloat = 48
     static let screenPadding: CGFloat = 20
+    static let sectionGap: CGFloat = 36
 }

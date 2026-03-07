@@ -58,7 +58,7 @@ struct ChatInputBar: View {
             .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.sm)
         }
-        .background(.ultraThinMaterial)
+        .background(AppColors.surfaceElevated.opacity(0.95))
         .sheet(isPresented: $showAttachmentPicker) {
             AttachmentPickerSheet { attachment in
                 onAttachmentSelected(attachment)

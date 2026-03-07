@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Custom floating pill tab bar with glass/blur effect.
+/// Custom floating pill tab bar with crimson selected state.
 /// Generic over any `TabItem` conforming type (ClientTab or AdminTab).
 struct FloatingTabBar<Tab: TabItem>: View {
     @Binding var selection: Tab
@@ -17,10 +17,10 @@ struct FloatingTabBar<Tab: TabItem>: View {
         .padding(.vertical, 12)
         .background(
             Capsule()
-                .fill(.ultraThinMaterial)
+                .fill(AppColors.surfaceElevated.opacity(0.95))
                 .overlay(
                     Capsule()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        .stroke(AppColors.border, lineWidth: 1)
                 )
         )
         .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
@@ -31,6 +31,7 @@ struct FloatingTabBar<Tab: TabItem>: View {
 
     @ViewBuilder
     private func tabButton(for tab: Tab) -> some View {
+        let isSelected = selection == tab
         let count = badgeCounts[tab] ?? 0
 
         Button {
@@ -42,7 +43,7 @@ struct FloatingTabBar<Tab: TabItem>: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: tab.icon)
                         .font(.system(size: 20))
-                        .symbolEffect(.bounce, value: selection == tab)
+                        .symbolEffect(.bounce, value: isSelected)
 
                     // Badge overlay
                     if count > 0 {
@@ -58,8 +59,13 @@ struct FloatingTabBar<Tab: TabItem>: View {
 
                 Text(tab.title)
                     .font(AppTypography.captionSmall)
+
+                // Crimson indicator dot
+                Circle()
+                    .fill(isSelected ? AppColors.accent : Color.clear)
+                    .frame(width: 4, height: 4)
             }
-            .foregroundColor(selection == tab ? AppColors.textPrimary : AppColors.textTertiary)
+            .foregroundColor(isSelected ? AppColors.accent : AppColors.textTertiary)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)

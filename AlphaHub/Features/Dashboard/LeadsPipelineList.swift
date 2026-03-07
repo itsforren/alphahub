@@ -43,6 +43,10 @@ struct LeadsPipelineList: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(AppColors.surfaceElevated)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(AppColors.border, lineWidth: 0.5)
+            )
 
             // Leads list
             if filteredLeads.isEmpty {

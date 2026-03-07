@@ -56,12 +56,16 @@ struct LeadDetailSheet: View {
                 } label: {
                     Label("Call", systemImage: "phone.fill")
                         .font(AppTypography.bodyLarge)
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundColor(AppColors.accent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(
                             Capsule()
-                                .fill(AppColors.surfaceOverlay)
+                                .fill(AppColors.accent.opacity(0.12))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(AppColors.accentBorder, lineWidth: 1)
                         )
                 }
 
@@ -73,12 +77,16 @@ struct LeadDetailSheet: View {
                 } label: {
                     Label("Message", systemImage: "message.fill")
                         .font(AppTypography.bodyLarge)
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundColor(AppColors.accent)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                         .background(
                             Capsule()
-                                .fill(AppColors.surfaceOverlay)
+                                .fill(AppColors.accent.opacity(0.12))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(AppColors.accentBorder, lineWidth: 1)
                         )
                 }
             }

@@ -49,7 +49,7 @@ struct PaymentMethodCards: View {
                     // Card brand icon
                     Image(systemName: "creditcard.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundColor(AppColors.accent)
 
                     // Brand name
                     Text(method.brandDisplayName)

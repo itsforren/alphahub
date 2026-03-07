@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Compact metric display for dashboard.
-/// Numbers are the star -- bold and bright. Labels subdued.
-/// No card background; the parent section handles grouping.
+/// Crimson prefix, white numbers, contained in a subtle card.
 struct MetricCard: View {
     let value: String
     let label: String
@@ -14,7 +13,7 @@ struct MetricCard: View {
                 if !prefix.isEmpty {
                     Text(prefix)
                         .font(AppTypography.heading2)
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundColor(AppColors.accent)
                 }
                 Text(value)
                     .font(AppTypography.heading2)
@@ -26,17 +25,28 @@ struct MetricCard: View {
                 .font(AppTypography.captionSmall)
                 .foregroundColor(AppColors.textSecondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, AppSpacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppColors.surfaceElevated)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppColors.border, lineWidth: 0.5)
+                )
+        )
     }
 }
 
 #Preview {
     ZStack {
         AppColors.pureBlack.ignoresSafeArea()
-        HStack(spacing: AppSpacing.xl) {
+        HStack(spacing: AppSpacing.md) {
             MetricCard(value: "12.4K", label: "Cost/Lead", prefix: "$")
             MetricCard(value: "3.2K", label: "Cost/Call", prefix: "$")
             MetricCard(value: "247%", label: "ROI")
         }
+        .padding(AppSpacing.screenPadding)
     }
     .preferredColorScheme(.dark)
 }

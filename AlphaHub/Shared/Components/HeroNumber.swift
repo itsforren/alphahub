@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Large bold financial number display. "Data is the star" -- white on black.
+/// Large bold financial number display. Crimson prefix, white number, tracked text.
 struct HeroNumber: View {
     let value: String
     let label: String
@@ -25,17 +25,21 @@ struct HeroNumber: View {
                 if !prefix.isEmpty {
                     Text(prefix)
                         .font(size.font)
-                        .foregroundColor(AppColors.textPrimary)
+                        .foregroundColor(AppColors.accent)
                 }
                 Text(value)
                     .font(size.font)
                     .foregroundColor(AppColors.textPrimary)
                     .contentTransition(.numericText())
             }
+            .heroStyle()
 
-            Text(label)
-                .font(AppTypography.caption)
-                .foregroundColor(AppColors.textSecondary)
+            if !label.isEmpty {
+                Text(label)
+                    .font(AppTypography.overline)
+                    .foregroundColor(AppColors.textSecondary)
+                    .overlineStyle()
+            }
         }
     }
 }

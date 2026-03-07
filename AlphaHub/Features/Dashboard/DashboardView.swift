@@ -2,8 +2,6 @@ import SwiftUI
 
 /// Main dashboard screen: wallet hero, quick links, business results,
 /// campaign spend chart, cost metrics, and leads pipeline.
-/// Replaces the Home tab placeholder in ClientTabView.
-/// Uses @Environment(DataManager.self) for reactive data observation.
 struct DashboardView: View {
     @Environment(DataManager.self) private var dataManager
 
@@ -27,11 +25,12 @@ struct DashboardView: View {
     // MARK: - Live Content
 
     private var liveContent: some View {
-        LazyVStack(alignment: .leading, spacing: AppSpacing.lg) {
+        LazyVStack(alignment: .leading, spacing: AppSpacing.sectionGap) {
             // Welcome greeting
             Text("Welcome, \(dataManager.firstName)")
                 .font(AppTypography.heading2)
                 .foregroundColor(AppColors.textPrimary)
+                .headingTracked()
 
             // Quick link pills
             QuickLinkPills(profile: dataManager.clientProfile)

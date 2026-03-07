@@ -22,10 +22,10 @@ final class DataFlowScene: SKScene, @unchecked Sendable {
         emitter.particleBirthRate = 25
         emitter.particleLifetime = 10
         emitter.particleLifetimeRange = 4
-        emitter.particleColor = .white
-        emitter.particleAlpha = 0.3
-        emitter.particleAlphaRange = 0.15
-        emitter.particleAlphaSpeed = -0.03
+        emitter.particleColor = UIColor(red: 196/255, green: 30/255, blue: 58/255, alpha: 1.0)
+        emitter.particleAlpha = 0.15
+        emitter.particleAlphaRange = 0.10
+        emitter.particleAlphaSpeed = -0.015
         emitter.particleSize = CGSize(width: 3, height: 3)
         emitter.particleScaleRange = 0.5
         emitter.particleSpeed = 15

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Section title row with optional trailing action button.
-/// Title uses heading3 font, action button is subdued with chevron.
+/// Title uses heading3 font with tracking, action link in crimson.
 struct SectionHeader: View {
     let title: String
     var action: (() -> Void)?
@@ -12,6 +12,7 @@ struct SectionHeader: View {
             Text(title)
                 .font(AppTypography.heading3)
                 .foregroundColor(AppColors.textPrimary)
+                .headingTracked()
 
             Spacer()
 
@@ -23,7 +24,7 @@ struct SectionHeader: View {
                         Image(systemName: "chevron.right")
                             .font(.system(size: 11, weight: .medium))
                     }
-                    .foregroundColor(AppColors.textSecondary)
+                    .foregroundColor(AppColors.accent)
                 }
             }
         }

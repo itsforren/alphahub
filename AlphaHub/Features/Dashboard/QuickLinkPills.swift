@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// Horizontal scrollable pill buttons linking to client web pages.
-/// Only shows pills for non-nil links. Hides entirely if all links are nil.
-/// Fulfills DASH-05 as revised by the user during context discussion.
+/// Transparent fill with border-only style.
 struct QuickLinkPills: View {
     let profile: ClientProfile?
 
@@ -30,13 +29,9 @@ struct QuickLinkPills: View {
                                 .foregroundColor(AppColors.textSecondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
-                                .background(
-                                    Capsule()
-                                        .fill(AppColors.surfaceElevated)
-                                )
                                 .overlay(
                                     Capsule()
-                                        .stroke(AppColors.border, lineWidth: 0.5)
+                                        .stroke(AppColors.border, lineWidth: 1)
                                 )
                         }
                     }

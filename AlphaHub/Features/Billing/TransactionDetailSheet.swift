@@ -13,6 +13,7 @@ struct TransactionDetailSheet: View {
             Text(record.amount.currencyFull)
                 .font(AppTypography.heroMedium)
                 .foregroundColor(AppColors.textPrimary)
+                .heroStyle()
                 .padding(.top, AppSpacing.md)
 
             // Status pill
@@ -61,11 +62,15 @@ struct TransactionDetailSheet: View {
                     Image(systemName: "arrow.up.right.square")
                         .font(.system(size: 14))
                 }
-                .foregroundColor(AppColors.textSecondary)
+                .foregroundColor(AppColors.accent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppSpacing.md)
-                .background(AppColors.surfaceOverlay)
+                .background(AppColors.accent.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppColors.accentBorder, lineWidth: 1)
+                )
             }
             .padding(.horizontal, AppSpacing.md)
             .padding(.bottom, AppSpacing.md)

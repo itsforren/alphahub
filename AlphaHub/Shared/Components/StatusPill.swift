@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Small capsule badge with text and background color.
-/// Used for billing status, lead status, and other state indicators.
+/// Small capsule badge with outline/tinted style.
+/// Color text + 15% fill + 30% border for modern look.
 struct StatusPill: View {
     let text: String
     let color: Color
@@ -9,12 +9,16 @@ struct StatusPill: View {
     var body: some View {
         Text(text)
             .font(AppTypography.captionSmall)
-            .foregroundColor(.white)
+            .foregroundColor(color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 Capsule()
-                    .fill(color)
+                    .fill(color.opacity(0.15))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(color.opacity(0.30), lineWidth: 1)
             )
     }
 

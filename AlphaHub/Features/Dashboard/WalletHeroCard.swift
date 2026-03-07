@@ -1,22 +1,22 @@
 import SwiftUI
 
 /// Hero wallet card -- the dominant dashboard element.
-/// Shows balance as a large bold number, compact stats row, spending progress bar,
-/// threshold/recharge info, and upcoming payment indicator.
+/// Tinted glass card with crimson accents, radial glow, and overline label.
 struct WalletHeroCard: View {
     @Environment(DataManager.self) private var dataManager
 
     var body: some View {
         let metrics = dataManager.walletMetrics
 
-        GlassCard {
+        GlassCard(tinted: true) {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
-                // Label
+                // Overline label
                 Text("Wallet Balance")
-                    .font(AppTypography.caption)
+                    .font(AppTypography.overline)
                     .foregroundColor(AppColors.textSecondary)
+                    .overlineStyle()
 
-                // Hero balance number -- THE biggest, boldest element
+                // Hero balance number with radial glow
                 HeroNumber(
                     value: metrics.balance.abbreviatedCurrency.replacingOccurrences(of: "$", with: ""),
                     label: "",
@@ -24,6 +24,15 @@ struct WalletHeroCard: View {
                     size: .large
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RadialGradient(
+                        colors: [AppColors.accent.opacity(0.08), Color.clear],
+                        center: .leading,
+                        startRadius: 0,
+                        endRadius: 200
+                    )
+                    .offset(x: -20)
+                )
 
                 // Compact stats row
                 HStack(spacing: 0) {
@@ -47,7 +56,7 @@ struct WalletHeroCard: View {
                     )
                 }
 
-                // Progress bar
+                // Progress bar with crimson gradient
                 progressBar(progress: metrics.spendingProgress)
 
                 // Threshold / Recharge line
@@ -89,7 +98,7 @@ struct WalletHeroCard: View {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(
                         LinearGradient(
-                            colors: [AppColors.accent, AppColors.accent.opacity(0.3)],
+                            colors: [AppColors.accent, AppColors.accentDark],
                             startPoint: .leading,
                             endPoint: .trailing
                         )

@@ -12,7 +12,7 @@ struct ShimmerModifier: ViewModifier {
             .overlay(
                 GeometryReader { geo in
                     LinearGradient(
-                        colors: [.clear, Color.white.opacity(0.15), .clear],
+                        colors: [.clear, AppColors.accent.opacity(0.12), .clear],
                         startPoint: .leading,
                         endPoint: .trailing
                     )

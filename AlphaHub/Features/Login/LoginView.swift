@@ -19,13 +19,13 @@ struct LoginView: View {
                     Spacer()
                         .frame(height: 80)
 
-                    // Logo
+                    // Logo with crimson gradient
                     VStack(spacing: 12) {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 52))
                             .foregroundStyle(
                                 .linearGradient(
-                                    colors: [.white, .white.opacity(0.7)],
+                                    colors: [AppColors.accent, AppColors.accentDark],
                                     startPoint: .top,
                                     endPoint: .bottom
                                 )
@@ -47,17 +47,17 @@ struct LoginView: View {
                                 .keyboardType(.emailAddress)
                                 .autocorrectionDisabled()
                                 .padding()
-                                .background(Color.white.opacity(0.08))
+                                .background(AppColors.surfaceElevated.opacity(0.6))
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(
-                                            viewModel.emailError != nil ? Color.red.opacity(0.6) : Color.white.opacity(0.15),
+                                            viewModel.emailError != nil ? Color.red.opacity(0.6) : AppColors.border,
                                             lineWidth: 1
                                         )
                                 )
                                 .foregroundColor(.white)
-                                .tint(.white)
+                                .tint(AppColors.accent)
 
                             if let emailError = viewModel.emailError {
                                 Text(emailError)
@@ -71,17 +71,17 @@ struct LoginView: View {
                             SecureField("Password", text: $viewModel.password)
                                 .textContentType(.password)
                                 .padding()
-                                .background(Color.white.opacity(0.08))
+                                .background(AppColors.surfaceElevated.opacity(0.6))
                                 .cornerRadius(12)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(
-                                            viewModel.passwordError != nil ? Color.red.opacity(0.6) : Color.white.opacity(0.15),
+                                            viewModel.passwordError != nil ? Color.red.opacity(0.6) : AppColors.border,
                                             lineWidth: 1
                                         )
                                 )
                                 .foregroundColor(.white)
-                                .tint(.white)
+                                .tint(AppColors.accent)
 
                             if let passwordError = viewModel.passwordError {
                                 Text(passwordError)
@@ -100,7 +100,7 @@ struct LoginView: View {
                         }
                     }
 
-                    // Sign In button
+                    // Sign In button — crimson
                     Button {
                         Task {
                             await viewModel.signIn(using: authManager)
@@ -114,7 +114,7 @@ struct LoginView: View {
                         Group {
                             if viewModel.isLoading {
                                 ProgressView()
-                                    .tint(.black)
+                                    .tint(.white)
                             } else {
                                 Text("Sign In")
                                     .fontWeight(.semibold)
@@ -122,8 +122,8 @@ struct LoginView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
-                        .background(Color.white)
-                        .foregroundColor(.black)
+                        .background(AppColors.accent)
+                        .foregroundColor(.white)
                         .cornerRadius(12)
                     }
                     .disabled(viewModel.isLoading)
