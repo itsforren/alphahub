@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct AlphaHubApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+
     @State private var authManager = AuthManager()
     @State private var biometricManager = BiometricManager()
     @State private var router = AppRouter()
@@ -31,6 +33,7 @@ struct RootView: View {
     @Environment(AuthManager.self) private var auth
     @Environment(BiometricManager.self) private var biometric
     @Environment(DataManager.self) private var dataManager
+    @Environment(AppRouter.self) private var router
 
     @Environment(\.scenePhase) private var scenePhase
 
@@ -57,6 +60,10 @@ struct RootView: View {
             if isAuthenticated {
                 Task {
                     await dataManager.loadAllData()
+                    // Configure push notifications after login
+                    PushNotificationManager.shared.configure(router: router)
+                    await PushNotificationManager.shared.requestPermission()
+                    PushNotificationManager.shared.registerNotificationCategories()
                 }
             }
         }

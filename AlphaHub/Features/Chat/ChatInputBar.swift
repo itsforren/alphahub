@@ -1,15 +1,17 @@
 import SwiftUI
 
-/// Text input bar with attachment button (no-op for now) and send button.
+/// Text input bar with attachment button and send button.
 /// Debounces typing indicator: fires onTypingChanged(true) after 0.5s of typing,
 /// then onTypingChanged(false) after 3s of inactivity.
 struct ChatInputBar: View {
     var onSend: (String) -> Void
+    var onAttachmentSelected: (AttachmentData) -> Void
     var onTypingChanged: (Bool) -> Void
 
     @State private var text = ""
     @State private var typingDebounceTask: Task<Void, Never>?
     @State private var typingStopTask: Task<Void, Never>?
+    @State private var showAttachmentPicker = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -18,9 +20,9 @@ struct ChatInputBar: View {
                 .overlay(AppColors.divider)
 
             HStack(spacing: AppSpacing.sm) {
-                // Attachment button (placeholder for 03-02)
+                // Attachment button
                 Button {
-                    // Will be connected in 03-02
+                    showAttachmentPicker = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 24))
@@ -57,6 +59,11 @@ struct ChatInputBar: View {
             .padding(.vertical, AppSpacing.sm)
         }
         .background(.ultraThinMaterial)
+        .sheet(isPresented: $showAttachmentPicker) {
+            AttachmentPickerSheet { attachment in
+                onAttachmentSelected(attachment)
+            }
+        }
     }
 
     // MARK: - Actions

@@ -11,6 +11,8 @@
 		<string>Inter-SemiBold.ttf</string>
 		<string>Inter-Bold.ttf</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Take photos to send in chat</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

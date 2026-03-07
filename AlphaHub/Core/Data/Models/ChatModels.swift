@@ -90,6 +90,9 @@ struct ChatMessageInsert: Codable, Sendable {
     let senderRole: String
     let senderAvatarUrl: String?
     let message: String
+    let attachmentUrl: String?
+    let attachmentType: String?
+    let attachmentName: String?
 
     enum CodingKeys: String, CodingKey {
         case conversationId = "conversation_id"
@@ -98,6 +101,9 @@ struct ChatMessageInsert: Codable, Sendable {
         case senderRole = "sender_role"
         case senderAvatarUrl = "sender_avatar_url"
         case message
+        case attachmentUrl = "attachment_url"
+        case attachmentType = "attachment_type"
+        case attachmentName = "attachment_name"
     }
 }
 

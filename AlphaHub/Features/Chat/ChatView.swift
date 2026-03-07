@@ -128,6 +128,16 @@ struct ChatView: View {
                         )
                     }
                 },
+                onAttachmentSelected: { attachment in
+                    Task {
+                        await viewModel.sendMessage(
+                            text: "",
+                            senderName: dataManager.clientProfile?.name ?? "You",
+                            senderAvatarUrl: dataManager.clientProfile?.profileImageUrl,
+                            attachment: attachment
+                        )
+                    }
+                },
                 onTypingChanged: { isTyping in
                     Task {
                         await realtimeManager.sendTyping(isTyping: isTyping)
