@@ -69,10 +69,36 @@ export function DailySpendChart({ clientId, targetDailySpend, campaigns }: Daily
   });
 
   const chartData = useMemo(() => {
-    // Create a map of existing data by date
-    const dataByDate = new Map<string, typeof dailyData[0]>();
+    // Aggregate metrics across campaigns per date (fixes multi-campaign overwrite bug)
+    const dataByDate = new Map<string, {
+      spend_date: string;
+      cost: number;
+      clicks: number;
+      impressions: number;
+      conversions: number;
+      ctr: number;
+      cpc: number;
+    }>();
     dailyData?.forEach(row => {
-      dataByDate.set(row.spend_date, row);
+      const existing = dataByDate.get(row.spend_date);
+      if (existing) {
+        existing.cost += Number(row.cost || 0);
+        existing.clicks += Number(row.clicks || 0);
+        existing.impressions += Number(row.impressions || 0);
+        existing.conversions += Number(row.conversions || 0);
+        existing.ctr = existing.impressions > 0 ? (existing.clicks / existing.impressions) * 100 : 0;
+        existing.cpc = existing.clicks > 0 ? existing.cost / existing.clicks : 0;
+      } else {
+        dataByDate.set(row.spend_date, {
+          spend_date: row.spend_date,
+          cost: Number(row.cost || 0),
+          clicks: Number(row.clicks || 0),
+          impressions: Number(row.impressions || 0),
+          conversions: Number(row.conversions || 0),
+          ctr: Number(row.ctr || 0),
+          cpc: Number(row.cpc || 0),
+        });
+      }
     });
     
     // Generate all 30 days

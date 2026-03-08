@@ -377,76 +377,85 @@ serve(async (req) => {
     let totalRecordsFetched = 0;
     let lastCampaignInfo: CampaignInfo = { dailyBudget: 0, targetStates: [] };
 
-    // Sync each campaign
+    // Sync each campaign (per-campaign try/catch so one failure doesn't block others)
     for (const campaign of campaignsToSync) {
-      console.log(`--- Syncing campaign: ${campaign.label} (${campaign.googleCustomerId}:${campaign.googleCampaignId}) ---`);
+      try {
+        console.log(`--- Syncing campaign: ${campaign.label} (${campaign.googleCustomerId}:${campaign.googleCampaignId}) ---`);
 
-      const { metrics, campaignInfo } = await fetchGoogleAdsData(
-        accessToken,
-        campaign.googleCustomerId,
-        campaign.googleCampaignId,
-        formatDate(startDate),
-        formatDate(endDate)
-      );
+        const { metrics, campaignInfo } = await fetchGoogleAdsData(
+          accessToken,
+          campaign.googleCustomerId,
+          campaign.googleCampaignId,
+          formatDate(startDate),
+          formatDate(endDate)
+        );
 
-      totalRecordsFetched += metrics.length;
-      lastCampaignInfo = campaignInfo;
+        totalRecordsFetched += metrics.length;
+        lastCampaignInfo = campaignInfo;
 
-      // Upsert daily records into ad_spend_daily
-      for (const metric of metrics) {
-        const budgetUtilization = campaignInfo.dailyBudget > 0
-          ? metric.cost / campaignInfo.dailyBudget
-          : null;
-        const isOverdelivery = campaignInfo.dailyBudget > 0 && metric.cost > campaignInfo.dailyBudget;
+        // Upsert daily records into ad_spend_daily
+        for (const metric of metrics) {
+          const budgetUtilization = campaignInfo.dailyBudget > 0
+            ? metric.cost / campaignInfo.dailyBudget
+            : null;
+          const isOverdelivery = campaignInfo.dailyBudget > 0 && metric.cost > campaignInfo.dailyBudget;
 
-        const { error: upsertError } = await supabase
-          .from('ad_spend_daily')
+          const { error: upsertError } = await supabase
+            .from('ad_spend_daily')
+            .upsert({
+              client_id: clientId,
+              campaign_id: metric.campaignId,
+              spend_date: metric.date,
+              cost: metric.cost,
+              impressions: metric.impressions,
+              clicks: metric.clicks,
+              conversions: metric.conversions,
+              ctr: metric.ctr,
+              cpc: metric.cpc,
+              budget_daily: campaignInfo.dailyBudget || null,
+              budget_utilization: budgetUtilization,
+              overdelivery: isOverdelivery,
+              campaign_enabled: true,
+              updated_at: new Date().toISOString(),
+            }, {
+              onConflict: 'client_id,campaign_id,spend_date',
+            });
+
+          if (upsertError) {
+            console.error(`Error upserting metric for ${metric.date}:`, upsertError.message);
+            totalFailedDates.push(metric.date);
+            totalUpsertErrors.push({ date: metric.date, error: upsertError.message });
+          } else {
+            totalUpsertedCount++;
+          }
+        }
+
+        // Upsert into campaigns table
+        console.log(`Upserting campaign record for ${campaign.googleCustomerId}:${campaign.googleCampaignId}`);
+        const { error: campaignUpsertError } = await supabase
+          .from('campaigns')
           .upsert({
             client_id: clientId,
-            campaign_id: metric.campaignId,
-            spend_date: metric.date,
-            cost: metric.cost,
-            impressions: metric.impressions,
-            clicks: metric.clicks,
-            conversions: metric.conversions,
-            ctr: metric.ctr,
-            cpc: metric.cpc,
-            budget_daily: campaignInfo.dailyBudget || null,
-            budget_utilization: budgetUtilization,
-            overdelivery: isOverdelivery,
-            campaign_enabled: true,
+            google_customer_id: campaign.googleCustomerId,
+            google_campaign_id: campaign.googleCampaignId,
+            current_daily_budget: campaignInfo.dailyBudget || null,
             updated_at: new Date().toISOString(),
           }, {
-            onConflict: 'client_id,campaign_id,spend_date',
+            onConflict: 'google_customer_id,google_campaign_id',
           });
 
-        if (upsertError) {
-          console.error(`Error upserting metric for ${metric.date}:`, upsertError.message);
-          totalFailedDates.push(metric.date);
-          totalUpsertErrors.push({ date: metric.date, error: upsertError.message });
+        if (campaignUpsertError) {
+          console.error('Error upserting campaign:', campaignUpsertError);
         } else {
-          totalUpsertedCount++;
+          console.log('Campaign record upserted successfully');
         }
-      }
-
-      // Upsert into campaigns table
-      console.log(`Upserting campaign record for ${campaign.googleCustomerId}:${campaign.googleCampaignId}`);
-      const { error: campaignUpsertError } = await supabase
-        .from('campaigns')
-        .upsert({
-          client_id: clientId,
-          google_customer_id: campaign.googleCustomerId,
-          google_campaign_id: campaign.googleCampaignId,
-          current_daily_budget: campaignInfo.dailyBudget || null,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'google_customer_id,google_campaign_id',
+      } catch (campaignError) {
+        console.error(`Failed to sync campaign ${campaign.label} (${campaign.googleCampaignId}):`, campaignError);
+        totalFailedDates.push(`CAMPAIGN_ERROR:${campaign.label}`);
+        totalUpsertErrors.push({
+          date: `CAMPAIGN_ERROR:${campaign.label}`,
+          error: campaignError instanceof Error ? campaignError.message : 'Unknown campaign sync error',
         });
-
-      if (campaignUpsertError) {
-        console.error('Error upserting campaign:', campaignUpsertError);
-      } else {
-        console.log('Campaign record upserted successfully');
       }
     }
 
