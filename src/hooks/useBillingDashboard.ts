@@ -283,9 +283,11 @@ export function useBillingDashboardStats() {
       // Fetch active client IDs to filter out non-active clients
       const { data: activeClientsForStats } = await supabase
         .from('clients')
-        .select('id')
-        .eq('status', 'active');
-      const activeIdsForStats = new Set((activeClientsForStats || []).map(c => c.id));
+        .select('id, status')
+        .in('status', ['active', 'onboarding']);
+      const activeIdsForStats = new Set(
+        (activeClientsForStats || []).filter((c: any) => c.status === 'active' || c.status === 'onboarding').map((c: any) => c.id)
+      );
 
       const { data: overdueStatusData } = await supabase
         .from('billing_records')
@@ -425,8 +427,9 @@ export function useOverdueBillingRecords() {
       ]);
 
       const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+      // Show billing for active + onboarding clients; exclude cancelled, inactive, paused, etc.
       const activeClientIds = new Set(
-        (clientsRes.data || []).filter(c => c.status === 'active').map(c => c.id)
+        (clientsRes.data || []).filter(c => c.status === 'active' || c.status === 'onboarding').map(c => c.id)
       );
 
       const combined = [...(overdueStatus.data || []), ...(pendingPastDue.data || [])];
@@ -597,8 +600,9 @@ export function useFailedPayments() {
       if (recordsRes.error) throw recordsRes.error;
 
       const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+      // Show billing for active + onboarding clients; exclude cancelled, inactive, paused, etc.
       const activeClientIds = new Set(
-        (clientsRes.data || []).filter(c => c.status === 'active').map(c => c.id)
+        (clientsRes.data || []).filter(c => c.status === 'active' || c.status === 'onboarding').map(c => c.id)
       );
 
       // Filter to active clients only
