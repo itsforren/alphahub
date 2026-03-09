@@ -114,7 +114,7 @@ export default function BillingDashboard() {
           {/* Month picker */}
           <Select
             value={format(selectedMonthDate, 'yyyy-MM')}
-            onValueChange={(v) => setSelectedMonthDate(startOfMonth(new Date(v + '-01')))}
+            onValueChange={(v) => setSelectedMonthDate(startOfMonth(new Date(v + '-01T12:00:00')))}
           >
             <SelectTrigger className="w-[160px]">
               <SelectValue />
