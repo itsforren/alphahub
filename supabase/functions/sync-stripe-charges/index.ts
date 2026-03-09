@@ -443,16 +443,37 @@ async function syncClient(supabase: any, clientId: string) {
         const amount = (charge.amount || 0) / 100;
         if (amount <= 0) continue;
 
-        // Check if we already have a billing record for this charge (by payment_intent)
+        // Check if we already have a billing record for this charge (by payment_intent OR by charge id)
         const piId = charge.payment_intent || charge.id;
-        const { data: existing } = await supabase
+        const { data: existingByPi } = await supabase
           .from('billing_records')
           .select('id')
           .eq('client_id', clientId)
           .eq('stripe_payment_intent_id', piId)
           .maybeSingle();
 
-        if (existing) continue; // Already tracked
+        if (existingByPi) continue; // Already tracked
+
+        // Also check if an invoice-based record already exists for the same amount + date
+        // (catches cases where the charge's invoice field is null in newer Stripe API versions)
+        const chargeCreatedDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : null;
+        if (chargeCreatedDate) {
+          const { data: existingByDateAmount } = await supabase
+            .from('billing_records')
+            .select('id')
+            .eq('client_id', clientId)
+            .eq('billing_type', billingType)
+            .eq('amount', amount)
+            .eq('status', 'paid')
+            .eq('due_date', chargeCreatedDate)
+            .not('stripe_invoice_id', 'is', null)
+            .maybeSingle();
+
+          if (existingByDateAmount) {
+            console.log(`Skipping charge ${charge.id} — matching invoice record found (${existingByDateAmount.id})`);
+            continue;
+          }
+        }
 
         const chargeDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
         const paidAt = charge.created ? new Date(charge.created * 1000).toISOString() : new Date().toISOString();
