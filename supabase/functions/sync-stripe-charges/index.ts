@@ -195,6 +195,94 @@ async function syncClient(supabase: any, clientId: string) {
     return { synced: 0, created: 0, updated: 0, deposited: 0, changes: [], message: 'No Stripe customer found' };
   }
 
+  // 3b. Auto-discover subscriptions for each linked Stripe customer
+  for (const customer of allCustomers) {
+    const stripeKey = getStripeKey(customer.stripe_account);
+    if (!stripeKey) continue;
+    try {
+      // Fetch all non-canceled subscriptions (active, past_due, trialing, unpaid, paused)
+      const subsUrl = new URL('https://api.stripe.com/v1/subscriptions');
+      subsUrl.searchParams.set('customer', customer.stripe_customer_id);
+      subsUrl.searchParams.set('limit', '10');
+      subsUrl.searchParams.set('status', 'all');
+      const subsRes = await fetch(subsUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${stripeKey}` },
+      });
+      if (!subsRes.ok) {
+        console.error(`Subscription fetch failed for ${customer.stripe_customer_id}: ${subsRes.status}`);
+        continue;
+      }
+      const subsData = await subsRes.json();
+      console.log(`Found ${subsData.data?.length || 0} subscriptions for ${customer.stripe_customer_id} (${customer.stripe_account})`);
+
+      for (const sub of subsData.data || []) {
+        // Skip only fully canceled/expired
+        if (sub.status === 'canceled' || sub.status === 'incomplete_expired') continue;
+        const priceItem = sub.items?.data?.[0];
+        const amount = priceItem ? (priceItem.price?.unit_amount || 0) / 100 : 0;
+        const interval = priceItem?.price?.recurring?.interval || 'month';
+        const recurrenceType = interval === 'week' ? 'bi_weekly' : 'monthly';
+        const billingType = customer.stripe_account === 'management' ? 'management' : 'ad_spend';
+        const periodStart = sub.current_period_start ? new Date(sub.current_period_start * 1000).toISOString() : null;
+        const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+
+        console.log(`Upserting subscription ${sub.id} (${sub.status}) $${amount} ${recurrenceType} for ${customer.stripe_account}`);
+
+        const { error: upsertErr } = await supabase
+          .from('client_stripe_subscriptions')
+          .upsert({
+            client_id: clientId,
+            stripe_account: customer.stripe_account,
+            stripe_subscription_id: sub.id,
+            stripe_price_id: priceItem?.price?.id || null,
+            stripe_customer_id: customer.stripe_customer_id,
+            status: sub.status,
+            billing_type: billingType,
+            amount,
+            recurrence_type: recurrenceType,
+            current_period_start: periodStart,
+            current_period_end: periodEnd,
+          }, { onConflict: 'stripe_subscription_id' });
+
+        if (upsertErr) {
+          console.error(`Subscription upsert failed for ${sub.id}:`, upsertErr);
+        } else {
+          changes.push({ action: 'synced_subscription', subscription_id: sub.id, account: customer.stripe_account, amount, status: sub.status });
+        }
+      }
+
+      // Also check subscription schedules (future-dated subscriptions)
+      const schedUrl = new URL('https://api.stripe.com/v1/subscription_schedules');
+      schedUrl.searchParams.set('customer', customer.stripe_customer_id);
+      schedUrl.searchParams.set('limit', '10');
+      const schedRes = await fetch(schedUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${stripeKey}` },
+      });
+      if (schedRes.ok) {
+        const schedData = await schedRes.json();
+        for (const sched of schedData.data || []) {
+          if (sched.status !== 'not_started' && sched.status !== 'active') continue;
+          if (sched.subscription) {
+            // Schedule already has an active subscription — handled above
+            continue;
+          }
+          // Future-dated schedule without active sub yet
+          const phase = sched.phases?.[0];
+          if (!phase) continue;
+          const priceItem = phase.items?.[0];
+          const amount = priceItem ? (priceItem.price_data?.unit_amount || priceItem.price?.unit_amount || 0) / 100 : 0;
+          const startDate = phase.start_date ? new Date(phase.start_date * 1000).toISOString() : null;
+          const endDate = phase.end_date ? new Date(phase.end_date * 1000).toISOString() : null;
+
+          console.log(`Found scheduled subscription ${sched.id} starting ${startDate}, $${amount}`);
+          changes.push({ action: 'found_scheduled_subscription', schedule_id: sched.id, account: customer.stripe_account, amount, start_date: startDate, status: sched.status });
+        }
+      }
+    } catch (err) {
+      console.error(`Subscription discovery failed for ${customer.stripe_customer_id}:`, err);
+    }
+  }
+
   for (const customer of allCustomers) {
     const stripeKey = getStripeKey(customer.stripe_account);
     if (!stripeKey) continue;
@@ -327,8 +415,87 @@ async function syncClient(supabase: any, clientId: string) {
     }
   }
 
+  // 7. Discover standalone charges (PaymentIntents not linked to invoices)
+  for (const customer of allCustomers) {
+    const stripeKey = getStripeKey(customer.stripe_account);
+    if (!stripeKey) continue;
+    const billingType = customer.stripe_account === 'management' ? 'management' : 'ad_spend';
+
+    try {
+      // Only fetch recent charges (last 60 days) to avoid huge data pulls
+      const since = Math.floor(Date.now() / 1000) - 60 * 24 * 60 * 60;
+      const chargesUrl = new URL('https://api.stripe.com/v1/charges');
+      chargesUrl.searchParams.set('customer', customer.stripe_customer_id);
+      chargesUrl.searchParams.set('limit', '50');
+      chargesUrl.searchParams.set('created[gte]', String(since));
+      const chargesRes = await fetch(chargesUrl.toString(), {
+        headers: { 'Authorization': `Bearer ${stripeKey}` },
+      });
+      if (!chargesRes.ok) continue;
+      const chargesData = await chargesRes.json();
+
+      for (const charge of chargesData.data || []) {
+        // Skip charges that belong to an invoice (already handled above)
+        if (charge.invoice) continue;
+        // Skip non-succeeded charges
+        if (charge.status !== 'succeeded') continue;
+
+        const amount = (charge.amount || 0) / 100;
+        if (amount <= 0) continue;
+
+        // Check if we already have a billing record for this charge (by payment_intent)
+        const piId = charge.payment_intent || charge.id;
+        const { data: existing } = await supabase
+          .from('billing_records')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('stripe_payment_intent_id', piId)
+          .maybeSingle();
+
+        if (existing) continue; // Already tracked
+
+        const chargeDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+        const paidAt = charge.created ? new Date(charge.created * 1000).toISOString() : new Date().toISOString();
+        const description = charge.description || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} — direct charge ${chargeDate}`;
+
+        const { data: insertedRecord, error: insertErr } = await supabase
+          .from('billing_records')
+          .insert({
+            client_id: clientId,
+            client_name: clientName,
+            billing_type: billingType,
+            amount,
+            status: 'paid',
+            paid_at: paidAt,
+            stripe_payment_intent_id: piId,
+            stripe_account: customer.stripe_account,
+            due_date: chargeDate,
+            billing_period_start: chargeDate,
+            notes: description,
+            is_recurring_parent: false,
+            recurrence_type: 'one_time',
+          })
+          .select('id')
+          .single();
+
+        if (!insertErr && insertedRecord) {
+          created++;
+          changes.push({ stripeChargeId: charge.id, action: 'created_from_charge', status: 'paid', amount, billingType });
+
+          // For ad_spend, also create wallet deposit
+          if (billingType === 'ad_spend') {
+            const wasDeposited = await ensureWalletDeposit(supabase, insertedRecord.id, clientId, amount, paidAt);
+            if (wasDeposited) deposited++;
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`Charge discovery failed for ${customer.stripe_customer_id}:`, err);
+    }
+  }
+
   return {
-    synced: customers.length,
+    synced: allCustomers.length,
     created,
     updated,
     deposited,

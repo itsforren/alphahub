@@ -124,7 +124,7 @@ async function restoreCampaignIfSafeMode(supabase: any, supabaseUrl: string, sup
       const res = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget }),
+        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget, changeSource: 'safe_mode_exit', changeReason: 'Wallet refilled via auto-recharge' }),
       });
 
       if (!res.ok) {
@@ -292,7 +292,43 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Cooldown: skip if recharged within the last 2.5 hours ──
+        // ── Daily cap: max 2 charge attempts per client per day ──
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        const { count: dailyChargeCount } = await supabase
+          .from('billing_records')
+          .select('*', { count: 'exact', head: true })
+          .eq('client_id', clientId)
+          .eq('billing_type', 'ad_spend')
+          .gte('created_at', todayStart);
+
+        if ((dailyChargeCount || 0) >= 2) {
+          console.log(`${client.name}: daily retry limit reached (${dailyChargeCount} charges today)`);
+          results.push({ client: client.name, action: 'skipped', reason: 'daily_limit_reached', chargestoday: dailyChargeCount });
+          continue;
+        }
+
+        // ── Skip if there's already an unpaid (pending/overdue) ad_spend charge in the last 24 hours ──
+        const dedup24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: existingUnpaid } = await supabase
+          .from('billing_records')
+          .select('id, status, created_at')
+          .eq('client_id', clientId)
+          .eq('billing_type', 'ad_spend')
+          .in('status', ['pending', 'overdue'])
+          .gte('created_at', dedup24h)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingUnpaid) {
+          console.log(`${client.name}: existing unpaid charge ${existingUnpaid.id} (${existingUnpaid.status}), skipping new charge`);
+          results.push({ client: client.name, action: 'skipped', reason: 'existing_unpaid_charge', record_id: existingUnpaid.id });
+          // Still trigger safe mode if not already in it
+          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
+          continue;
+        }
+
+        // ── Cooldown: skip if recharged (paid) within the last 2.5 hours ──
         const cooldownMs = 2.5 * 60 * 60 * 1000; // 2.5 hours
         const cooldownCutoff = new Date(now.getTime() - cooldownMs).toISOString();
         const { data: recentCharge } = await supabase
@@ -300,7 +336,7 @@ Deno.serve(async (req) => {
           .select('id, status, paid_at, created_at')
           .eq('client_id', clientId)
           .eq('billing_type', 'ad_spend')
-          .in('status', ['pending', 'paid'])
+          .in('status', ['paid'])
           .or(`paid_at.gte.${cooldownCutoff},created_at.gte.${cooldownCutoff}`)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -308,7 +344,7 @@ Deno.serve(async (req) => {
 
         if (recentCharge) {
           const chargeTime = recentCharge.paid_at || recentCharge.created_at;
-          console.log(`${client.name}: recharged recently at ${chargeTime} (${recentCharge.status}), cooldown active`);
+          console.log(`${client.name}: recharged recently at ${chargeTime}, cooldown active`);
           results.push({ client: client.name, action: 'skipped', reason: 'cooldown_active', last_charge: chargeTime });
           continue;
         }

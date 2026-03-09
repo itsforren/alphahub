@@ -54,6 +54,9 @@ export function RevenueSummaryRow({ data, isLoading, isCurrentMonth = true }: Re
     monthlyAdSpendCeiling,
     projectedManagementFees,
     activeSubscriptionCount,
+    expectedManagementRevenue,
+    expectedManagementClientCount,
+    managementFeeGapCount,
     performancePct,
     autoClientCount,
     currentMonth,
@@ -64,6 +67,7 @@ export function RevenueSummaryRow({ data, isLoading, isCurrentMonth = true }: Re
 
   const mtdLabel = isCurrentMonth ? 'collected MTD' : `collected in ${currentMonth}`;
   const projectedLabel = isCurrentMonth ? 'projected this month' : null;
+  const revenueGap = expectedManagementRevenue - mtdManagementFees;
 
   return (
     <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
@@ -87,16 +91,37 @@ export function RevenueSummaryRow({ data, isLoading, isCurrentMonth = true }: Re
           </div>
           <p className="text-xs text-muted-foreground mt-0.5">{mtdLabel}</p>
 
-          {projectedLabel && projectedManagementFees > 0 && (
+          {expectedManagementRevenue > 0 && (
             <div className="mt-3 pt-3 border-t border-border/30">
-              <p className="text-base font-semibold text-muted-foreground">{fmt(projectedManagementFees)}</p>
-              <p className="text-xs text-muted-foreground">{projectedLabel}</p>
+              <div className="flex items-baseline justify-between">
+                <div>
+                  <p className="text-base font-semibold text-muted-foreground">{fmt(expectedManagementRevenue)}</p>
+                  <p className="text-xs text-muted-foreground">expected from {expectedManagementClientCount} client{expectedManagementClientCount !== 1 ? 's' : ''}</p>
+                </div>
+                {isCurrentMonth && revenueGap > 0 && (
+                  <div className="text-right">
+                    <p className={cn('text-sm font-semibold', revenueGap > expectedManagementRevenue * 0.5 ? 'text-red-400' : 'text-yellow-400')}>
+                      -{fmt(revenueGap)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">gap</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {projectedLabel && projectedManagementFees > 0 && (
+            <div className="mt-2 pt-2 border-t border-border/20">
+              <p className="text-sm text-muted-foreground">{fmt(projectedManagementFees)} <span className="text-xs">{projectedLabel}</span></p>
             </div>
           )}
 
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             {activeSubscriptionCount > 0 && (
-              <span>{activeSubscriptionCount} active client{activeSubscriptionCount !== 1 ? 's' : ''}</span>
+              <span>{activeSubscriptionCount} paying client{activeSubscriptionCount !== 1 ? 's' : ''}</span>
+            )}
+            {managementFeeGapCount > 0 && (
+              <span className="text-orange-400">{managementFeeGapCount} missing payment{managementFeeGapCount !== 1 ? 's' : ''}</span>
             )}
             {performancePct > 0 && (
               <span className="text-purple-400">{performancePct}% performance fee</span>
@@ -178,6 +203,18 @@ export function RevenueSummaryRow({ data, isLoading, isCurrentMonth = true }: Re
             >
               <span>Failed payments</span>
               <span className="font-bold">{failedPaymentsCount}</span>
+            </button>
+            <button
+              onClick={() => navigate('/hub/admin/billing')}
+              className={cn(
+                'w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors text-left',
+                managementFeeGapCount > 0
+                  ? 'bg-yellow-500/10 hover:bg-yellow-500/15 text-yellow-400'
+                  : 'bg-muted/30 hover:bg-muted/50 text-muted-foreground',
+              )}
+            >
+              <span>Mgmt fee gaps</span>
+              <span className="font-bold">{managementFeeGapCount}</span>
             </button>
             <button
               onClick={() => navigate('/hub/admin/billing')}

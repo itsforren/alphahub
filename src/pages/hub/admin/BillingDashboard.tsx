@@ -9,6 +9,9 @@ import { BillingPaymentsTable } from '@/components/admin/BillingPaymentsTable';
 import { FailedPaymentsWidget } from '@/components/admin/FailedPaymentsWidget';
 import { DisputesWidget } from '@/components/admin/DisputesWidget';
 import { WalletPipelineWidget } from '@/components/admin/WalletPipelineWidget';
+import { WalletVerificationWidget } from '@/components/admin/WalletVerificationWidget';
+import { ManagementFeeEnforcerWidget } from '@/components/admin/ManagementFeeEnforcerWidget';
+import { WeeklyAuditWidget } from '@/components/admin/WeeklyAuditWidget';
 import { toast } from 'sonner';
 import {
   useRevenueIntelligence,
@@ -19,6 +22,7 @@ import {
   useActiveDisputes,
   useSyncAllStripe,
   useWalletPipeline,
+  useWalletVerification,
 } from '@/hooks/useBillingDashboard';
 
 export default function BillingDashboard() {
@@ -48,6 +52,7 @@ export default function BillingDashboard() {
   const { data: failedPayments = [], isLoading: failedLoading } = useFailedPayments();
   const { data: disputes = [], isLoading: disputesLoading } = useActiveDisputes();
   const { data: walletPipeline = [], isLoading: pipelineLoading } = useWalletPipeline();
+  const { data: walletVerification, isLoading: verificationLoading } = useWalletVerification();
 
   const paymentsLoading = overdueLoading || upcomingLoading || paidLoading;
 
@@ -62,6 +67,7 @@ export default function BillingDashboard() {
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-failed'] }),
         queryClient.refetchQueries({ queryKey: ['billing-dashboard-disputes'] }),
         queryClient.refetchQueries({ queryKey: ['wallet-pipeline'] }),
+        queryClient.refetchQueries({ queryKey: ['wallet-verification'] }),
       ]);
     } finally {
       setIsRefreshing(false);
@@ -155,13 +161,29 @@ export default function BillingDashboard() {
         selectedMonth={revenueIntel?.currentMonth ?? format(selectedMonthDate, 'MMMM yyyy')}
       />
 
-      {/* Bottom Row: Pipeline + Failed + Disputes */}
+      {/* Enforcement Row: Wallet Verification + Management Fee Enforcer */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <WalletVerificationWidget
+          issues={walletVerification?.issues || []}
+          checked={walletVerification?.checked || 0}
+          isLoading={verificationLoading}
+        />
+        <ManagementFeeEnforcerWidget
+          gaps={revenueIntel?.managementFeeGaps || []}
+          expectedRevenue={revenueIntel?.expectedManagementRevenue || 0}
+          clientCount={revenueIntel?.expectedManagementClientCount || 0}
+          isLoading={intelLoading}
+        />
+      </div>
+
+      {/* Bottom Row: Pipeline + Failed + Disputes + Weekly Audit */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <WalletPipelineWidget items={walletPipeline} isLoading={pipelineLoading} />
 
         <div className="space-y-6">
           <FailedPaymentsWidget payments={failedPayments} isLoading={failedLoading} />
           <DisputesWidget disputes={disputes} isLoading={disputesLoading} />
+          <WeeklyAuditWidget />
         </div>
       </div>
     </div>

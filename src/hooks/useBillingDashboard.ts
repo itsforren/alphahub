@@ -36,6 +36,16 @@ export interface WalletPipelineItem {
   lastChargeFailedAt: string | null;
 }
 
+export interface ManagementFeeGap {
+  clientId: string;
+  clientName: string;
+  managementFee: number;
+  billingFrequency: string;
+  hasStripeSubscription: boolean;
+  lastPaidAt: string | null;
+  status: 'missing_subscription' | 'no_recent_payment' | 'ok';
+}
+
 export interface RevenueIntelligence {
   // Period actuals (current month MTD or selected past month)
   mtdAdSpend: number;
@@ -48,6 +58,11 @@ export interface RevenueIntelligence {
   // Subscription-based management fee projection (current active subs)
   projectedManagementFees: number;
   activeSubscriptionCount: number;
+  // Expected management revenue from clients.management_fee (ground truth)
+  expectedManagementRevenue: number;
+  expectedManagementClientCount: number;
+  managementFeeGapCount: number;
+  managementFeeGaps: ManagementFeeGap[];
   // MTD run-rate projection = (MTD / days_elapsed) × days_in_month
   runRateAdSpend: number;
   runRateManagementFees: number;
@@ -669,7 +684,7 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
       const sixtyDaysAgo = subDays(now, 60).toISOString();
 
       // Fetch MTD actuals, last-month actuals in parallel with other data
-      const [mtdRecords, lastMonthRecords, autoWallets, perfSetting, recentMgmtWithPaidAt, recentMgmtWithoutPaidAt, overdueRes, failedRes, disputesRes] =
+      const [mtdRecords, lastMonthRecords, autoWallets, perfSetting, recentMgmtWithPaidAt, recentMgmtWithoutPaidAt, overdueRes, failedRes, disputesRes, activeClientsWithFees] =
         await Promise.all([
           fetchPaidRecords('billing_type, amount', windowStart, windowEnd),
           fetchPaidRecords('billing_type, amount', lastMonthStart, lastMonthEnd),
@@ -716,6 +731,12 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
             .from('disputes')
             .select('*', { count: 'exact', head: true })
             .in('status', ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review']),
+          // Active clients with management_fee > 0 for gap detection
+          supabase
+            .from('clients')
+            .select('id, name, management_fee, billing_frequency, management_stripe_subscription_id, status')
+            .eq('status', 'active')
+            .gt('management_fee', 0),
         ]);
 
       const performancePct = perfSetting.data?.setting_value != null
@@ -767,6 +788,46 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
         return sum + r.amount * multiplier;
       }, 0);
 
+      // Expected management revenue from clients.management_fee (ground truth)
+      const feeClients = (activeClientsWithFees.data || []) as Array<{
+        id: string; name: string; management_fee: number;
+        billing_frequency: string | null; management_stripe_subscription_id: string | null; status: string;
+      }>;
+      const expectedManagementRevenue = feeClients.reduce((sum, c) => {
+        const freq = c.billing_frequency || 'monthly';
+        const monthlyEquiv = freq === 'bi_weekly' ? c.management_fee * 2.17 : c.management_fee;
+        return sum + monthlyEquiv;
+      }, 0);
+      const expectedManagementClientCount = feeClients.length;
+
+      // Detect management fee gaps: clients with fee set but no recent payment
+      const managementFeeGaps: ManagementFeeGap[] = [];
+      for (const c of feeClients) {
+        const hasSub = !!c.management_stripe_subscription_id;
+        const paidRecord = latestPerClient.get(c.id);
+        // Find most recent paid_at for this client from the merged records
+        const recentRecord = recentMgmt.find(r => r.client_id === c.id);
+        const lastPaidAt = recentRecord?.effectiveDate || null;
+
+        if (!hasSub && !paidRecord) {
+          managementFeeGaps.push({
+            clientId: c.id, clientName: c.name,
+            managementFee: c.management_fee,
+            billingFrequency: c.billing_frequency || 'monthly',
+            hasStripeSubscription: false, lastPaidAt,
+            status: 'missing_subscription',
+          });
+        } else if (!paidRecord) {
+          managementFeeGaps.push({
+            clientId: c.id, clientName: c.name,
+            managementFee: c.management_fee,
+            billingFrequency: c.billing_frequency || 'monthly',
+            hasStripeSubscription: hasSub, lastPaidAt,
+            status: 'no_recent_payment',
+          });
+        }
+      }
+
       // Run-rate projections (linear extrapolation, only meaningful for current month)
       const runRateAdSpend = daysElapsed > 0 ? (mtdAdSpend / daysElapsed) * daysInMonth : 0;
       const runRateManagementFees = daysElapsed > 0 ? (mtdManagementFees / daysElapsed) * daysInMonth : 0;
@@ -779,6 +840,10 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
         monthlyAdSpendCeiling,
         projectedManagementFees,
         activeSubscriptionCount,
+        expectedManagementRevenue,
+        expectedManagementClientCount,
+        managementFeeGapCount: managementFeeGaps.length,
+        managementFeeGaps,
         runRateAdSpend,
         runRateManagementFees,
         performancePct,
@@ -825,6 +890,31 @@ export function useWalletPipeline() {
   });
 }
 
+// Wallet charge verification — checks recent charges for deposit issues
+export function useWalletVerification() {
+  return useQuery({
+    queryKey: ['wallet-verification'],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('verify-wallet-charges', {
+        body: {},
+      });
+      if (error) throw new Error(error.message || 'Verification failed');
+      return data as { success: boolean; checked: number; issues: Array<{
+        type: 'missing_deposit' | 'amount_mismatch' | 'stripe_not_succeeded' | 'stripe_amount_mismatch';
+        billingRecordId: string;
+        clientId: string;
+        clientName: string;
+        chargeAmount: number;
+        depositAmount: number | null;
+        stripeAmount: number | null;
+        paymentIntentId: string | null;
+        paidAt: string | null;
+      }> };
+    },
+    refetchInterval: 120000, // Check every 2 minutes
+  });
+}
+
 // Global Stripe sync — reconciles all pending/overdue records against Stripe
 export function useSyncAllStripe() {
   const queryClient = useQueryClient();
@@ -842,6 +932,7 @@ export function useSyncAllStripe() {
       queryClient.invalidateQueries({ queryKey: ['billing-overdue'] });
       queryClient.invalidateQueries({ queryKey: ['billing-upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-intelligence'] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-verification'] });
     },
   });
 }

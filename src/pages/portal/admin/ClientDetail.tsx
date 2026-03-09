@@ -1257,6 +1257,17 @@ export default function PortalAdminClientDetail() {
                   </p>
                 </div>
                 <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Mgmt Stripe Subscription ID</label>
+                  <EditableField
+                    value={(client as any).management_stripe_subscription_id?.toString() || ''}
+                    fieldKey="management_stripe_subscription_id"
+                    onSave={handleSaveField}
+                    type="text"
+                    className="text-sm font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">Stripe subscription ID for management fee (sub_xxx)</p>
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider">Commission Contract %</label>
                   <EditableField
                     value={(client as any).commission_contract_percent?.toString() || '100'}
