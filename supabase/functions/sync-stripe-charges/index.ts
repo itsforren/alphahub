@@ -454,8 +454,8 @@ async function syncClient(supabase: any, clientId: string) {
 
         if (existingByPi) continue; // Already tracked
 
-        // Also check if an invoice-based record already exists for the same amount + date
-        // (catches cases where the charge's invoice field is null in newer Stripe API versions)
+        // Also check if ANY record already exists for the same amount + date
+        // (catches invoice-based records, manual records, and legacy records without Stripe IDs)
         const chargeCreatedDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : null;
         if (chargeCreatedDate) {
           const { data: existingByDateAmount } = await supabase
@@ -466,11 +466,17 @@ async function syncClient(supabase: any, clientId: string) {
             .eq('amount', amount)
             .eq('status', 'paid')
             .eq('due_date', chargeCreatedDate)
-            .not('stripe_invoice_id', 'is', null)
             .maybeSingle();
 
           if (existingByDateAmount) {
-            console.log(`Skipping charge ${charge.id} — matching invoice record found (${existingByDateAmount.id})`);
+            // Back-fill the stripe_payment_intent_id on the existing record so future syncs match by PI
+            await supabase
+              .from('billing_records')
+              .update({ stripe_payment_intent_id: piId, stripe_account: customer.stripe_account })
+              .eq('id', existingByDateAmount.id)
+              .is('stripe_payment_intent_id', null);
+
+            console.log(`Skipping charge ${charge.id} — matching record found (${existingByDateAmount.id}), back-filled PI`);
             continue;
           }
         }

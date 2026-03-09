@@ -46,6 +46,37 @@ export interface ManagementFeeGap {
   status: 'missing_subscription' | 'no_recent_payment' | 'ok';
 }
 
+export interface AdSpendIntelligence {
+  // Actual Google Ads spend MTD from ad_spend_daily (excluding ignored campaigns)
+  googleAdsSpendMtd: number;
+  // Total wallet deposits MTD (Stripe ad_spend charges)
+  walletDepositsMtd: number;
+  // Sum of current wallet balances across all active clients
+  totalWalletBalance: number;
+  // Total Stripe ad spend + management charges MTD
+  totalStripeCharged: number;
+  // Management fees collected MTD
+  managementCharged: number;
+  // Overall health
+  overallStatus: 'green' | 'yellow' | 'red';
+  // Per-client breakdown
+  clients: Array<{
+    clientId: string;
+    clientName: string;
+    googleAdsSpend: number;
+    walletDeposits: number;
+    walletBalance: number;
+    status: 'green' | 'yellow' | 'red';
+  }>;
+  // Excluded campaigns
+  excludedCampaignIds: string[];
+  ignoredCampaignCount: number;
+  // Period info
+  currentMonth: string;
+  daysElapsed: number;
+  daysInMonth: number;
+}
+
 export interface RevenueIntelligence {
   // Period actuals (current month MTD or selected past month)
   mtdAdSpend: number;
@@ -946,6 +977,227 @@ export function useWalletVerification() {
   });
 }
 
+// Ad Spend Intelligence — Google Ads spend vs wallet deposits vs wallet balances
+export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
+  return useQuery({
+    queryKey: ['ad-spend-intelligence', startIso, endIso],
+    queryFn: async (): Promise<AdSpendIntelligence> => {
+      const now = new Date();
+      const windowStartDate = startIso ? parseISO(startIso) : startOfMonth(now);
+      const windowStart = windowStartDate.toISOString();
+      const windowEnd = endIso || now.toISOString();
+      const windowStartStr = format(windowStartDate, 'yyyy-MM-dd');
+      const windowEndStr = format(endIso ? parseISO(endIso) : now, 'yyyy-MM-dd');
+
+      const daysInMo = getDaysInMonth(windowStartDate);
+      const isCurrentMonth = format(windowStartDate, 'yyyy-MM') === format(now, 'yyyy-MM');
+      const daysElapsed = isCurrentMonth ? now.getDate() : daysInMo;
+      const currentMonth = format(windowStartDate, 'MMMM yyyy');
+
+      const [
+        adSpendDailyRes,
+        ignoredCampaignsRes,
+        excludedSettingRes,
+        walletDepositsRes,
+        billingRecordsRes,
+        walletsRes,
+        clientsRes,
+      ] = await Promise.all([
+        // Google Ads actual spend
+        supabase
+          .from('ad_spend_daily')
+          .select('client_id, campaign_id, cost')
+          .gte('spend_date', windowStartStr)
+          .lte('spend_date', windowEndStr),
+        // Ignored campaigns
+        supabase
+          .from('campaigns')
+          .select('google_campaign_id')
+          .eq('ignored', true),
+        // Additional excluded campaign IDs
+        supabase
+          .from('onboarding_settings')
+          .select('setting_value')
+          .eq('setting_key', 'excluded_ad_spend_campaign_ids')
+          .maybeSingle(),
+        // Wallet deposits MTD
+        supabase
+          .from('wallet_transactions')
+          .select('client_id, amount')
+          .eq('transaction_type', 'deposit')
+          .gte('created_at', windowStart)
+          .lte('created_at', windowEnd),
+        // Paid billing records MTD (for Stripe totals)
+        fetchPaidRecords('billing_type, amount, client_id', windowStart, windowEnd),
+        // Current wallet balances + tracking data
+        supabase
+          .from('client_wallets')
+          .select('client_id, ad_spend_balance, tracking_start_date'),
+        // Active clients
+        supabase
+          .from('clients')
+          .select('id, name, status')
+          .in('status', ['active', 'onboarding']),
+      ]);
+
+      // Build exclusion set
+      const ignoredGoogleIds = new Set(
+        (ignoredCampaignsRes.data || []).map(c => c.google_campaign_id)
+      );
+      const extraExcluded: string[] = excludedSettingRes.data?.setting_value
+        ? excludedSettingRes.data.setting_value.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : [];
+      const allExcluded = new Set([...ignoredGoogleIds, ...extraExcluded]);
+      const excludedCampaignIds = [...allExcluded];
+
+      const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+
+      // Google Ads spend per client (excluding ignored campaigns)
+      const clientAdSpend = new Map<string, number>();
+      for (const row of adSpendDailyRes.data || []) {
+        if (allExcluded.has(row.campaign_id)) continue;
+        const prev = clientAdSpend.get(row.client_id) || 0;
+        clientAdSpend.set(row.client_id, prev + (row.cost || 0));
+      }
+      const googleAdsSpendMtd = [...clientAdSpend.values()].reduce((a, b) => a + b, 0);
+
+      // Wallet deposits per client MTD
+      const clientDeposits = new Map<string, number>();
+      let walletDepositsMtd = 0;
+      for (const tx of walletDepositsRes.data || []) {
+        const prev = clientDeposits.get(tx.client_id) || 0;
+        clientDeposits.set(tx.client_id, prev + (tx.amount || 0));
+        walletDepositsMtd += tx.amount || 0;
+      }
+
+      // Wallet balances (computed: sum of all deposits - sum of all ad_spend_daily since tracking_start)
+      // Use the wallet_transactions total deposits and ad_spend_daily total for each client
+      const walletBalanceMap = new Map<string, number>();
+      // First get total deposits per client (all time)
+      const { data: allDeposits } = await supabase
+        .from('wallet_transactions')
+        .select('client_id, amount')
+        .eq('transaction_type', 'deposit');
+      const totalDepositsPerClient = new Map<string, number>();
+      for (const tx of allDeposits || []) {
+        const prev = totalDepositsPerClient.get(tx.client_id) || 0;
+        totalDepositsPerClient.set(tx.client_id, prev + (tx.amount || 0));
+      }
+      // Then get total spend per client since tracking start
+      const walletTrackingMap = new Map(
+        (walletsRes.data || []).map(w => [w.client_id, w.tracking_start_date])
+      );
+      for (const [clientId, trackingStart] of walletTrackingMap) {
+        if (!trackingStart) continue;
+        const { data: spendRows } = await supabase
+          .from('ad_spend_daily')
+          .select('cost')
+          .eq('client_id', clientId)
+          .gte('spend_date', trackingStart);
+        const totalSpend = (spendRows || []).reduce((sum, r) => sum + (r.cost || 0), 0);
+        const deposits = totalDepositsPerClient.get(clientId) || 0;
+        walletBalanceMap.set(clientId, deposits - totalSpend);
+      }
+
+      let totalWalletBalance = 0;
+      for (const bal of walletBalanceMap.values()) {
+        totalWalletBalance += bal;
+      }
+
+      // Billing records totals
+      let managementCharged = 0;
+      let adSpendCharged = 0;
+      for (const r of billingRecordsRes) {
+        if (r.billing_type === 'management') managementCharged += r.amount || 0;
+        if (r.billing_type === 'ad_spend') adSpendCharged += r.amount || 0;
+      }
+      const totalStripeCharged = managementCharged + adSpendCharged;
+
+      // Per-client breakdown
+      const allClientIds = new Set([...clientAdSpend.keys(), ...clientDeposits.keys()]);
+      const clients = [...allClientIds]
+        .filter(id => clientMap.has(id))
+        .map(id => {
+          const googleAdsSpend = clientAdSpend.get(id) || 0;
+          const walletDeposits = clientDeposits.get(id) || 0;
+          const walletBalance = walletBalanceMap.get(id) || 0;
+          // Status: green if wallet has enough buffer, yellow if tight, red if negative
+          let status: 'green' | 'yellow' | 'red' = 'green';
+          if (walletBalance < 0) status = 'red';
+          else if (walletBalance < 100) status = 'yellow';
+          return {
+            clientId: id,
+            clientName: clientMap.get(id) || 'Unknown',
+            googleAdsSpend,
+            walletDeposits,
+            walletBalance,
+            status,
+          };
+        })
+        .sort((a, b) => a.walletBalance - b.walletBalance);
+
+      // Overall status: green if total balance is healthy, yellow if <$500 total, red if negative
+      let overallStatus: 'green' | 'yellow' | 'red' = 'green';
+      if (totalWalletBalance < 0) overallStatus = 'red';
+      else if (clients.some(c => c.status === 'red')) overallStatus = 'red';
+      else if (totalWalletBalance < 500 || clients.some(c => c.status === 'yellow')) overallStatus = 'yellow';
+
+      return {
+        googleAdsSpendMtd,
+        walletDepositsMtd,
+        totalWalletBalance,
+        totalStripeCharged,
+        managementCharged,
+        overallStatus,
+        clients,
+        excludedCampaignIds,
+        ignoredCampaignCount: ignoredGoogleIds.size,
+        currentMonth,
+        daysElapsed,
+        daysInMonth: daysInMo,
+      };
+    },
+    refetchInterval: 120000,
+  });
+}
+
+// Excluded campaign IDs settings — for ad spend intelligence
+export function useExcludedCampaigns() {
+  return useQuery({
+    queryKey: ['excluded-campaigns-setting'],
+    queryFn: async (): Promise<string[]> => {
+      const { data, error } = await supabase
+        .from('onboarding_settings')
+        .select('setting_value')
+        .eq('setting_key', 'excluded_ad_spend_campaign_ids')
+        .maybeSingle();
+      if (error) throw error;
+      if (!data?.setting_value) return [];
+      return data.setting_value.split(',').map((s: string) => s.trim()).filter(Boolean);
+    },
+  });
+}
+
+export function useUpdateExcludedCampaigns() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (campaignIds: string[]) => {
+      const { error } = await supabase
+        .from('onboarding_settings')
+        .upsert({
+          setting_key: 'excluded_ad_spend_campaign_ids',
+          setting_value: campaignIds.join(','),
+          description: 'Comma-separated campaign IDs excluded from ad spend intelligence tracking',
+        }, { onConflict: 'setting_key' });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['excluded-campaigns-setting'] });
+      queryClient.invalidateQueries({ queryKey: ['ad-spend-intelligence'] });
+    },
+  });
+}
+
 // Global Stripe sync — reconciles all pending/overdue records against Stripe
 export function useSyncAllStripe() {
   const queryClient = useQueryClient();
@@ -964,6 +1216,7 @@ export function useSyncAllStripe() {
       queryClient.invalidateQueries({ queryKey: ['billing-upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['revenue-intelligence'] });
       queryClient.invalidateQueries({ queryKey: ['wallet-verification'] });
+      queryClient.invalidateQueries({ queryKey: ['ad-spend-intelligence'] });
     },
   });
 }

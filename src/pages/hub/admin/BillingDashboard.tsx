@@ -12,9 +12,11 @@ import { WalletPipelineWidget } from '@/components/admin/WalletPipelineWidget';
 import { WalletVerificationWidget } from '@/components/admin/WalletVerificationWidget';
 import { ManagementFeeEnforcerWidget } from '@/components/admin/ManagementFeeEnforcerWidget';
 import { WeeklyAuditWidget } from '@/components/admin/WeeklyAuditWidget';
+import { AdSpendIntelligenceWidget } from '@/components/admin/AdSpendIntelligenceWidget';
 import { toast } from 'sonner';
 import {
   useRevenueIntelligence,
+  useAdSpendIntelligence,
   useOverdueBillingRecords,
   useUpcomingBillingRecords,
   usePaidBillingRecords,
@@ -46,6 +48,7 @@ export default function BillingDashboard() {
   }, [selectedMonthDate]);
 
   const { data: revenueIntel, isLoading: intelLoading } = useRevenueIntelligence(startIso, endIso);
+  const { data: adSpendIntel, isLoading: adSpendLoading } = useAdSpendIntelligence(startIso, endIso);
   const { data: overdueRecords = [], isLoading: overdueLoading } = useOverdueBillingRecords();
   const { data: upcomingRecords = [], isLoading: upcomingLoading } = useUpcomingBillingRecords();
   const { data: paidRecords = [], isLoading: paidLoading } = usePaidBillingRecords(startIso, endIso);
@@ -61,6 +64,7 @@ export default function BillingDashboard() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['revenue-intelligence'] }),
+        queryClient.refetchQueries({ queryKey: ['ad-spend-intelligence'] }),
         queryClient.refetchQueries({ queryKey: ['billing-overdue'] }),
         queryClient.refetchQueries({ queryKey: ['billing-upcoming'] }),
         queryClient.refetchQueries({ queryKey: ['billing-paid'] }),
@@ -149,6 +153,13 @@ export default function BillingDashboard() {
       <RevenueSummaryRow
         data={revenueIntel}
         isLoading={intelLoading}
+        isCurrentMonth={isCurrentMonth}
+      />
+
+      {/* Ad Spend Intelligence */}
+      <AdSpendIntelligenceWidget
+        data={adSpendIntel}
+        isLoading={adSpendLoading}
         isCurrentMonth={isCurrentMonth}
       />
 
