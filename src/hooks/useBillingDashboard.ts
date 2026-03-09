@@ -1070,33 +1070,45 @@ export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
         walletDepositsMtd += tx.amount || 0;
       }
 
-      // Wallet balances (computed: sum of all deposits - sum of all ad_spend_daily since tracking_start)
-      // Use the wallet_transactions total deposits and ad_spend_daily total for each client
-      const walletBalanceMap = new Map<string, number>();
-      // First get total deposits per client (all time)
-      const { data: allDeposits } = await supabase
-        .from('wallet_transactions')
-        .select('client_id, amount')
-        .eq('transaction_type', 'deposit');
-      const totalDepositsPerClient = new Map<string, number>();
-      for (const tx of allDeposits || []) {
-        const prev = totalDepositsPerClient.get(tx.client_id) || 0;
-        totalDepositsPerClient.set(tx.client_id, prev + (tx.amount || 0));
-      }
-      // Then get total spend per client since tracking start
+      // Wallet balances (computed: total deposits - total ad_spend_daily since tracking_start)
+      // Single batch: fetch all deposits + all ad_spend_daily, aggregate in memory
       const walletTrackingMap = new Map(
         (walletsRes.data || []).map(w => [w.client_id, w.tracking_start_date])
       );
-      for (const [clientId, trackingStart] of walletTrackingMap) {
-        if (!trackingStart) continue;
-        const { data: spendRows } = await supabase
-          .from('ad_spend_daily')
-          .select('cost')
-          .eq('client_id', clientId)
-          .gte('spend_date', trackingStart);
-        const totalSpend = (spendRows || []).reduce((sum, r) => sum + (r.cost || 0), 0);
+      // Find earliest tracking start to fetch all spend in one query
+      const trackingDates = [...walletTrackingMap.values()].filter(Boolean) as string[];
+      const earliestTracking = trackingDates.length > 0
+        ? trackingDates.reduce((a, b) => a < b ? a : b)
+        : null;
+
+      const [allDepositsRes, allSpendRes] = await Promise.all([
+        supabase.from('wallet_transactions').select('client_id, amount').eq('transaction_type', 'deposit'),
+        earliestTracking
+          ? supabase.from('ad_spend_daily').select('client_id, spend_date, cost').gte('spend_date', earliestTracking)
+          : Promise.resolve({ data: [] as Array<{ client_id: string; spend_date: string; cost: number | null }> }),
+      ]);
+
+      const totalDepositsPerClient = new Map<string, number>();
+      for (const tx of allDepositsRes.data || []) {
+        const prev = totalDepositsPerClient.get(tx.client_id) || 0;
+        totalDepositsPerClient.set(tx.client_id, prev + (tx.amount || 0));
+      }
+
+      // Aggregate spend per client, respecting each client's tracking_start_date
+      const totalSpendPerClient = new Map<string, number>();
+      for (const row of (('data' in allSpendRes ? allSpendRes.data : allSpendRes) || []) as Array<{ client_id: string; spend_date: string; cost: number | null }>) {
+        const trackStart = walletTrackingMap.get(row.client_id);
+        if (!trackStart || row.spend_date < trackStart) continue;
+        const prev = totalSpendPerClient.get(row.client_id) || 0;
+        totalSpendPerClient.set(row.client_id, prev + (row.cost || 0));
+      }
+
+      const walletBalanceMap = new Map<string, number>();
+      for (const [clientId, trackStart] of walletTrackingMap) {
+        if (!trackStart) continue;
         const deposits = totalDepositsPerClient.get(clientId) || 0;
-        walletBalanceMap.set(clientId, deposits - totalSpend);
+        const spend = totalSpendPerClient.get(clientId) || 0;
+        walletBalanceMap.set(clientId, deposits - spend);
       }
 
       let totalWalletBalance = 0;
