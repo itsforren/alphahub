@@ -280,20 +280,29 @@ export function useBillingDashboardStats() {
       const adSpendPending = (autoWallets || []).length;
 
       // Overdue count: explicit overdue status + pending records that are past due
-      const { count: overdueStatusCount } = await supabase
+      // Fetch active client IDs to filter out non-active clients
+      const { data: activeClientsForStats } = await supabase
+        .from('clients')
+        .select('id')
+        .eq('status', 'active');
+      const activeIdsForStats = new Set((activeClientsForStats || []).map(c => c.id));
+
+      const { data: overdueStatusData } = await supabase
         .from('billing_records')
-        .select('*', { count: 'exact', head: true })
+        .select('client_id')
         .eq('status', 'overdue')
         .is('archived_at', null);
 
-      const { count: pastDuePendingCount } = await supabase
+      const { data: pastDuePendingData } = await supabase
         .from('billing_records')
-        .select('*', { count: 'exact', head: true })
+        .select('client_id')
         .eq('status', 'pending')
         .lt('due_date', now.toISOString().split('T')[0])
         .is('archived_at', null);
 
-      const overdueCount = (overdueStatusCount || 0) + (pastDuePendingCount || 0);
+      const overdueCount =
+        (overdueStatusData || []).filter(r => activeIdsForStats.has(r.client_id)).length +
+        (pastDuePendingData || []).filter(r => activeIdsForStats.has(r.client_id)).length;
 
       // Active disputes count
       const { count: disputesCount } = await supabase
@@ -386,6 +395,7 @@ export function useUpcomingPayments() {
 }
 
 // All overdue records — past-due pending + explicit overdue status, no date cap
+// Only includes records for ACTIVE clients (excludes cancelled, inactive, paused, etc.)
 export function useOverdueBillingRecords() {
   return useQuery({
     queryKey: ['billing-overdue'],
@@ -395,7 +405,7 @@ export function useOverdueBillingRecords() {
 
       const overdueFields = 'id, client_id, client_name, billing_type, amount, status, due_date, notes, recurrence_type, stripe_invoice_id, stripe_subscription_id, stripe_payment_intent_id, stripe_account, payment_link, last_charge_error';
 
-      const [overdueStatus, pendingPastDue] = await Promise.all([
+      const [overdueStatus, pendingPastDue, clientsRes] = await Promise.all([
         supabase
           .from('billing_records')
           .select(overdueFields)
@@ -411,10 +421,13 @@ export function useOverdueBillingRecords() {
           .is('archived_at', null)
           .order('due_date', { ascending: true })
           .limit(200),
+        supabase.from('clients').select('id, name, status'),
       ]);
 
-      const { data: clients } = await supabase.from('clients').select('id, name');
-      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+      const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+      const activeClientIds = new Set(
+        (clientsRes.data || []).filter(c => c.status === 'active').map(c => c.id)
+      );
 
       const combined = [...(overdueStatus.data || []), ...(pendingPastDue.data || [])];
       // Deduplicate by id (shouldn't overlap, but be safe)
@@ -422,6 +435,8 @@ export function useOverdueBillingRecords() {
       const unique = combined.filter(r => {
         if (seen.has(r.id)) return false;
         seen.add(r.id);
+        // Only show overdue records for active clients
+        if (!activeClientIds.has(r.client_id)) return false;
         return true;
       });
       // Sort oldest first
@@ -565,28 +580,40 @@ export function useFailedPayments() {
   return useQuery({
     queryKey: ['billing-dashboard-failed'],
     queryFn: async (): Promise<FailedPayment[]> => {
-      const { data, error } = await supabase
-        .from('billing_records')
-        .select('id, client_id, client_name, billing_type, amount, due_date, charge_attempts, last_charge_error')
-        .not('last_charge_error', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(20);
+      // Only show unresolved failures: has charge error, not yet paid, not archived
+      const [recordsRes, clientsRes] = await Promise.all([
+        supabase
+          .from('billing_records')
+          .select('id, client_id, client_name, billing_type, amount, due_date, charge_attempts, last_charge_error')
+          .not('last_charge_error', 'is', null)
+          .neq('status', 'paid')
+          .neq('status', 'cancelled')
+          .is('archived_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        supabase.from('clients').select('id, name, status'),
+      ]);
 
-      if (error) throw error;
+      if (recordsRes.error) throw recordsRes.error;
 
-      const { data: clients } = await supabase.from('clients').select('id, name');
-      const clientMap = new Map((clients || []).map(c => [c.id, c.name]));
+      const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+      const activeClientIds = new Set(
+        (clientsRes.data || []).filter(c => c.status === 'active').map(c => c.id)
+      );
 
-      return (data || []).map(record => ({
-        id: record.id,
-        clientId: record.client_id,
-        clientName: record.client_name || clientMap.get(record.client_id) || 'Former Client',
-        amount: record.amount || 0,
-        billingType: record.billing_type as 'ad_spend' | 'management',
-        lastError: record.last_charge_error,
-        attempts: record.charge_attempts || 0,
-        dueDate: record.due_date,
-      }));
+      // Filter to active clients only
+      return (recordsRes.data || [])
+        .filter(record => activeClientIds.has(record.client_id))
+        .map(record => ({
+          id: record.id,
+          clientId: record.client_id,
+          clientName: record.client_name || clientMap.get(record.client_id) || 'Former Client',
+          amount: record.amount || 0,
+          billingType: record.billing_type as 'ad_spend' | 'management',
+          lastError: record.last_charge_error,
+          attempts: record.charge_attempts || 0,
+          dueDate: record.due_date,
+        }));
     },
     refetchInterval: 60000,
   });

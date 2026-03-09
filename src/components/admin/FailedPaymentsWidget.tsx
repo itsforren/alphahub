@@ -122,11 +122,9 @@ export function FailedPaymentsWidget({ payments, isLoading }: FailedPaymentsWidg
                 <p className="font-medium text-foreground">{payment.clientName}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-sm text-red-400">{getErrorLabel(payment.lastError)}</span>
-                  {payment.attempts > 1 && (
-                    <Badge variant="outline" className="text-xs bg-red-500/10 border-red-500/30 text-red-400">
-                      {payment.attempts} attempts
-                    </Badge>
-                  )}
+                  <Badge variant="outline" className="text-xs bg-red-500/10 border-red-500/30 text-red-400">
+                    {payment.attempts || 1} attempt{(payment.attempts || 1) !== 1 ? 's' : ''}
+                  </Badge>
                 </div>
               </div>
             </div>
