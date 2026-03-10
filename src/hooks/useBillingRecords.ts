@@ -121,11 +121,13 @@ export function useBillingRecords(clientId?: string, showArchived = false) {
         });
       }
 
-      // Detect duplicates: same billing_type + amount + billing_period_start
+      // Detect duplicates: same billing_type + amount + due_date
+      // Uses due_date (unique per invoice) instead of billing_period_start
+      // (which can be shared across invoices in the same subscription period)
       const seenKeys = new Map<string, number>();
       records.forEach(r => {
-        if (r.billing_period_start) {
-          const key = `${r.billing_type}|${r.amount}|${r.billing_period_start}`;
+        if (r.due_date) {
+          const key = `${r.billing_type}|${r.amount}|${r.due_date}`;
           seenKeys.set(key, (seenKeys.get(key) || 0) + 1);
         }
       });
@@ -133,8 +135,8 @@ export function useBillingRecords(clientId?: string, showArchived = false) {
       return records.map(r => ({
         ...r,
         has_wallet_deposit: depositedIds.has(r.id),
-        is_duplicate: r.billing_period_start
-          ? (seenKeys.get(`${r.billing_type}|${r.amount}|${r.billing_period_start}`) || 0) > 1
+        is_duplicate: r.due_date
+          ? (seenKeys.get(`${r.billing_type}|${r.amount}|${r.due_date}`) || 0) > 1
           : false,
       }));
     },

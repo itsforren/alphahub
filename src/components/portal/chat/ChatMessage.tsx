@@ -21,7 +21,8 @@ const formatMessageDate = (date: Date) => {
 
 export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
   const [imageError, setImageError] = useState(false);
-  
+  const [avatarError, setAvatarError] = useState(false);
+
   const initials = message.sender_name
     .split(' ')
     .map((n) => n[0])
@@ -49,17 +50,18 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
       {/* Avatar */}
       <div
         className={cn(
-          'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-medium',
+          'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-medium overflow-hidden',
           message.sender_role === 'admin'
             ? 'bg-primary text-primary-foreground'
             : 'bg-muted text-muted-foreground'
         )}
       >
-        {message.sender_avatar_url ? (
+        {message.sender_avatar_url && !avatarError ? (
           <img
             src={message.sender_avatar_url}
             alt={message.sender_name}
-            className="w-full h-full rounded-lg object-cover"
+            className="w-9 h-9 rounded-lg object-cover"
+            onError={() => setAvatarError(true)}
           />
         ) : (
           initials

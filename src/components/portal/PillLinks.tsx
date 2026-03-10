@@ -1,4 +1,4 @@
-import { ExternalLink, BarChart3, Calendar, Users, MessageSquare, FileText, Globe, CheckCircle } from 'lucide-react';
+import { ExternalLink, BarChart3, Calendar, Users, MessageSquare, FileText, Globe, CheckCircle, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PillLinksProps {
@@ -10,6 +10,7 @@ interface PillLinksProps {
   googleCampaignId?: string | null;
   landerLink?: string | null;
   thankyouLink?: string | null;
+  firePageLink?: string | null;
   className?: string;
 }
 
@@ -29,6 +30,7 @@ const LINKS: LinkConfig[] = [
   { key: 'scheduler', label: 'Scheduler', icon: Calendar, color: 'bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 border-blue-500/30' },
   { key: 'crm', label: 'CRM', icon: MessageSquare, color: 'bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 border-orange-500/30' },
   { key: 'agreement', label: 'Agreement', icon: FileText, color: 'bg-slate-500/15 text-slate-600 hover:bg-slate-500/25 border-slate-500/30' },
+  { key: 'firepage', label: 'Fire Page', icon: Flame, color: 'bg-red-500/15 text-red-600 hover:bg-red-500/25 border-red-500/30' },
 ];
 
 // Google "G" logo SVG component
@@ -59,16 +61,17 @@ function ensureHttps(url: string | null | undefined): string | null {
   return `https://${trimmed}`;
 }
 
-export function PillLinks({ 
-  nfiaLink, 
-  schedulerLink, 
-  crmLink, 
+export function PillLinks({
+  nfiaLink,
+  schedulerLink,
+  crmLink,
   tfwpProfileLink,
   agreementLink,
   googleCampaignId,
   landerLink,
   thankyouLink,
-  className 
+  firePageLink,
+  className
 }: PillLinksProps) {
   const linkValues: Record<string, string | null | undefined> = {
     lander: ensureHttps(landerLink),
@@ -79,6 +82,7 @@ export function PillLinks({
     scheduler: ensureHttps(schedulerLink),
     crm: ensureHttps(crmLink),
     agreement: ensureHttps(agreementLink),
+    firepage: ensureHttps(firePageLink),
   };
 
   const activeLinks = LINKS.filter(link => linkValues[link.key]);

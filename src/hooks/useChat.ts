@@ -258,7 +258,9 @@ export function useSendMessage() {
       return data as ChatMessage;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', variables.conversationId] });
+      // Only invalidate conversation metadata here — the realtime subscription
+      // already handles ['chat-messages'] invalidation. Doing both causes double
+      // refetch and duplicate messages in the UI.
       queryClient.invalidateQueries({ queryKey: ['chat-conversations-all'] });
       queryClient.invalidateQueries({ queryKey: ['chat-conversation', variables.conversationId] });
     },

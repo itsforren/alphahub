@@ -50,25 +50,49 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     }
   }, [conversationId]);
   
-  // Flatten messages from all pages
+  // Flatten messages from all pages and deduplicate by ID
   const messages = data?.pages.flatMap((page) => page.messages) ?? [];
 
-  // Sort messages by created_at
   const sortedMessages = useMemo(() => {
-    return [...messages].sort((a, b) => 
+    const unique = Array.from(new Map(messages.map(m => [m.id, m])).values());
+    return unique.sort((a, b) =>
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     );
   }, [messages]);
 
-  // Scroll to bottom on initial load and new messages
+  const lastMessageId = useRef<string | null>(null);
+
+  // Scroll to bottom on initial load
   useEffect(() => {
     if (sortedMessages.length > 0 && isInitialLoad.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      // Use requestAnimationFrame to ensure DOM is painted before scrolling
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      });
       isInitialLoad.current = false;
+      lastMessageId.current = sortedMessages[sortedMessages.length - 1]?.id ?? null;
     }
-  }, [sortedMessages.length]);
+  }, [sortedMessages]);
 
-  // Scroll to bottom when sending a message
+  // Auto-scroll when new messages arrive (realtime or sent)
+  useEffect(() => {
+    if (sortedMessages.length === 0) return;
+    const latestId = sortedMessages[sortedMessages.length - 1]?.id;
+    if (latestId && latestId !== lastMessageId.current && !isInitialLoad.current) {
+      lastMessageId.current = latestId;
+      // Only auto-scroll if user is near the bottom (within 200px)
+      const el = scrollRef.current;
+      if (el) {
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+        if (isNearBottom) {
+          requestAnimationFrame(() => {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+          });
+        }
+      }
+    }
+  }, [sortedMessages]);
+
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);

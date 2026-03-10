@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Phone, Trash2, Eye, CheckCircle2, XCircle, AlertTriangle, Loader2, Zap, CheckCircle, AlertCircle, Rocket, ChevronDown, DollarSign, MapPin, UserPlus, ExternalLink, ImageDown, MoreVertical, RotateCcw } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Phone, Trash2, Eye, CheckCircle2, XCircle, AlertTriangle, Loader2, Zap, CheckCircle, AlertCircle, Rocket, ChevronDown, DollarSign, MapPin, UserPlus, ExternalLink, ImageDown, MoreVertical, RotateCcw, StickyNote } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useClient, useClientByUserId, useClients, useOnboardingTasks, useUpdateClient, useHardDeleteClient } from '@/hooks/useClients';
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
@@ -105,6 +106,8 @@ export default function PortalAdminClientDetail() {
     message: string;
     ghlContactId?: string;
   } | null>(null);
+  const [adminNotes, setAdminNotes] = useState<string | null>(null);
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
   
   // Get date range from preset
   const dateRange = useMemo(() => getDateRangeFromPreset(datePreset), [datePreset]);
@@ -717,6 +720,7 @@ export default function PortalAdminClientDetail() {
             crmLink={client.crm_link}
             tfwpProfileLink={(client as any).tfwp_profile_link}
             agreementLink={(client as any).agreement_link}
+            firePageLink={(client as any).fire_page_link}
           />
           <Button
             variant="outline"
@@ -1129,6 +1133,24 @@ export default function PortalAdminClientDetail() {
                   <EditableField
                     value={(client as any).thankyou_link}
                     fieldKey="thankyou_link"
+                    onSave={handleSaveField}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Scheduler URL</label>
+                  <EditableField
+                    value={(client as any).scheduler_link}
+                    fieldKey="scheduler_link"
+                    onSave={handleSaveField}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Fire Page URL</label>
+                  <EditableField
+                    value={(client as any).fire_page_link}
+                    fieldKey="fire_page_link"
                     onSave={handleSaveField}
                     className="text-sm"
                   />
@@ -1577,6 +1599,50 @@ export default function PortalAdminClientDetail() {
                   </div>
                 </CardContent>
               </Card>
+            )}
+
+            {/* Admin Notes */}
+            {!isClientView && isAdmin && (
+              <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <StickyNote className="w-4 h-4" />
+                  Admin Notes
+                </h3>
+                <Textarea
+                  value={adminNotes ?? (client as any).admin_notes ?? ''}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="Add internal notes about client interactions, preferences, issues..."
+                  className="min-h-[120px] resize-y text-sm"
+                  rows={5}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    disabled={isSavingNotes || (adminNotes ?? (client as any).admin_notes ?? '') === ((client as any).admin_notes ?? '')}
+                    onClick={async () => {
+                      if (!id) return;
+                      setIsSavingNotes(true);
+                      try {
+                        await updateClient.mutateAsync({
+                          clientId: id,
+                          updates: { admin_notes: adminNotes || null } as any,
+                        });
+                        setAdminNotes(null); // Reset local state, let query data take over
+                        toast.success('Notes saved');
+                      } catch (error) {
+                        toast.error('Failed to save notes');
+                      }
+                      setIsSavingNotes(false);
+                    }}
+                  >
+                    {isSavingNotes ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                    Save Notes
+                  </Button>
+                  {adminNotes !== null && adminNotes !== ((client as any).admin_notes ?? '') && (
+                    <span className="text-xs text-muted-foreground">Unsaved changes</span>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Admin Actions: Preview + Delete */}

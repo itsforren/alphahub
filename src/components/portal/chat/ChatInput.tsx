@@ -43,9 +43,13 @@ export function ChatInput({
           .from('chat-attachments')
           .upload(filePath, attachment.file, {
             contentType: attachment.file.type,
+            upsert: true,
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Storage upload error:', uploadError.message, uploadError);
+          throw uploadError;
+        }
 
         const { data: { publicUrl } } = supabase.storage
           .from('chat-attachments')

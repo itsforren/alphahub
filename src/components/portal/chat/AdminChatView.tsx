@@ -65,13 +65,17 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     }
   }, [conversationId]);
   
-  // Flatten messages from all pages
-  const messages = data?.pages.flatMap((page) => page.messages) ?? [];
+  // Flatten messages from all pages and deduplicate by ID
+  const rawMessages = data?.pages.flatMap((page) => page.messages) ?? [];
+  const messages = useMemo(() =>
+    Array.from(new Map(rawMessages.map(m => [m.id, m])).values()),
+    [rawMessages]
+  );
 
   // Combine messages and tickets into a timeline
   const timeline = useMemo(() => {
     const items: TimelineItem[] = [];
-    
+
     // Add messages
     messages.forEach((msg) => {
       items.push({ type: 'message', data: msg, created_at: msg.created_at });
@@ -93,13 +97,34 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     t => (t.status === 'open' || t.status === 'waiting') && !dismissedTickets.includes(t.id)
   );
 
+  const lastTimelineLength = useRef(0);
+
   // Scroll to bottom on initial load
   useEffect(() => {
     if (timeline.length > 0 && isInitialLoad.current) {
-      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      });
       isInitialLoad.current = false;
+      lastTimelineLength.current = timeline.length;
     }
-  }, [timeline.length]);
+  }, [timeline]);
+
+  // Auto-scroll when new messages arrive
+  useEffect(() => {
+    if (timeline.length > lastTimelineLength.current && !isInitialLoad.current) {
+      lastTimelineLength.current = timeline.length;
+      const el = scrollRef.current;
+      if (el) {
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+        if (isNearBottom) {
+          requestAnimationFrame(() => {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+          });
+        }
+      }
+    }
+  }, [timeline]);
 
   const scrollToBottom = useCallback(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -157,18 +182,26 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
             </Button>
           )}
           
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center overflow-hidden">
             {client?.profile_image_url ? (
-              <img 
-                src={client.profile_image_url} 
-                alt={client.name} 
-                className="w-full h-full rounded-full object-cover"
+              <img
+                src={client.profile_image_url}
+                alt={client.name}
+                className="w-10 h-10 rounded-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    (e.currentTarget.nextElementSibling as HTMLElement).style.display = '';
+                  }
+                }}
               />
-            ) : (
-              <span className="text-sm font-bold text-primary-foreground">
-                {client?.name?.charAt(0).toUpperCase() || 'C'}
-              </span>
-            )}
+            ) : null}
+            <span
+              className="text-sm font-bold text-primary-foreground"
+              style={client?.profile_image_url ? { display: 'none' } : undefined}
+            >
+              {client?.name?.charAt(0).toUpperCase() || 'C'}
+            </span>
           </div>
           
           <div>

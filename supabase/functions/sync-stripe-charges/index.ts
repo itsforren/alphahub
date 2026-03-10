@@ -65,13 +65,15 @@ async function ensureWalletDeposit(
   paidAt: string
 ): Promise<boolean> {
   // Idempotency check — skip if deposit already exists for this billing record
-  const { data: existingTx } = await supabase
+  // Use .limit(1) instead of .maybeSingle() to avoid errors when duplicates exist
+  const { data: existingTxRows } = await supabase
     .from('wallet_transactions')
     .select('id')
     .eq('billing_record_id', billingRecordId)
-    .maybeSingle();
+    .eq('transaction_type', 'deposit')
+    .limit(1);
 
-  if (existingTx) return false; // Already deposited, nothing to do
+  if (existingTxRows && existingTxRows.length > 0) return false; // Already deposited, nothing to do
 
   // Get or create the client wallet
   let { data: wallet } = await supabase
@@ -326,19 +328,66 @@ async function syncClient(supabase: any, clientId: string) {
         const invoiceDate = invoice.created
           ? new Date(invoice.created * 1000).toISOString().split('T')[0]
           : new Date().toISOString().split('T')[0];
-        const periodStart = invoice.period_start
-          ? new Date(invoice.period_start * 1000).toISOString().split('T')[0]
-          : invoiceDate;
-        const periodEnd = invoice.period_end
-          ? new Date(invoice.period_end * 1000).toISOString().split('T')[0]
-          : null;
+        // Use line item period (accurate per-invoice) over invoice-level period
+        // (which can return the subscription start date for all invoices)
+        const lineItem = invoice.lines?.data?.[0];
+        const periodStart = lineItem?.period?.start
+          ? new Date(lineItem.period.start * 1000).toISOString().split('T')[0]
+          : invoice.period_start
+            ? new Date(invoice.period_start * 1000).toISOString().split('T')[0]
+            : invoiceDate;
+        const periodEnd = lineItem?.period?.end
+          ? new Date(lineItem.period.end * 1000).toISOString().split('T')[0]
+          : invoice.period_end
+            ? new Date(invoice.period_end * 1000).toISOString().split('T')[0]
+            : null;
 
         // 4. Look up existing billing_record by stripe_invoice_id
-        const { data: existing } = await supabase
+        // Use .limit(1) instead of .maybeSingle() to avoid errors when duplicates exist
+        const { data: existingRows } = await supabase
           .from('billing_records')
           .select('id, status, billing_type, amount, last_charge_error')
           .eq('stripe_invoice_id', invoice.id)
-          .maybeSingle();
+          .is('archived_at', null)
+          .limit(1);
+
+        let existing = existingRows?.[0] || null;
+
+        // 4b. Fuzzy match: if no Stripe-linked record found, check for manual records
+        // matching client_id + billing_type + amount + due_date within ±3 days
+        if (!existing) {
+          const windowStart = new Date(new Date(invoiceDate).getTime() - 3 * 86400000).toISOString().split('T')[0];
+          const windowEnd = new Date(new Date(invoiceDate).getTime() + 3 * 86400000).toISOString().split('T')[0];
+
+          const { data: fuzzyRows } = await supabase
+            .from('billing_records')
+            .select('id, status, billing_type, amount, last_charge_error')
+            .eq('client_id', clientId)
+            .eq('billing_type', billingType)
+            .eq('amount', amount)
+            .is('stripe_invoice_id', null)
+            .is('archived_at', null)
+            .gte('due_date', windowStart)
+            .lte('due_date', windowEnd)
+            .limit(1);
+
+          const fuzzyMatch = fuzzyRows?.[0] || null;
+          if (fuzzyMatch) {
+            // Back-fill Stripe IDs onto the existing manual record
+            const backfill: any = { stripe_invoice_id: invoice.id, stripe_account: customer.stripe_account };
+            if (invoice.payment_intent) backfill.stripe_payment_intent_id = invoice.payment_intent;
+            if (invoice.subscription) backfill.stripe_subscription_id = invoice.subscription;
+
+            await supabase
+              .from('billing_records')
+              .update(backfill)
+              .eq('id', fuzzyMatch.id);
+
+            existing = fuzzyMatch;
+            console.log(`Fuzzy-matched invoice ${invoice.id} to manual record ${fuzzyMatch.id}, back-filled Stripe IDs`);
+            changes.push({ id: fuzzyMatch.id, stripeInvoiceId: invoice.id, action: 'fuzzy_matched_backfill' });
+          }
+        }
 
         let recordId: string;
 
@@ -445,38 +494,44 @@ async function syncClient(supabase: any, clientId: string) {
 
         // Check if we already have a billing record for this charge (by payment_intent OR by charge id)
         const piId = charge.payment_intent || charge.id;
-        const { data: existingByPi } = await supabase
+        const { data: existingByPiRows } = await supabase
           .from('billing_records')
           .select('id')
           .eq('client_id', clientId)
           .eq('stripe_payment_intent_id', piId)
-          .maybeSingle();
+          .is('archived_at', null)
+          .limit(1);
 
-        if (existingByPi) continue; // Already tracked
+        if (existingByPiRows && existingByPiRows.length > 0) continue; // Already tracked
 
-        // Also check if ANY record already exists for the same amount + date
-        // (catches invoice-based records, manual records, and legacy records without Stripe IDs)
+        // Fuzzy match: check for records matching client_id + billing_type + amount + due_date within ±3 days
         const chargeCreatedDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : null;
         if (chargeCreatedDate) {
-          const { data: existingByDateAmount } = await supabase
+          const windowStart = new Date(new Date(chargeCreatedDate).getTime() - 3 * 86400000).toISOString().split('T')[0];
+          const windowEnd = new Date(new Date(chargeCreatedDate).getTime() + 3 * 86400000).toISOString().split('T')[0];
+
+          const { data: fuzzyMatchRows } = await supabase
             .from('billing_records')
-            .select('id')
+            .select('id, stripe_payment_intent_id')
             .eq('client_id', clientId)
             .eq('billing_type', billingType)
             .eq('amount', amount)
-            .eq('status', 'paid')
-            .eq('due_date', chargeCreatedDate)
-            .maybeSingle();
+            .is('archived_at', null)
+            .gte('due_date', windowStart)
+            .lte('due_date', windowEnd)
+            .limit(1);
 
-          if (existingByDateAmount) {
+          const fuzzyMatch = fuzzyMatchRows?.[0] || null;
+          if (fuzzyMatch) {
             // Back-fill the stripe_payment_intent_id on the existing record so future syncs match by PI
-            await supabase
-              .from('billing_records')
-              .update({ stripe_payment_intent_id: piId, stripe_account: customer.stripe_account })
-              .eq('id', existingByDateAmount.id)
-              .is('stripe_payment_intent_id', null);
+            if (!fuzzyMatch.stripe_payment_intent_id) {
+              await supabase
+                .from('billing_records')
+                .update({ stripe_payment_intent_id: piId, stripe_account: customer.stripe_account })
+                .eq('id', fuzzyMatch.id);
+            }
 
-            console.log(`Skipping charge ${charge.id} — matching record found (${existingByDateAmount.id}), back-filled PI`);
+            console.log(`Skipping charge ${charge.id} — fuzzy-matched to record ${fuzzyMatch.id}, back-filled PI`);
             continue;
           }
         }
@@ -535,6 +590,7 @@ async function syncGlobal(supabase: any) {
   const { data: records, error: fetchError } = await supabase
     .from('billing_records')
     .select('id, billing_type, status, stripe_invoice_id, stripe_payment_intent_id, client_name, client_id, stripe_account, amount')
+    .is('archived_at', null)
     .in('status', ['pending', 'overdue'])
     .or('stripe_invoice_id.not.is.null,stripe_payment_intent_id.not.is.null');
 
