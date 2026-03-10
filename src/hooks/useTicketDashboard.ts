@@ -14,6 +14,8 @@ export interface TicketWithDetails {
   category: string;
   status: string;
   priority: string;
+  ticket_type: string;
+  labels: string[];
   assigned_to: string | null;
   assigned_at: string | null;
   sla_deadline: string | null;
@@ -54,6 +56,7 @@ export interface TicketFilters {
   assigned_to?: string;
   sla_status?: 'all' | 'approaching' | 'overdue';
   priority?: string;
+  ticket_type?: string;
 }
 
 export function useAllTickets(filters?: TicketFilters) {
@@ -83,6 +86,9 @@ export function useAllTickets(filters?: TicketFilters) {
       }
       if (filters?.priority && filters.priority !== 'all') {
         query = query.eq('priority', filters.priority as TicketPriority);
+      }
+      if (filters?.ticket_type && filters.ticket_type !== 'all') {
+        query = query.eq('ticket_type', filters.ticket_type);
       }
 
       const { data, error } = await query;
@@ -175,16 +181,27 @@ export function useUpdateTicket() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, status, priority, resolved_at }: { 
-      id: string; 
-      status?: string; 
+    mutationFn: async ({ id, status, priority, resolved_at, due_date, labels, ticket_type, assigned_to }: {
+      id: string;
+      status?: string;
       priority?: TicketPriority;
       resolved_at?: string | null;
+      due_date?: string | null;
+      labels?: string[];
+      ticket_type?: string;
+      assigned_to?: string | null;
     }) => {
       const updates: Record<string, unknown> = {};
       if (status) updates.status = status;
       if (priority) updates.priority = priority;
-      
+      if (due_date !== undefined) updates.due_date = due_date;
+      if (labels !== undefined) updates.labels = labels;
+      if (ticket_type) updates.ticket_type = ticket_type;
+      if (assigned_to !== undefined) {
+        updates.assigned_to = assigned_to;
+        updates.assigned_at = assigned_to ? new Date().toISOString() : null;
+      }
+
       // If resolving, set resolved_at
       if (status === 'resolved') {
         updates.resolved_at = resolved_at || new Date().toISOString();

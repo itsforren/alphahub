@@ -210,26 +210,37 @@ export function useCreateTicket() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (ticket: { 
-      client_id?: string | null; 
-      subject: string; 
-      message: string; 
+    mutationFn: async (ticket: {
+      client_id?: string | null;
+      subject: string;
+      message: string;
       category: string;
-      ticket_type?: 'client_support' | 'internal';
+      ticket_type?: string;
       priority?: 'low' | 'normal' | 'high' | 'urgent';
+      labels?: string[];
+      due_date?: string | null;
+      assigned_to?: string | null;
     }) => {
       console.log('Creating ticket with payload:', ticket);
-      
+
+      const insert: Record<string, unknown> = {
+        client_id: ticket.client_id || null,
+        subject: ticket.subject,
+        message: ticket.message,
+        category: ticket.category,
+        ticket_type: ticket.ticket_type || 'client_support',
+        priority: ticket.priority || 'normal',
+      };
+      if (ticket.labels && ticket.labels.length > 0) insert.labels = ticket.labels;
+      if (ticket.due_date) insert.due_date = ticket.due_date;
+      if (ticket.assigned_to) {
+        insert.assigned_to = ticket.assigned_to;
+        insert.assigned_at = new Date().toISOString();
+      }
+
       const { data, error } = await supabase
         .from('support_tickets')
-        .insert({
-          client_id: ticket.client_id || null,
-          subject: ticket.subject,
-          message: ticket.message,
-          category: ticket.category,
-          ticket_type: ticket.ticket_type || 'client_support',
-          priority: ticket.priority || 'normal',
-        })
+        .insert(insert)
         .select()
         .single();
 
