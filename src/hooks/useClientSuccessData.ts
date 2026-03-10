@@ -65,6 +65,7 @@ export interface TopProducer {
   id: string;
   name: string;
   rank: number;
+  submittedPremium: number;
   incomingCommissions: number;
   paidCommissions: number;
   avgCommissionSize: number;
@@ -280,6 +281,7 @@ export function useClientSuccessData() {
       });
       
       // Build top producers (commission-based, ranked by paid commissions, all-time)
+      const submittedPremByAgent = new Map<string, number>();
       const incomingCommByAgent = new Map<string, number>();
       const paidCommByAgent = new Map<string, number>();
       const submittedCountByAgent = new Map<string, number>();
@@ -289,12 +291,13 @@ export function useClientSuccessData() {
       );
       const allIssuedPaidLeads = allTimeLeads.filter(l => l.status === 'issued paid');
 
-      // Incoming = submitted+ leads (submitted, approved, issued paid) × commission rate
+      // Submitted premium (raw) + incoming commissions (premium × rate)
       allSubmittedLeads.forEach(lead => {
         if (!lead.agent_id) return;
         const client = clientByAgentId.get(lead.agent_id);
         const rate = (client?.commission_contract_percent ?? 0) / 100;
         const premium = lead.submitted_premium || 0;
+        submittedPremByAgent.set(lead.agent_id, (submittedPremByAgent.get(lead.agent_id) || 0) + premium);
         incomingCommByAgent.set(lead.agent_id, (incomingCommByAgent.get(lead.agent_id) || 0) + premium * rate);
         submittedCountByAgent.set(lead.agent_id, (submittedCountByAgent.get(lead.agent_id) || 0) + 1);
       });
@@ -314,6 +317,7 @@ export function useClientSuccessData() {
         .map(agentId => {
           const client = clientByAgentId.get(agentId);
           if (!client?.name) return null;
+          const submitted = submittedPremByAgent.get(agentId) || 0;
           const incoming = incomingCommByAgent.get(agentId) || 0;
           const paid = paidCommByAgent.get(agentId) || 0;
           const count = submittedCountByAgent.get(agentId) || 0;
@@ -321,6 +325,7 @@ export function useClientSuccessData() {
             id: client.id || agentId,
             name: client.name.split(' ')[0],
             rank: 0,
+            submittedPremium: submitted,
             incomingCommissions: incoming,
             paidCommissions: paid,
             avgCommissionSize: count > 0 ? incoming / count : 0,

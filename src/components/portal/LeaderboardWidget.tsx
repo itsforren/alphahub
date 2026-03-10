@@ -61,7 +61,7 @@ function ProducerRow({ producer }: { producer: TopProducer }) {
         </p>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1 text-sm text-muted-foreground">
           <span>
-            Incoming: <span className="text-foreground font-medium">{formatCompact(producer.incomingCommissions)}</span>
+            Submitted: <span className="text-foreground font-medium">{formatCompact(producer.submittedPremium)}</span>
           </span>
           <span className="hidden sm:inline text-white/20">·</span>
           <span>
