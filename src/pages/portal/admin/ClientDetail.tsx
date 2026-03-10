@@ -720,7 +720,6 @@ export default function PortalAdminClientDetail() {
             crmLink={client.crm_link}
             tfwpProfileLink={(client as any).tfwp_profile_link}
             agreementLink={(client as any).agreement_link}
-            firePageLink={(client as any).fire_page_link}
           />
           <Button
             variant="outline"
@@ -1115,7 +1114,7 @@ export default function PortalAdminClientDetail() {
               </div>
             </div>
 
-            {/* Asset Links */}
+            {/* Asset Links — matches all pill links */}
             <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-6">
               <h3 className="text-sm font-medium text-muted-foreground">Asset Links</h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1138,6 +1137,24 @@ export default function PortalAdminClientDetail() {
                   />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">NFIA URL</label>
+                  <EditableField
+                    value={client.nfia_link}
+                    fieldKey="nfia_link"
+                    onSave={handleSaveField}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">TFWP Profile URL</label>
+                  <EditableField
+                    value={(client as any).tfwp_profile_link}
+                    fieldKey="tfwp_profile_link"
+                    onSave={handleSaveField}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs text-muted-foreground uppercase tracking-wider">Scheduler URL</label>
                   <EditableField
                     value={(client as any).scheduler_link}
@@ -1147,10 +1164,19 @@ export default function PortalAdminClientDetail() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Fire Page URL</label>
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">CRM URL</label>
                   <EditableField
-                    value={(client as any).fire_page_link}
-                    fieldKey="fire_page_link"
+                    value={client.crm_link}
+                    fieldKey="crm_link"
+                    onSave={handleSaveField}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Agreement URL</label>
+                  <EditableField
+                    value={(client as any).agreement_link}
+                    fieldKey="agreement_link"
                     onSave={handleSaveField}
                     className="text-sm"
                   />
