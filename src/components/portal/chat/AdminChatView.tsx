@@ -137,9 +137,9 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     }
   }, [conversationId, messages.length]);
 
-  const handleSend = (message: string) => {
+  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }) => {
     sendMessage.mutate(
-      { conversationId, message },
+      { conversationId, message, attachment },
       {
         onSuccess: () => {
           setTimeout(scrollToBottom, 100);
