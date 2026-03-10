@@ -1,10 +1,10 @@
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
-  useChatMessages, 
-  useSendMessage, 
-  useMarkAsRead, 
+import {
+  useChatMessages,
+  useSendMessage,
+  useMarkAsRead,
   useChatRealtime,
   ChatMessage as ChatMessageType,
 } from '@/hooks/useChat';
@@ -22,12 +22,11 @@ interface ChatPanelProps {
 export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   const { user } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
   const prevConversationId = useRef<string | null>(null);
-  
+
   const { data: client } = useClient();
-  
+
   const {
     data,
     fetchNextPage,
@@ -35,21 +34,21 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     isFetchingNextPage,
     isLoading,
   } = useChatMessages(conversationId);
-  
+
   const sendMessage = useSendMessage();
   const markAsRead = useMarkAsRead();
-  
+
   // Set up realtime subscription
   useChatRealtime(conversationId);
 
-  // Auto-scroll when conversation changes
+  // Reset on conversation change
   useEffect(() => {
     if (conversationId && conversationId !== prevConversationId.current) {
       prevConversationId.current = conversationId;
       isInitialLoad.current = true;
     }
   }, [conversationId]);
-  
+
   // Flatten messages from all pages and deduplicate by ID
   const messages = data?.pages.flatMap((page) => page.messages) ?? [];
 
@@ -60,50 +59,13 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     );
   }, [messages]);
 
-  const prevMessageCount = useRef(0);
-
-  // Force scroll to absolute bottom of container
-  const forceScrollToBottom = useCallback((smooth = false) => {
+  // Snap to bottom BEFORE paint so user never sees the top
+  useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
-    if (smooth) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-    } else {
+    if (el && sortedMessages.length > 0) {
       el.scrollTop = el.scrollHeight;
     }
-  }, []);
-
-  // Scroll to bottom on initial load — aggressive multi-attempt
-  useEffect(() => {
-    if (sortedMessages.length > 0 && isInitialLoad.current) {
-      isInitialLoad.current = false;
-      prevMessageCount.current = sortedMessages.length;
-      // Multiple attempts to guarantee scroll after DOM paint
-      forceScrollToBottom();
-      requestAnimationFrame(() => forceScrollToBottom());
-      setTimeout(() => forceScrollToBottom(), 50);
-      setTimeout(() => forceScrollToBottom(), 150);
-    }
-  }, [sortedMessages, forceScrollToBottom]);
-
-  // Auto-scroll when new messages arrive
-  useEffect(() => {
-    if (isInitialLoad.current || sortedMessages.length === 0) return;
-    if (sortedMessages.length <= prevMessageCount.current) {
-      prevMessageCount.current = sortedMessages.length;
-      return;
-    }
-    prevMessageCount.current = sortedMessages.length;
-    // Auto-scroll if near bottom (within 300px)
-    const el = scrollRef.current;
-    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
-      requestAnimationFrame(() => forceScrollToBottom(true));
-    }
-  }, [sortedMessages, forceScrollToBottom]);
-
-  const scrollToBottom = useCallback(() => {
-    forceScrollToBottom(true);
-  }, [forceScrollToBottom]);
+  }, [sortedMessages]);
 
   // Mark messages as read when viewing
   useEffect(() => {
@@ -113,19 +75,11 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   }, [conversationId, messages.length]);
 
   const handleSend = (message: string, attachment?: { url: string; type: string; name: string }) => {
-    sendMessage.mutate(
-      { conversationId, message, attachment },
-      {
-        onSuccess: () => {
-          setTimeout(scrollToBottom, 100);
-        },
-      }
-    );
+    sendMessage.mutate({ conversationId, message, attachment });
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
-    // Load more when scrolled near top
     if (scrollTop < 100 && hasNextPage && !isFetchingNextPage) {
       fetchNextPage();
     }
@@ -145,9 +99,9 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
       <div className="flex-shrink-0">
         <BusinessHoursBanner />
       </div>
-      
+
       {/* Messages area - scrollable */}
-      <div 
+      <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-2 sm:p-4 space-y-3 sm:space-y-4 min-h-0"
         onScroll={handleScroll}
@@ -173,7 +127,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
             </Button>
           </div>
         )}
-        
+
         {sortedMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <p className="text-sm">No messages yet</p>
@@ -181,7 +135,6 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
           </div>
         ) : (
           sortedMessages.map((msg) => {
-            // For client messages, use client info to override stored data
             const messageWithClientInfo = msg.sender_role === 'client' && client
               ? {
                   ...msg,
@@ -189,7 +142,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
                   sender_avatar_url: client.profile_image_url || msg.sender_avatar_url,
                 }
               : msg;
-            
+
             return (
               <ChatMessage
                 key={`msg-${msg.id}`}
@@ -199,14 +152,12 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
             );
           })
         )}
-        
-        <div ref={bottomRef} />
       </div>
-      
+
       {/* Input - sticky at bottom */}
       <div className="flex-shrink-0 border-t border-border">
-        <ChatInput 
-          onSend={handleSend} 
+        <ChatInput
+          onSend={handleSend}
           disabled={sendMessage.isPending}
           placeholder="Type your message..."
           clientId={client?.id}
