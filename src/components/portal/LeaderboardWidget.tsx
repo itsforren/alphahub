@@ -1,6 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Trophy, Crown, Medal } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
 import { useClientSuccessData, TopProducer } from '@/hooks/useClientSuccessData';
 import { cn } from '@/lib/utils';
@@ -70,7 +69,7 @@ function ProducerRow({ producer }: { producer: TopProducer }) {
           </span>
           <span className="hidden sm:inline text-white/20">·</span>
           <span>
-            Avg: <span className="text-foreground font-medium">{formatCompact(producer.avgCommissionSize)}</span>
+            Avg Case Size: <span className="text-foreground font-medium">{formatCompact(producer.avgCommissionSize)}</span>
           </span>
         </div>
       </div>
@@ -120,9 +119,6 @@ export function LeaderboardWidget() {
                 Top Alpha Agents
               </h3>
             </div>
-            <Badge variant="secondary" className="text-[10px] px-2 py-0.5 bg-muted/50 text-muted-foreground">
-              60-Day Rolling
-            </Badge>
           </div>
 
           {/* Ranked by label */}

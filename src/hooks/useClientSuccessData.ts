@@ -74,17 +74,23 @@ export function useClientSuccessData() {
   return useQuery({
     queryKey: ['client-success-data'],
     queryFn: async (): Promise<ClientSuccessMetrics> => {
-      // Rolling windows
+      // Rolling 30 days
       const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      const sixtyDaysAgo = format(subDays(new Date(), 60), 'yyyy-MM-dd');
 
-      // Fetch ONLY ROUTED leads (webhook_payload IS NOT NULL) for last 60 days
-      // (60-day window used for top producers; 30-day filtered in-memory for other metrics)
+      // Fetch ONLY ROUTED leads (webhook_payload IS NOT NULL) for last 30 days
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
         .select('id, agent_id, status, booked_call_at, submitted_premium, approved_premium, issued_premium, created_at')
-        .gte('created_at', sixtyDaysAgo)
+        .gte('created_at', thirtyDaysAgo)
         .not('webhook_payload', 'is', null);
+
+      // Fetch ALL-TIME leads for top producers leaderboard
+      const { data: allTimeLeadsData, error: allTimeLeadsError } = await supabase
+        .from('leads')
+        .select('id, agent_id, status, submitted_premium, issued_premium')
+        .not('webhook_payload', 'is', null);
+
+      if (allTimeLeadsError) throw allTimeLeadsError;
       
       if (leadsError) throw leadsError;
       
@@ -120,14 +126,12 @@ export function useClientSuccessData() {
       
       if (rewardsError) throw rewardsError;
       
-      const allLeads = leadsData || [];
+      const leads = leadsData || [];
+      const allTimeLeads = allTimeLeadsData || [];
       const clients = clientsData || [];
       const adSpend = adSpendData || [];
       const referrals = referralsData || [];
       const rewards = rewardsData || [];
-
-      // 30-day subset for existing metrics; full 60-day set used for top producers
-      const leads = allLeads.filter(l => l.created_at >= thirtyDaysAgo);
 
       // Create client lookup by agent_id (since leads use agent_id)
       const clientByAgentId = new Map(clients.map(c => [c.agent_id, c]));
@@ -275,16 +279,15 @@ export function useClientSuccessData() {
         }
       });
       
-      // Build top producers (commission-based, ranked by paid commissions, 60-day window)
+      // Build top producers (commission-based, ranked by paid commissions, all-time)
       const incomingCommByAgent = new Map<string, number>();
       const paidCommByAgent = new Map<string, number>();
       const submittedCountByAgent = new Map<string, number>();
 
-      // Use allLeads (60-day) for top producers
-      const allSubmittedLeads = allLeads.filter(l =>
+      const allSubmittedLeads = allTimeLeads.filter(l =>
         l.status === 'submitted' || l.status === 'approved' || l.status === 'issued paid'
       );
-      const allIssuedPaidLeads = allLeads.filter(l => l.status === 'issued paid');
+      const allIssuedPaidLeads = allTimeLeads.filter(l => l.status === 'issued paid');
 
       // Incoming = submitted+ leads (submitted, approved, issued paid) × commission rate
       allSubmittedLeads.forEach(lead => {
