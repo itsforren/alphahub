@@ -60,42 +60,50 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     );
   }, [messages]);
 
-  const lastMessageId = useRef<string | null>(null);
+  const prevMessageCount = useRef(0);
 
-  // Scroll to bottom on initial load
+  // Force scroll to absolute bottom of container
+  const forceScrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
+  // Scroll to bottom on initial load — aggressive multi-attempt
   useEffect(() => {
     if (sortedMessages.length > 0 && isInitialLoad.current) {
-      // Use requestAnimationFrame to ensure DOM is painted before scrolling
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-      });
       isInitialLoad.current = false;
-      lastMessageId.current = sortedMessages[sortedMessages.length - 1]?.id ?? null;
+      prevMessageCount.current = sortedMessages.length;
+      // Multiple attempts to guarantee scroll after DOM paint
+      forceScrollToBottom();
+      requestAnimationFrame(() => forceScrollToBottom());
+      setTimeout(() => forceScrollToBottom(), 50);
+      setTimeout(() => forceScrollToBottom(), 150);
     }
-  }, [sortedMessages]);
+  }, [sortedMessages, forceScrollToBottom]);
 
-  // Auto-scroll when new messages arrive (realtime or sent)
+  // Auto-scroll when new messages arrive
   useEffect(() => {
-    if (sortedMessages.length === 0) return;
-    const latestId = sortedMessages[sortedMessages.length - 1]?.id;
-    if (latestId && latestId !== lastMessageId.current && !isInitialLoad.current) {
-      lastMessageId.current = latestId;
-      // Only auto-scroll if user is near the bottom (within 200px)
-      const el = scrollRef.current;
-      if (el) {
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-        if (isNearBottom) {
-          requestAnimationFrame(() => {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-          });
-        }
-      }
+    if (isInitialLoad.current || sortedMessages.length === 0) return;
+    if (sortedMessages.length <= prevMessageCount.current) {
+      prevMessageCount.current = sortedMessages.length;
+      return;
     }
-  }, [sortedMessages]);
+    prevMessageCount.current = sortedMessages.length;
+    // Auto-scroll if near bottom (within 300px)
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+      requestAnimationFrame(() => forceScrollToBottom(true));
+    }
+  }, [sortedMessages, forceScrollToBottom]);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    forceScrollToBottom(true);
+  }, [forceScrollToBottom]);
 
   // Mark messages as read when viewing
   useEffect(() => {

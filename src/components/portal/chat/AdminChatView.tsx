@@ -58,10 +58,6 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     if (conversationId && conversationId !== prevConversationId.current) {
       prevConversationId.current = conversationId;
       isInitialLoad.current = true;
-      // Scroll to bottom when switching conversations
-      setTimeout(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-      }, 100);
     }
   }, [conversationId]);
   
@@ -97,38 +93,48 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     t => (t.status === 'open' || t.status === 'waiting') && !dismissedTickets.includes(t.id)
   );
 
-  const lastTimelineLength = useRef(0);
+  const prevTimelineLength = useRef(0);
 
-  // Scroll to bottom on initial load
+  // Force scroll to absolute bottom of container
+  const forceScrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (smooth) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
+  // Scroll to bottom on initial load — aggressive multi-attempt
   useEffect(() => {
     if (timeline.length > 0 && isInitialLoad.current) {
-      requestAnimationFrame(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-      });
       isInitialLoad.current = false;
-      lastTimelineLength.current = timeline.length;
+      prevTimelineLength.current = timeline.length;
+      forceScrollToBottom();
+      requestAnimationFrame(() => forceScrollToBottom());
+      setTimeout(() => forceScrollToBottom(), 50);
+      setTimeout(() => forceScrollToBottom(), 150);
     }
-  }, [timeline]);
+  }, [timeline, forceScrollToBottom]);
 
   // Auto-scroll when new messages arrive
   useEffect(() => {
-    if (timeline.length > lastTimelineLength.current && !isInitialLoad.current) {
-      lastTimelineLength.current = timeline.length;
-      const el = scrollRef.current;
-      if (el) {
-        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-        if (isNearBottom) {
-          requestAnimationFrame(() => {
-            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-          });
-        }
-      }
+    if (isInitialLoad.current || timeline.length === 0) return;
+    if (timeline.length <= prevTimelineLength.current) {
+      prevTimelineLength.current = timeline.length;
+      return;
     }
-  }, [timeline]);
+    prevTimelineLength.current = timeline.length;
+    const el = scrollRef.current;
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 300) {
+      requestAnimationFrame(() => forceScrollToBottom(true));
+    }
+  }, [timeline, forceScrollToBottom]);
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    forceScrollToBottom(true);
+  }, [forceScrollToBottom]);
 
   // Mark messages as read when viewing
   useEffect(() => {

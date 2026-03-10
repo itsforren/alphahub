@@ -35,6 +35,18 @@ export function ChatInput({
     if (attachment) {
       setIsUploading(true);
       try {
+        // Ensure we have a fresh session before uploading
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+          // Try refreshing the session
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            toast.error('Session expired. Please refresh the page and try again.');
+            setIsUploading(false);
+            return;
+          }
+        }
+
         const fileExt = attachment.file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `attachments/${fileName}`;
@@ -48,7 +60,13 @@ export function ChatInput({
 
         if (uploadError) {
           console.error('Storage upload error:', uploadError.message, uploadError);
-          throw uploadError;
+          if (uploadError.message?.includes('row-level security') || uploadError.message?.includes('Unauthorized')) {
+            toast.error('Upload permission denied. Please refresh the page and try again.');
+          } else {
+            toast.error(`Upload failed: ${uploadError.message}`);
+          }
+          setIsUploading(false);
+          return;
         }
 
         const { data: { publicUrl } } = supabase.storage
@@ -60,9 +78,9 @@ export function ChatInput({
           type: attachment.file.type.startsWith('image/') ? 'image' : 'file',
           name: attachment.file.name,
         };
-      } catch (error) {
+      } catch (error: any) {
         console.error('Upload error:', error);
-        toast.error('Failed to upload file');
+        toast.error(error?.message || 'Failed to upload file');
         setIsUploading(false);
         return;
       }
