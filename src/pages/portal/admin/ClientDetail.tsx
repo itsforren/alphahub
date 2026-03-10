@@ -760,7 +760,7 @@ export default function PortalAdminClientDetail() {
       )}
 
       {/* Top Alpha Agents Leaderboard (preview: James Warren only, remove gate to go live) */}
-      {showPerformance && client.id === '9d03c1f4-8f20-48fd-b358-64b9752a7861' && <LeaderboardWidget />}
+      {client.id === '9d03c1f4-8f20-48fd-b358-64b9752a7861' && <LeaderboardWidget />}
 
       {/* Upcoming Payments Due (visibility controlled) */}
       {showBilling && <UpcomingPaymentsWidget clientId={client.id} />}

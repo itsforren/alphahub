@@ -323,7 +323,7 @@ export function useClientSuccessData() {
             avgCommissionSize: count > 0 ? incoming / count : 0,
           };
         })
-        .filter((p): p is TopProducer => p !== null && p.paidCommissions > 0)
+        .filter((p): p is TopProducer => p !== null && (p.paidCommissions > 0 || p.incomingCommissions > 0))
         .sort((a, b) => b.paidCommissions - a.paidCommissions)
         .slice(0, 3);
 

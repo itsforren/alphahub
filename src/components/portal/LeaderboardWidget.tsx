@@ -100,8 +100,6 @@ export function LeaderboardWidget() {
     );
   }
 
-  if (producers.length === 0) return null;
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -134,9 +132,16 @@ export function LeaderboardWidget() {
 
           {/* Producer rows */}
           <div className="space-y-2">
-            {producers.map(producer => (
-              <ProducerRow key={producer.id} producer={producer} />
-            ))}
+            {producers.length > 0 ? (
+              producers.map(producer => (
+                <ProducerRow key={producer.id} producer={producer} />
+              ))
+            ) : (
+              <div className="text-center py-6 text-muted-foreground text-sm">
+                <Trophy className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p>No ranking data yet</p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
