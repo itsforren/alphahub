@@ -21,4 +21,16 @@ export default defineConfig(({ mode }) => ({
     // Ensure Vite pre-bundles a single React instance
     include: ["react", "react-dom", "@radix-ui/react-tooltip"],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-recharts': ['recharts'],
+          'vendor-pdf': ['jspdf'],
+          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'vendor-motion': ['framer-motion'],
+        },
+      },
+    },
+  },
 }));

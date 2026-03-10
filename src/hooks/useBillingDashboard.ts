@@ -378,6 +378,8 @@ export function useBillingDashboardStats() {
       };
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -424,6 +426,8 @@ export function useUpcomingPayments() {
       });
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -502,6 +506,8 @@ export function useOverdueBillingRecords() {
       });
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -549,6 +555,8 @@ export function useUpcomingBillingRecords() {
       }));
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -607,6 +615,8 @@ export function usePaidBillingRecords(startIso: string, endIso: string) {
       }));
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -651,6 +661,8 @@ export function useFailedPayments() {
         }));
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -682,6 +694,8 @@ export function useActiveDisputes() {
       }));
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -919,6 +933,8 @@ export function useRevenueIntelligence(startIso?: string, endIso?: string) {
       };
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -949,6 +965,8 @@ export function useWalletPipeline() {
       }));
     },
     refetchInterval: 60000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -974,6 +992,8 @@ export function useWalletVerification() {
       }> };
     },
     refetchInterval: 120000, // Check every 2 minutes
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -1170,6 +1190,8 @@ export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
       };
     },
     refetchInterval: 120000,
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 
@@ -1187,6 +1209,8 @@ export function useExcludedCampaigns() {
       if (!data?.setting_value) return [];
       return data.setting_value.split(',').map((s: string) => s.trim()).filter(Boolean);
     },
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
   });
 }
 

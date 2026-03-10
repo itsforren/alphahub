@@ -273,7 +273,7 @@ const TestimonialCarousel = () => {
           className="flex justify-center mt-10"
         >
           <div className="inline-flex items-center gap-3 px-6 py-3 rounded-full bg-background/50 border border-primary/30">
-            <img src={nfiaLogo} alt="NFIA Logo" className="w-8 h-8 object-contain rounded-full" />
+            <img src={nfiaLogo} alt="NFIA Logo" className="w-8 h-8 object-contain rounded-full" loading="lazy" decoding="async" />
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-primary whitespace-nowrap">Trusted NFIA Partner</span>
               <div className="flex gap-0.5">

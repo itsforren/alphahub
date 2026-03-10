@@ -88,7 +88,7 @@ const Index = () => {
         <div className="max-w-7xl mx-auto flex flex-col items-center gap-8">
           {/* NFIA Partner Badge */}
           <div className="flex items-center gap-3 px-5 py-3 rounded-full bg-background/50 border border-primary/30">
-            <img src={nfiaLogo} alt="NFIA - National Federation of Insurance Agents" className="w-10 h-10 object-contain rounded-full" />
+            <img src={nfiaLogo} alt="NFIA - National Federation of Insurance Agents" className="w-10 h-10 object-contain rounded-full" loading="lazy" decoding="async" />
             <span className="text-sm font-medium text-primary">Trusted NFIA Partner</span>
           </div>
           

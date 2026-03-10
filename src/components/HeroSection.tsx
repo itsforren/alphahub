@@ -192,16 +192,16 @@ const HeroSection = () => {
               <div className="flex items-center">
                 <div className="flex -space-x-3">
                   <div className="w-10 h-10 rounded-full border-2 border-background bg-muted overflow-hidden">
-                    <img src={agent1} alt="Agent" className="w-full h-full object-cover" />
+                    <img src={agent1} alt="Agent" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </div>
                   <div className="w-10 h-10 rounded-full border-2 border-background bg-muted overflow-hidden">
-                    <img src={agent2} alt="Agent" className="w-full h-full object-cover" />
+                    <img src={agent2} alt="Agent" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </div>
                   <div className="w-10 h-10 rounded-full border-2 border-background bg-muted overflow-hidden">
-                    <img src={agent3} alt="Agent" className="w-full h-full object-cover" />
+                    <img src={agent3} alt="Agent" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </div>
                   <div className="w-10 h-10 rounded-full border-2 border-background bg-muted overflow-hidden">
-                    <img src={agent4} alt="Agent" className="w-full h-full object-cover" />
+                    <img src={agent4} alt="Agent" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                   </div>
                 </div>
               </div>

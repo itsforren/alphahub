@@ -1,4 +1,3 @@
-import jsPDF from 'jspdf';
 import SHA256 from 'crypto-js/sha256';
 import { format } from 'date-fns';
 import type { AuditEvent, InitialsSectionsCompleted } from '@/hooks/useAuditLog';
@@ -68,6 +67,7 @@ const AUTHORIZED_REP = {
 // We'll embed the logo as base64 for reliability in PDF generation
 
 export async function generateAgreementPdf(params: PdfGenerationParams): Promise<{ blob: Blob; hash: string }> {
+  const { default: jsPDF } = await import('jspdf');
   const pdf = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',

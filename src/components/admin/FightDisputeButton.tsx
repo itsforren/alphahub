@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { useClientDisputes } from '@/hooks/useClientDisputes';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
 
 interface FightDisputeButtonProps {
   clientId: string;
@@ -295,7 +294,7 @@ function CopySection({ title, text, expandable }: { title: string; text?: string
 
 // ─── PDF Generators ───
 
-function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+function addWrappedText(doc: any, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
   const lines = doc.splitTextToSize(text, maxWidth);
   for (const line of lines) {
     if (y > 270) { doc.addPage(); y = 20; }
@@ -305,7 +304,7 @@ function addWrappedText(doc: jsPDF, text: string, x: number, y: number, maxWidth
   return y;
 }
 
-function addSectionHeader(doc: jsPDF, title: string, y: number): number {
+function addSectionHeader(doc: any, title: string, y: number): number {
   if (y > 250) { doc.addPage(); y = 20; }
   doc.setFontSize(13);
   doc.setFont("helvetica", "bold");
@@ -319,7 +318,8 @@ function addSectionHeader(doc: jsPDF, title: string, y: number): number {
   return y;
 }
 
-function generateCommunicationsPDF(data: any) {
+async function generateCommunicationsPDF(data: any) {
+  const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF({ compress: true });
   let y = 20;
 
@@ -353,7 +353,8 @@ function generateCommunicationsPDF(data: any) {
   doc.save(`customer-communications-${data.client.name.replace(/\s+/g, '-').toLowerCase()}.pdf`);
 }
 
-function generateSupportingEvidencePDF(data: any) {
+async function generateSupportingEvidencePDF(data: any) {
+  const { default: jsPDF } = await import('jspdf');
   const doc = new jsPDF({ compress: true });
   let y = 20;
 
