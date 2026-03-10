@@ -40,6 +40,9 @@ export interface ClientSuccessMetrics {
   topAgentsByIssuedPremium: AgentRank[];
   topAgentsByLowestCPL: AgentRank[];
   
+  // Top Producers (commission-based)
+  topProducers: TopProducer[];
+
   // Referral totals
   totalReferrals: number;
   referralCreditsGenerated: number;
@@ -58,18 +61,29 @@ export interface AgentRank {
   rank: number;
 }
 
+export interface TopProducer {
+  id: string;
+  name: string;
+  rank: number;
+  incomingCommissions: number;
+  paidCommissions: number;
+  avgCommissionSize: number;
+}
+
 export function useClientSuccessData() {
   return useQuery({
     queryKey: ['client-success-data'],
     queryFn: async (): Promise<ClientSuccessMetrics> => {
-      // Rolling 30 days
+      // Rolling windows
       const thirtyDaysAgo = format(subDays(new Date(), 30), 'yyyy-MM-dd');
-      
-      // Fetch ONLY ROUTED leads (webhook_payload IS NOT NULL) for last 30 days
+      const sixtyDaysAgo = format(subDays(new Date(), 60), 'yyyy-MM-dd');
+
+      // Fetch ONLY ROUTED leads (webhook_payload IS NOT NULL) for last 60 days
+      // (60-day window used for top producers; 30-day filtered in-memory for other metrics)
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
         .select('id, agent_id, status, booked_call_at, submitted_premium, approved_premium, issued_premium, created_at')
-        .gte('created_at', thirtyDaysAgo)
+        .gte('created_at', sixtyDaysAgo)
         .not('webhook_payload', 'is', null);
       
       if (leadsError) throw leadsError;
@@ -106,16 +120,19 @@ export function useClientSuccessData() {
       
       if (rewardsError) throw rewardsError;
       
-      const leads = leadsData || [];
+      const allLeads = leadsData || [];
       const clients = clientsData || [];
       const adSpend = adSpendData || [];
       const referrals = referralsData || [];
       const rewards = rewardsData || [];
-      
+
+      // 30-day subset for existing metrics; full 60-day set used for top producers
+      const leads = allLeads.filter(l => l.created_at >= thirtyDaysAgo);
+
       // Create client lookup by agent_id (since leads use agent_id)
       const clientByAgentId = new Map(clients.map(c => [c.agent_id, c]));
       const clientById = new Map(clients.map(c => [c.id, c]));
-      
+
       // Calculate funnel metrics
       const totalLeads = leads.length;
       const bookedLeads = leads.filter(l => l.booked_call_at !== null);
@@ -258,6 +275,60 @@ export function useClientSuccessData() {
         }
       });
       
+      // Build top producers (commission-based, ranked by paid commissions, 60-day window)
+      const incomingCommByAgent = new Map<string, number>();
+      const paidCommByAgent = new Map<string, number>();
+      const submittedCountByAgent = new Map<string, number>();
+
+      // Use allLeads (60-day) for top producers
+      const allSubmittedLeads = allLeads.filter(l =>
+        l.status === 'submitted' || l.status === 'approved' || l.status === 'issued paid'
+      );
+      const allIssuedPaidLeads = allLeads.filter(l => l.status === 'issued paid');
+
+      // Incoming = submitted+ leads (submitted, approved, issued paid) × commission rate
+      allSubmittedLeads.forEach(lead => {
+        if (!lead.agent_id) return;
+        const client = clientByAgentId.get(lead.agent_id);
+        const rate = (client?.commission_contract_percent ?? 0) / 100;
+        const premium = lead.submitted_premium || 0;
+        incomingCommByAgent.set(lead.agent_id, (incomingCommByAgent.get(lead.agent_id) || 0) + premium * rate);
+        submittedCountByAgent.set(lead.agent_id, (submittedCountByAgent.get(lead.agent_id) || 0) + 1);
+      });
+
+      // Paid = issued-paid leads × commission rate
+      allIssuedPaidLeads.forEach(lead => {
+        if (!lead.agent_id) return;
+        const client = clientByAgentId.get(lead.agent_id);
+        const rate = (client?.commission_contract_percent ?? 0) / 100;
+        const premium = lead.issued_premium || 0;
+        paidCommByAgent.set(lead.agent_id, (paidCommByAgent.get(lead.agent_id) || 0) + premium * rate);
+      });
+
+      // Combine into TopProducer[], rank by paidCommissions desc, top 3
+      const allAgentIds = new Set([...incomingCommByAgent.keys(), ...paidCommByAgent.keys()]);
+      const topProducers: TopProducer[] = Array.from(allAgentIds)
+        .map(agentId => {
+          const client = clientByAgentId.get(agentId);
+          if (!client?.name) return null;
+          const incoming = incomingCommByAgent.get(agentId) || 0;
+          const paid = paidCommByAgent.get(agentId) || 0;
+          const count = submittedCountByAgent.get(agentId) || 0;
+          return {
+            id: client.id || agentId,
+            name: client.name.split(' ')[0],
+            rank: 0,
+            incomingCommissions: incoming,
+            paidCommissions: paid,
+            avgCommissionSize: count > 0 ? incoming / count : 0,
+          };
+        })
+        .filter((p): p is TopProducer => p !== null && p.paidCommissions > 0)
+        .sort((a, b) => b.paidCommissions - a.paidCommissions)
+        .slice(0, 3);
+
+      topProducers.forEach((p, i) => p.rank = i + 1);
+
       // Build daily metrics for the chart
       const today = startOfDay(new Date());
       const thirtyDaysAgoDate = subDays(today, 29);
@@ -336,6 +407,7 @@ export function useClientSuccessData() {
         topAgentsByBookedCalls: buildAgentRanking(bookedByAgent),
         topAgentsByIssuedPremium: buildAgentRanking(premiumByAgent),
         topAgentsByLowestCPL: buildAgentRanking(cplByAgent, true),
+        topProducers,
         totalReferrals,
         referralCreditsGenerated,
         dailyMetrics,

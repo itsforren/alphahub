@@ -44,6 +44,7 @@ import { CreateTicketFromChat } from '@/components/portal/chat/CreateTicketFromC
 import { GHLFieldMappingWidget } from '@/components/portal/GHLFieldMappingWidget';
 import { OnboardingQATab } from '@/components/portal/onboarding';
 import { HeroStatsCard } from '@/components/portal/HeroStatsCard';
+import { LeaderboardWidget } from '@/components/portal/LeaderboardWidget';
 import { ClientSelfOnboarding } from '@/components/portal/ClientSelfOnboarding';
 import { MetricsDateSelector, DatePreset, getDateRangeFromPreset } from '@/components/portal/MetricsDateSelector';
 import { AgreementSigningWidget } from '@/components/portal/AgreementSigningWidget';
@@ -90,7 +91,7 @@ export default function PortalAdminClientDetail() {
   const [datePreset, setDatePreset] = useState<DatePreset>('30d');
   const [paymentWizardOpen, setPaymentWizardOpen] = useState(false);
   const queryClient = useQueryClient();
-  
+
   // Portal visibility settings (for client view)
   const { data: portalSettings } = usePortalSettings();
   const showBilling = portalSettings?.agent_portal_show_billing !== false;
@@ -757,6 +758,9 @@ export default function PortalAdminClientDetail() {
           } : undefined}
         />
       )}
+
+      {/* Top Alpha Agents Leaderboard (preview: James Warren only, remove gate to go live) */}
+      {showPerformance && client.id === '9d03c1f4-8f20-48fd-b358-64b9752a7861' && <LeaderboardWidget />}
 
       {/* Upcoming Payments Due (visibility controlled) */}
       {showBilling && <UpcomingPaymentsWidget clientId={client.id} />}
