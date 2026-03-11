@@ -269,6 +269,31 @@ serve(async (req) => {
     const oldStatus = lead.status;
     console.log(`Found lead: ${lead.first_name} ${lead.last_name} (id: ${lead.id}), current status: ${oldStatus}`);
 
+    // Prevent status downgrade — never regress a lead to a lower stage
+    const statusRank: Record<string, number> = {
+      'new': 0,
+      'booked call': 1,
+      'submitted': 2,
+      'approved': 3,
+      'issued paid': 4,
+    };
+    const oldRank = statusRank[oldStatus?.toLowerCase()] ?? -1;
+    const newRank = statusRank[normalizedStatus] ?? -1;
+
+    if (newRank >= 0 && oldRank >= 0 && newRank < oldRank) {
+      console.log(`BLOCKED downgrade: ${oldStatus} (rank ${oldRank}) -> ${normalizedStatus} (rank ${newRank}). Keeping current status.`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: 'Status downgrade blocked — lead is already at a higher stage',
+          lead_id: lead.id,
+          current_status: oldStatus,
+          attempted_status: normalizedStatus,
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Build update object based on status
     const now = new Date().toISOString();
     const updateData: Record<string, any> = {
@@ -434,15 +459,13 @@ async function recalculateClientMetrics(supabase: any, clientId: string, agentId
   const cpba = bookedCalls > 0 ? totalAdSpend / bookedCalls : 0;
   const conversionRate = totalLeads > 0 ? (issuedPaidCount / totalLeads) * 100 : 0;
 
-  // Update client metrics
+  // Update client metrics (only columns that exist on the clients table)
   const { error: updateError } = await supabase
     .from('clients')
     .update({
-      total_leads: totalLeads,
+      mtd_leads: totalLeads,
       booked_calls: bookedCalls,
       applications: applications,
-      issued_paid_count: issuedPaidCount,
-      total_issued_premium: totalIssuedPremium,
       cpl: cpl,
       cpa: cpa,
       cpba: cpba,
