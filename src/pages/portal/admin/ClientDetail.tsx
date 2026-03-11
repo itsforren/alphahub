@@ -1027,12 +1027,50 @@ export default function PortalAdminClientDetail() {
                       value={(client as any).referred_by_client_id || 'none'}
                       onValueChange={async (value) => {
                         if (!id) return;
+                        const referrerId = value === 'none' ? null : value;
                         try {
                           await updateClient.mutateAsync({
                             clientId: id,
-                            updates: { referred_by_client_id: value === 'none' ? null : value } as any,
+                            updates: { referred_by_client_id: referrerId } as any,
                           });
                           toast.success('Primary referrer updated');
+                          // Check for management payment in last 24h and retroactively apply commission
+                          if (referrerId) {
+                            const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                            const { data: recentBilling } = await supabase
+                              .from('billing_records')
+                              .select('id, amount, billing_type, billing_period_start, billing_period_end')
+                              .eq('client_id', id)
+                              .eq('billing_type', 'management')
+                              .eq('status', 'paid')
+                              .gte('paid_at', since)
+                              .order('paid_at', { ascending: false })
+                              .limit(1)
+                              .maybeSingle();
+                            if (recentBilling) {
+                              const resp = await fetch(
+                                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-referral-commission`,
+                                {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                                  },
+                                  body: JSON.stringify({
+                                    billing_record_id: recentBilling.id,
+                                    client_id: id,
+                                    amount: recentBilling.amount,
+                                    billing_type: recentBilling.billing_type,
+                                    billing_period_start: recentBilling.billing_period_start,
+                                    billing_period_end: recentBilling.billing_period_end,
+                                  }),
+                                }
+                              );
+                              if (resp.ok) {
+                                toast.success('Applied commission for recent management payment');
+                              }
+                            }
+                          }
                         } catch {
                           toast.error('Failed to update referrer');
                         }
@@ -1064,12 +1102,50 @@ export default function PortalAdminClientDetail() {
                       value={(client as any).referred_by_client_id_secondary || 'none'}
                       onValueChange={async (value) => {
                         if (!id) return;
+                        const referrerId = value === 'none' ? null : value;
                         try {
                           await updateClient.mutateAsync({
                             clientId: id,
-                            updates: { referred_by_client_id_secondary: value === 'none' ? null : value } as any,
+                            updates: { referred_by_client_id_secondary: referrerId } as any,
                           });
                           toast.success('Secondary referrer updated');
+                          // Check for management payment in last 24h and retroactively apply commission
+                          if (referrerId) {
+                            const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                            const { data: recentBilling } = await supabase
+                              .from('billing_records')
+                              .select('id, amount, billing_type, billing_period_start, billing_period_end')
+                              .eq('client_id', id)
+                              .eq('billing_type', 'management')
+                              .eq('status', 'paid')
+                              .gte('paid_at', since)
+                              .order('paid_at', { ascending: false })
+                              .limit(1)
+                              .maybeSingle();
+                            if (recentBilling) {
+                              const resp = await fetch(
+                                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-referral-commission`,
+                                {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+                                  },
+                                  body: JSON.stringify({
+                                    billing_record_id: recentBilling.id,
+                                    client_id: id,
+                                    amount: recentBilling.amount,
+                                    billing_type: recentBilling.billing_type,
+                                    billing_period_start: recentBilling.billing_period_start,
+                                    billing_period_end: recentBilling.billing_period_end,
+                                  }),
+                                }
+                              );
+                              if (resp.ok) {
+                                toast.success('Applied commission for recent management payment');
+                              }
+                            }
+                          }
                         } catch {
                           toast.error('Failed to update referrer');
                         }
