@@ -77,6 +77,7 @@ export interface Client {
   // Referral
   referral_code: string | null;
   referred_by_client_id: string | null;
+  referred_by_client_id_secondary: string | null;
   // GHL Reference
   ghl_contact_id: string | null;
   // Lifespan tracking

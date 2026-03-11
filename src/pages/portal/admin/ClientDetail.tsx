@@ -38,6 +38,7 @@ import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { DailySpendChart } from '@/components/portal/DailySpendChart';
 import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CampaignPanel } from '@/components/portal/CampaignPanel';
 import { useCampaigns } from '@/hooks/useCampaigns';
 import EditableField from '@/components/portal/EditableField';
@@ -78,7 +79,7 @@ export default function PortalAdminClientDetail() {
   // Use the appropriate query based on view mode
   const { data: client, isLoading, error, refetch } = isClientView ? clientQuery : adminQuery;
   
-  const { refetch: refetchClients } = useClients();
+  const { data: allClients = [], refetch: refetchClients } = useClients();
   const { data: tasks = [] } = useOnboardingTasks(client?.id);
   const updateClient = useUpdateClient();
   const updateMetrics = useUpdateClientMetrics();
@@ -408,7 +409,12 @@ export default function PortalAdminClientDetail() {
 
   const handleStatusChange = async (newStatus: string) => {
     if (!id) return;
-    await updateClient.mutateAsync({ clientId: id, updates: { status: newStatus } });
+    const updates: any = { status: newStatus };
+    // Auto-set activated_at when transitioning to active (if not already set)
+    if (newStatus === 'active' && !(client as any).activated_at) {
+      updates.activated_at = new Date().toISOString();
+    }
+    await updateClient.mutateAsync({ clientId: id, updates });
   };
 
   const handlePackageTypeChange = async (newType: string) => {
@@ -643,6 +649,7 @@ export default function PortalAdminClientDetail() {
                   clientId={client.id}
                   onUpload={handleProfilePhotoUpload}
                   size="lg"
+                  cacheKey={(client as any).headshot_updated_at || client.updated_at}
                 />
                 <Button
                   type="button"
@@ -1005,6 +1012,135 @@ export default function PortalAdminClientDetail() {
               </div>
             )}
 
+            {/* Referrer Assignment (Admin Only) */}
+            {!isClientView && isAdmin && client && (
+              <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <UserPlus className="w-4 h-4" />
+                  Referral Commission Assignment
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Primary Referrer (10%) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Primary Referrer <span className="text-muted-foreground">(10%)</span></Label>
+                    <Select
+                      value={(client as any).referred_by_client_id || 'none'}
+                      onValueChange={async (value) => {
+                        if (!id) return;
+                        try {
+                          await updateClient.mutateAsync({
+                            clientId: id,
+                            updates: { referred_by_client_id: value === 'none' ? null : value } as any,
+                          });
+                          toast.success('Primary referrer updated');
+                        } catch {
+                          toast.error('Failed to update referrer');
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select referring agent..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {allClients
+                          .filter(c => c.id !== client.id && c.status !== 'cancelled' && c.user_id)
+                          .map(c => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Earns 10% credit on each management fee payment
+                    </p>
+                  </div>
+
+                  {/* Secondary Referrer (5%) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-sm">Secondary Referrer <span className="text-muted-foreground">(5%)</span></Label>
+                    <Select
+                      value={(client as any).referred_by_client_id_secondary || 'none'}
+                      onValueChange={async (value) => {
+                        if (!id) return;
+                        try {
+                          await updateClient.mutateAsync({
+                            clientId: id,
+                            updates: { referred_by_client_id_secondary: value === 'none' ? null : value } as any,
+                          });
+                          toast.success('Secondary referrer updated');
+                        } catch {
+                          toast.error('Failed to update referrer');
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select secondary referrer..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {allClients
+                          .filter(c => c.id !== client.id && c.id !== (client as any).referred_by_client_id && c.status !== 'cancelled' && c.user_id)
+                          .map(c => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Earns 5% credit on each management fee payment
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Notes */}
+            {!isClientView && isAdmin && (
+              <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-4">
+                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <StickyNote className="w-4 h-4" />
+                  Admin Notes
+                </h3>
+                <Textarea
+                  value={adminNotes ?? (client as any).admin_notes ?? ''}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="Add internal notes about client interactions, preferences, issues..."
+                  className="min-h-[120px] resize-y text-sm"
+                  rows={5}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    disabled={isSavingNotes || (adminNotes ?? (client as any).admin_notes ?? '') === ((client as any).admin_notes ?? '')}
+                    onClick={async () => {
+                      if (!id) return;
+                      setIsSavingNotes(true);
+                      try {
+                        await updateClient.mutateAsync({
+                          clientId: id,
+                          updates: { admin_notes: adminNotes || null } as any,
+                        });
+                        setAdminNotes(null); // Reset local state, let query data take over
+                        toast.success('Notes saved');
+                      } catch (error) {
+                        toast.error('Failed to save notes');
+                      }
+                      setIsSavingNotes(false);
+                    }}
+                  >
+                    {isSavingNotes ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                    Save Notes
+                  </Button>
+                  {adminNotes !== null && adminNotes !== ((client as any).admin_notes ?? '') && (
+                    <span className="text-xs text-muted-foreground">Unsaved changes</span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* CRM Delivery Toggle */}
             <div className="rounded-2xl border border-border/50 bg-card p-6">
               <div className="flex items-center justify-between">
@@ -1067,6 +1203,20 @@ export default function PortalAdminClientDetail() {
                     onSave={handleSaveField}
                     className="text-sm"
                   />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground uppercase tracking-wider">Start Date</label>
+                  <EditableField
+                    value={(client as any).activated_at ? new Date((client as any).activated_at).toISOString().split('T')[0] : null}
+                    fieldKey="activated_at"
+                    onSave={handleSaveField}
+                    type="date"
+                    displayValue={(client as any).activated_at ? new Date((client as any).activated_at).toLocaleDateString() : undefined}
+                    className="text-sm"
+                  />
+                  {!(client as any).activated_at && client.status !== 'active' && (
+                    <p className="text-xs text-muted-foreground">Auto-set when status changes to active</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1625,50 +1775,6 @@ export default function PortalAdminClientDetail() {
                   </div>
                 </CardContent>
               </Card>
-            )}
-
-            {/* Admin Notes */}
-            {!isClientView && isAdmin && (
-              <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-4">
-                <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  <StickyNote className="w-4 h-4" />
-                  Admin Notes
-                </h3>
-                <Textarea
-                  value={adminNotes ?? (client as any).admin_notes ?? ''}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder="Add internal notes about client interactions, preferences, issues..."
-                  className="min-h-[120px] resize-y text-sm"
-                  rows={5}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    disabled={isSavingNotes || (adminNotes ?? (client as any).admin_notes ?? '') === ((client as any).admin_notes ?? '')}
-                    onClick={async () => {
-                      if (!id) return;
-                      setIsSavingNotes(true);
-                      try {
-                        await updateClient.mutateAsync({
-                          clientId: id,
-                          updates: { admin_notes: adminNotes || null } as any,
-                        });
-                        setAdminNotes(null); // Reset local state, let query data take over
-                        toast.success('Notes saved');
-                      } catch (error) {
-                        toast.error('Failed to save notes');
-                      }
-                      setIsSavingNotes(false);
-                    }}
-                  >
-                    {isSavingNotes ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
-                    Save Notes
-                  </Button>
-                  {adminNotes !== null && adminNotes !== ((client as any).admin_notes ?? '') && (
-                    <span className="text-xs text-muted-foreground">Unsaved changes</span>
-                  )}
-                </div>
-              </div>
             )}
 
             {/* Admin Actions: Preview + Delete */}
