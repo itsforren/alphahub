@@ -334,12 +334,12 @@ export function useCampaigns() {
 
       if (walletsError) throw walletsError;
 
-      // Fetch all wallet deposits (source of truth for wallet funding)
+      // Fetch all wallet deposits + adjustments (source of truth for wallet funding)
       const { data: allDeposits, error: depositsError } = await supabase
         .from('wallet_transactions')
         .select('client_id, amount')
         .in('client_id', clientIds)
-        .eq('transaction_type', 'deposit');
+        .in('transaction_type', ['deposit', 'adjustment']);
 
       if (depositsError) throw depositsError;
 
@@ -575,12 +575,12 @@ export function useCommandCenterStats() {
         .select('client_id, ad_spend_balance, tracking_start_date')
         .in('client_id', clientIds);
 
-      // Get all wallet deposits
+      // Get all wallet deposits + adjustments
       const { data: allDeposits } = await supabase
         .from('wallet_transactions')
         .select('client_id, amount')
         .in('client_id', clientIds)
-        .eq('transaction_type', 'deposit');
+        .in('transaction_type', ['deposit', 'adjustment']);
 
       // Get all ad spend
       const { data: allWalletSpend } = await supabase

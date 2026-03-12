@@ -26,6 +26,7 @@ import {
   CreditCard,
   Wallet,
   ArrowDownToLine,
+  RefreshCw,
 } from 'lucide-react';
 
 type FilterMode = 'all' | 'problems' | 'warnings' | 'clean';
@@ -429,7 +430,10 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
 
   const adSpendData = adSpend.data || [];
-  const billingData = billingRecords.data || [];
+  const allBillingData = billingRecords.data || [];
+  // Filter out cancelled records for totals and reconciliation
+  const billingData = allBillingData.filter(r => r.status !== 'cancelled');
+  const cancelledData = allBillingData.filter(r => r.status === 'cancelled');
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
@@ -446,6 +450,22 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const billingPiIds = new Set(billingData.filter(r => r.stripe_payment_intent_id).map(r => r.stripe_payment_intent_id!));
   const stripeOnly = filteredStripeCharges.filter(c => !billingPiIds.has(c.id));
   const alphaOnlyPi = billingData.filter(r => r.stripe_payment_intent_id && !stripePiIds.has(r.stripe_payment_intent_id));
+
+  // Wallet totals
+  const depositTotal = walletData.filter(tx => tx.transaction_type === 'deposit').reduce((s, tx) => s + Number(tx.amount || 0), 0);
+  const adjustmentTotal = walletData.filter(tx => tx.transaction_type === 'adjustment').reduce((s, tx) => s + Number(tx.amount || 0), 0);
+  const netWalletCredits = depositTotal + adjustmentTotal;
+
+  const isAnyLoading = adSpend.isLoading || billingRecords.isLoading || walletTransactions.isLoading || stripeCharges.isLoading;
+
+  // Refresh all audit data
+  const handleRefresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['audit-ad-spend', clientId] });
+    queryClient.invalidateQueries({ queryKey: ['audit-billing-records', clientId] });
+    queryClient.invalidateQueries({ queryKey: ['audit-wallet-tx', clientId] });
+    queryClient.invalidateQueries({ queryKey: ['audit-stripe-charges', clientId] });
+    queryClient.invalidateQueries({ queryKey: ['audit-google-customer-id', clientId] });
+  };
 
   // Google Ads link helper
   const gadsUrl = googleCustomerId
@@ -490,6 +510,10 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
           <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-7 w-36 text-xs" />
           <label className="text-xs text-muted-foreground">To</label>
           <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-7 w-36 text-xs" />
+          <Button variant="outline" size="sm" className="h-7 text-xs gap-1" onClick={handleRefresh} disabled={isAnyLoading}>
+            <RefreshCw className={cn('w-3 h-3', isAnyLoading && 'animate-spin')} />
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -597,7 +621,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">
               {fmt(billingData.reduce((s, r) => s + Number(r.amount || 0), 0))}
-              <span className="text-muted-foreground font-normal ml-1">({billingData.length})</span>
+              <span className="text-muted-foreground font-normal ml-1">({billingData.length}){cancelledData.length > 0 && <span className="text-red-400 ml-1">+{cancelledData.length} cancelled</span>}</span>
             </span>
           </div>
           <div className="max-h-72 overflow-y-auto">
@@ -802,10 +826,12 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               Wallet Credits
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">
-              {fmt(walletData.filter(tx => tx.transaction_type === 'deposit').reduce((s, tx) => s + Number(tx.amount || 0), 0))}
-              <span className="text-muted-foreground font-normal ml-1">
-                ({walletData.filter(tx => tx.transaction_type === 'deposit').length})
-              </span>
+              {fmt(netWalletCredits)}
+              {adjustmentTotal !== 0 && (
+                <span className="text-blue-400 font-normal ml-1 text-[10px]">
+                  (net: {fmt(depositTotal)} {adjustmentTotal < 0 ? '-' : '+'} {fmt(adjustmentTotal)})
+                </span>
+              )}
             </span>
           </div>
           <div className="max-h-72 overflow-y-auto">

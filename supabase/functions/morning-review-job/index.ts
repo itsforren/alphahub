@@ -1086,7 +1086,7 @@ serve(async (req) => {
           .from('wallet_transactions')
           .select('amount')
           .eq('client_id', client.id)
-          .eq('transaction_type', 'deposit');
+          .in('transaction_type', ['deposit', 'adjustment']);
 
         const totalDeposits = deposits?.reduce((sum: number, d: { amount: number | string }) => sum + Number(d.amount || 0), 0) ?? 0;
 

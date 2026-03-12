@@ -1102,7 +1102,7 @@ export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
         : null;
 
       const [allDepositsRes, allSpendRes] = await Promise.all([
-        supabase.from('wallet_transactions').select('client_id, amount').eq('transaction_type', 'deposit'),
+        supabase.from('wallet_transactions').select('client_id, amount').in('transaction_type', ['deposit', 'adjustment']),
         earliestTracking
           ? supabase.from('ad_spend_daily').select('client_id, spend_date, cost').gte('spend_date', earliestTracking)
           : Promise.resolve({ data: [] as Array<{ client_id: string; spend_date: string; cost: number | null }> }),

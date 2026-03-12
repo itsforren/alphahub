@@ -55,7 +55,7 @@ export async function getComputedWalletBalance(sb: any, clientId: string, perfPc
     .from('wallet_transactions')
     .select('amount')
     .eq('client_id', clientId)
-    .eq('transaction_type', 'deposit');
+    .in('transaction_type', ['deposit', 'adjustment']);
 
   const totalDeposits = deposits?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) ?? 0;
 
@@ -150,7 +150,7 @@ export interface BulkBalance {
 export async function getAllComputedBalances(sb: any, perfPct?: number): Promise<{ balances: Map<string, BulkBalance>; performancePercentage: number }> {
   const [walletsRes, depositsRes, spendRes, pct] = await Promise.all([
     sb.from('client_wallets').select('client_id, tracking_start_date'),
-    sb.from('wallet_transactions').select('client_id, amount').eq('transaction_type', 'deposit'),
+    sb.from('wallet_transactions').select('client_id, amount').in('transaction_type', ['deposit', 'adjustment']),
     sb.from('ad_spend_daily').select('client_id, cost, spend_date'),
     perfPct != null ? Promise.resolve(perfPct) : getPerformancePercentage(sb),
   ]);

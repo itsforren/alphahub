@@ -51,7 +51,7 @@ export function useComputedWalletBalance(clientId?: string) {
         .from('wallet_transactions')
         .select('amount')
         .eq('client_id', clientId)
-        .eq('transaction_type', 'deposit');
+        .in('transaction_type', ['deposit', 'adjustment']);
 
       if (error) throw error;
       

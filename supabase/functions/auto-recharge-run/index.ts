@@ -230,12 +230,12 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // ── Compute wallet balance ──
+        // ── Compute wallet balance (deposits + adjustments) ──
         const { data: deposits } = await supabase
           .from('wallet_transactions')
           .select('amount')
           .eq('client_id', clientId)
-          .eq('transaction_type', 'deposit');
+          .in('transaction_type', ['deposit', 'adjustment']);
 
         const totalDeposits = deposits?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) ?? 0;
 

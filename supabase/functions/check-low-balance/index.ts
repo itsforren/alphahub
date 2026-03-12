@@ -195,12 +195,12 @@ serve(async (req) => {
     for (const client of clientsToCheck) {
       // Per-campaign skip logic is handled below when building campaignsToProcess
 
-      // Get wallet deposits total
+      // Get wallet deposits + adjustments total
       const { data: deposits } = await supabase
         .from('wallet_transactions')
         .select('amount')
         .eq('client_id', client.id)
-        .eq('transaction_type', 'deposit');
+        .in('transaction_type', ['deposit', 'adjustment']);
 
       const totalDeposits = deposits?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
 
