@@ -95,9 +95,10 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
         .select('id, amount, status, paid_at, created_at, stripe_payment_intent_id, stripe_account, notes, charge_attempts, last_charge_error')
         .eq('client_id', clientId!)
         .eq('billing_type', 'ad_spend')
+        .neq('status', 'cancelled')
         .gte('created_at', startDate + 'T00:00:00Z')
         .lte('created_at', endDate + 'T23:59:59Z')
-        .order('created_at', { ascending: false });
+        .order('paid_at', { ascending: false, nullsFirst: false });
       if (error) throw error;
       return data || [];
     },
@@ -430,10 +431,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
 
   const adSpendData = adSpend.data || [];
-  const allBillingData = billingRecords.data || [];
-  // Filter out cancelled records for totals and reconciliation
-  const billingData = allBillingData.filter(r => r.status !== 'cancelled');
-  const cancelledData = allBillingData.filter(r => r.status === 'cancelled');
+  const billingData = billingRecords.data || []; // cancelled records excluded in query
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
@@ -621,7 +619,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">
               {fmt(billingData.reduce((s, r) => s + Number(r.amount || 0), 0))}
-              <span className="text-muted-foreground font-normal ml-1">({billingData.length}){cancelledData.length > 0 && <span className="text-red-400 ml-1">+{cancelledData.length} cancelled</span>}</span>
+              <span className="text-muted-foreground font-normal ml-1">({billingData.length})</span>
             </span>
           </div>
           <div className="max-h-72 overflow-y-auto">
@@ -688,51 +686,6 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               </table>
             )}
 
-            {/* Wallet deposits without billing records */}
-            {walletData.filter(tx => tx.transaction_type === 'deposit' && !tx.billing_record_id).length > 0 && (
-              <>
-                <div className="px-3 py-1.5 bg-yellow-500/10 border-y border-yellow-500/20">
-                  <span className="text-[10px] font-semibold text-yellow-400">
-                    Deposits without billing record
-                  </span>
-                </div>
-                <table className="w-full text-xs">
-                  <tbody>
-                    {walletData.filter(tx => tx.transaction_type === 'deposit' && !tx.billing_record_id).map(tx => (
-                      <tr key={tx.id} className="border-b border-border/20 bg-yellow-500/5">
-                        <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
-                        <td className="px-3 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(Number(tx.amount))}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground" colSpan={2}>{tx.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {/* Adjustments */}
-            {walletData.filter(tx => tx.transaction_type === 'adjustment').length > 0 && (
-              <>
-                <div className="px-3 py-1.5 bg-blue-500/10 border-y border-blue-500/20">
-                  <span className="text-[10px] font-semibold text-blue-400">
-                    Adjustments
-                  </span>
-                </div>
-                <table className="w-full text-xs">
-                  <tbody>
-                    {walletData.filter(tx => tx.transaction_type === 'adjustment').map(tx => (
-                      <tr key={tx.id} className="border-b border-border/20 bg-blue-500/5">
-                        <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
-                        <td className="px-3 py-1.5 text-right font-medium tabular-nums text-blue-400">
-                          {Number(tx.amount) < 0 ? '-' : '+'}{fmt(Number(tx.amount))}
-                        </td>
-                        <td className="px-3 py-1.5 text-muted-foreground" colSpan={2}>{tx.description}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
           </div>
         </div>
 
