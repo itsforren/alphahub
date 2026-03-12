@@ -1,57 +1,108 @@
 import { useState, useEffect } from 'react';
-import { X, Rocket } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Rocket } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
-// Banner auto-expires after this UTC timestamp (~7 days from now)
-const BANNER_EXPIRES_AT = '2026-03-18T23:59:59Z';
-const DISMISS_KEY = 'campaign-update-banner-dismissed-mar2026';
+const POPUP_EXPIRES_AT = '2026-03-18T23:59:59Z';
+const DISMISS_KEY = 'campaign-update-popup-dismissed-mar2026';
 
 export function CampaignUpdateBanner() {
-  const [visible, setVisible] = useState(false);
+  const [open, setOpen] = useState(false);
+  const { profile } = useAuth();
 
   useEffect(() => {
     const now = new Date();
-    const expires = new Date(BANNER_EXPIRES_AT);
+    const expires = new Date(POPUP_EXPIRES_AT);
     const dismissed = localStorage.getItem(DISMISS_KEY);
 
     if (now < expires && !dismissed) {
-      setVisible(true);
+      // Small delay so the dashboard loads first
+      const timer = setTimeout(() => setOpen(true), 600);
+      return () => clearTimeout(timer);
     }
   }, []);
 
-  const handleDismiss = () => {
-    setVisible(false);
+  const handleClose = () => {
+    setOpen(false);
     localStorage.setItem(DISMISS_KEY, 'true');
   };
 
+  const firstName = profile?.name?.split(' ')[0] || 'there';
+  const fullName = profile?.name || 'Agent';
+  const initials = fullName
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+
   return (
-    <AnimatePresence>
-      {visible && (
-        <motion.div
-          initial={{ height: 0, opacity: 0 }}
-          animate={{ height: 'auto', opacity: 1 }}
-          exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className="overflow-hidden"
-        >
-          <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-4 py-3">
-            <div className="max-w-5xl mx-auto flex items-start gap-3">
-              <Rocket className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-foreground flex-1">
-                <span className="font-semibold">Campaign Performance Update</span>
-                {' '}&mdash; Over the past two weeks, Google Ads experienced a Smart Bidding algorithm issue that caused campaigns to severely underspend despite having high daily budgets set. Your budget was fully available &mdash; Google simply wasn&rsquo;t delivering the impressions. Our team identified the root cause, performed a deep audit of every campaign, and applied targeted fixes directly through the Google Ads API. Your campaigns are now fully optimized and scaling back up to their target spend levels. Expect lead volume to ramp significantly over the next few days as the algorithm recalibrates. We appreciate your patience &mdash; reach out to your success manager with any questions.
-              </div>
-              <button
-                onClick={handleDismiss}
-                className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 mt-0.5"
-                aria-label="Dismiss banner"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
+      <DialogContent className="sm:max-w-md p-0 overflow-hidden border-0 rounded-2xl shadow-2xl">
+        {/* Header gradient */}
+        <div className="bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-500 px-6 pt-8 pb-12 text-center relative">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.15),transparent_50%)]" />
+          <Rocket className="w-8 h-8 text-white/90 mx-auto mb-3 relative z-10" />
+          <DialogTitle className="text-white text-xl font-bold relative z-10 tracking-tight">
+            Campaign Performance Update
+          </DialogTitle>
+        </div>
+
+        {/* Avatar overlapping the header */}
+        <div className="flex justify-center -mt-8 relative z-20">
+          <Avatar className="h-16 w-16 ring-4 ring-background shadow-lg">
+            {profile?.avatar_url ? (
+              <AvatarImage src={profile.avatar_url} alt={fullName} />
+            ) : null}
+            <AvatarFallback className="text-lg font-semibold bg-emerald-100 text-emerald-700">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 pt-3 pb-6 space-y-4">
+          <p className="text-base font-semibold text-foreground text-center">
+            Hey {fullName},
+          </p>
+
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Thank you very much for your patience. We discovered a major issue within Google Ads&rsquo; Smart Bidding algorithm that was causing campaigns to severely underspend &mdash; despite having high daily budgets set. Your budget was fully available the entire time; Google simply was not delivering the impressions.
+          </p>
+
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Our team performed a deep audit of every campaign and applied targeted fixes directly through the Google Ads API. Your campaigns are now fully optimized and scaling back up to their target spend levels. Expect lead volume to ramp significantly over the next few days as the algorithm recalibrates.
+          </p>
+
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Thank you for your patience. We value your business extremely, and we value your business more than you know.
+          </p>
+
+          <div className="pt-2 space-y-0.5">
+            <p className="text-sm text-foreground">
+              Looking forward to massive results together,
+            </p>
+            <p className="text-sm text-foreground mt-2">
+              Sincerely yours,
+            </p>
+            <p className="text-base font-bold text-foreground mt-1">
+              Alvader
+            </p>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+
+          <button
+            onClick={handleClose}
+            className="w-full mt-2 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg active:scale-[0.98]"
+          >
+            Got it, {firstName}!
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
