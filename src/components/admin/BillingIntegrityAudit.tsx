@@ -25,6 +25,7 @@ import {
   BarChart3,
   CreditCard,
   Wallet,
+  ArrowDownToLine,
 } from 'lucide-react';
 
 type FilterMode = 'all' | 'problems' | 'warnings' | 'clean';
@@ -543,7 +544,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
       )}
 
       {/* 3-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
 
         {/* Column 1: Google Ad Spend */}
         <div className="rounded-lg border border-border/50 overflow-hidden">
@@ -789,6 +790,94 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                   })}
                 </tbody>
               </table>
+            )}
+          </div>
+        </div>
+
+        {/* Column 4: Wallet Credits */}
+        <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <ArrowDownToLine className="w-3.5 h-3.5 text-cyan-400" />
+              Wallet Credits
+            </span>
+            <span className="text-xs font-bold text-foreground tabular-nums">
+              {fmt(walletData.filter(tx => tx.transaction_type === 'deposit').reduce((s, tx) => s + Number(tx.amount || 0), 0))}
+              <span className="text-muted-foreground font-normal ml-1">
+                ({walletData.filter(tx => tx.transaction_type === 'deposit').length})
+              </span>
+            </span>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {walletTransactions.isLoading ? (
+              <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+            ) : walletData.filter(tx => tx.transaction_type === 'deposit').length === 0 && walletData.filter(tx => tx.transaction_type === 'adjustment').length === 0 ? (
+              <div className="p-4 text-xs text-muted-foreground text-center">No wallet credits</div>
+            ) : (
+              <>
+                {/* Deposits */}
+                {walletData.filter(tx => tx.transaction_type === 'deposit').length > 0 && (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/30 bg-muted/20">
+                        <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
+                        <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
+                        <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Backed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {walletData.filter(tx => tx.transaction_type === 'deposit').map(tx => {
+                        const hasBillingRecord = !!tx.billing_record_id;
+                        return (
+                          <tr
+                            key={tx.id}
+                            className={cn(
+                              'border-b border-border/20 hover:bg-muted/30',
+                              !hasBillingRecord && 'bg-yellow-500/5'
+                            )}
+                          >
+                            <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
+                            <td className="px-3 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(Number(tx.amount))}</td>
+                            <td className="px-3 py-1.5 text-center">
+                              {hasBillingRecord ? (
+                                <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Has billing record" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 inline" title="No billing record — unbacked deposit" />
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Adjustments */}
+                {walletData.filter(tx => tx.transaction_type === 'adjustment').length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 bg-blue-500/10 border-y border-blue-500/20">
+                      <span className="text-[10px] font-semibold text-blue-400">
+                        Adjustments ({walletData.filter(tx => tx.transaction_type === 'adjustment').length})
+                      </span>
+                    </div>
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {walletData.filter(tx => tx.transaction_type === 'adjustment').map(tx => (
+                          <tr key={tx.id} className="border-b border-border/20 bg-blue-500/5">
+                            <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
+                            <td className="px-3 py-1.5 text-right font-medium tabular-nums text-blue-400">
+                              {Number(tx.amount) < 0 ? '-' : '+'}{fmt(Number(tx.amount))}
+                            </td>
+                            <td className="px-3 py-1.5 text-muted-foreground text-xs truncate max-w-[120px]" title={tx.description || ''}>
+                              {tx.description}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </>
+                )}
+              </>
             )}
           </div>
         </div>
