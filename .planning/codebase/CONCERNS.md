@@ -1,301 +1,294 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-04
-
-## Tech Debt
-
-**Incomplete Behind-Pace Calculation:**
-- Issue: Campaign command center shows hard-coded `behindPaceCount = 0` instead of actual calculation
-- Files: `src/hooks/useCampaignCommandCenter.ts` (line 665)
-- Impact: Dashboard reports don't reflect true campaign pacing performance; clients may miss optimization opportunities
-- Fix approach: Implement proper pacing calculation based on spend rate vs budget allocation, integrate with daily spend tracking
-
-**Performance Percentage String Conversion:**
-- Issue: Performance percentage stored as string in `onboarding_settings.setting_value`, converted with `Number()` on each query
-- Files: `src/hooks/usePerformancePercentage.ts` (lines 19-24)
-- Impact: Adds computation on every wallet calculation, slightly increases latency for frequent balance checks
-- Fix approach: Store performance percentage as numeric column in database, migrate existing string values
-
-**Stripe Key Lazy Loading Race Condition:**
-- Issue: `fetchKeys()` in stripe config can be called simultaneously from multiple Stripe instances, all creating new promises
-- Files: `src/config/stripe.ts` (lines 6-21)
-- Impact: Multiple concurrent key fetches waste API calls and may cause race conditions in key initialization
-- Fix approach: Implement promise memoization with proper deduplication to ensure only one fetch in-flight
-
-## Known Bugs
-
-**Video HLS Loading Without Error Boundary:**
-- Issue: HLS.js initialization in FollowUpCallVideo lacks error handling
-- Files: `src/pages/FollowUpCallVideo.tsx` (lines 20-32)
-- Impact: If HLS library fails to load or video URL is invalid, page displays blank with no user feedback
-- Workaround: None—user sees broken video player
-- Root cause: No try-catch wrapping the dynamic import of hls.js
-
-**Low Balance Check Potential Race Condition:**
-- Issue: `useComputedWalletBalance` triggers low balance check on mount without preventing duplicate invocations
-- Files: `src/hooks/useComputedWalletBalance.ts` (lines 92-123)
-- Impact: Multiple client detail tabs open simultaneously may trigger multiple low-balance checks for same client in rapid succession
-- Workaround: Relies on `lowBalanceCheckedRef` but async function does not prevent overlapping calls
-- Root cause: `lowBalanceCheckedRef` only prevents within single component instance; doesn't prevent across instances
-
-**Wallet Deposit Duplication Risk in sync-stripe-charges:**
-- Issue: `ensureWalletDeposit()` checks existence of deposit BEFORE inserting but doesn't handle race condition between check and insert
-- Files: `supabase/functions/sync-stripe-charges/index.ts` (lines 58-123)
-- Impact: If two sync runs occur simultaneously for same billing record, duplicate wallet deposits may be created (violates idempotency)
-- Workaround: Database unique constraint on (billing_record_id) prevents actual duplicates but creates failed inserts
-- Root cause: Check-before-insert pattern without database-level locking
-
-**Client Wallet Tracking Start Date Not Set on Initial Deposit:**
-- Issue: New clients without tracking_start_date have wallet created in sync-stripe-charges but tracking may not start until next paid invoice
-- Files: `supabase/functions/sync-stripe-charges/index.ts` (lines 83-104)
-- Impact: Wallet balance calculations may be incomplete if tracking_start_date is null when balance is queried
-- Workaround: `useComputedWalletBalance` checks for null tracking_start_date but returns 0 spend which is incorrect
-- Root cause: Tracking start date only set when first paid invoice processed, not on wallet creation
-
-## Security Considerations
-
-**Unsafe Type Assertions in ClientDetail:**
-- Risk: Multiple `as any` casts throughout ClientDetail component without validation
-- Files: `src/pages/portal/admin/ClientDetail.tsx` (lines 1605, and throughout)
-- Current mitigation: Supabase auth and RLS policies on database level
-- Recommendations:
-  - Remove unnecessary `as any` casts
-  - Use proper type guards for client data before casting
-  - Validate subaccount_id structure before using in GHL API calls
-
-**localStorage Used for Tracking IDs:**
-- Risk: Visitor ID, session ID, and attribution data stored in localStorage without encryption
-- Files: `src/lib/tracking.ts` (lines with localStorage access)
-- Current mitigation: Data is non-sensitive user attribution/session info
-- Recommendations:
-  - Consider migrating to sessionStorage for session-specific data
-  - Add CSRF token validation for attribution tracking submissions
-
-**Missing Input Validation on Agreement Signing:**
-- Risk: NPN, phone, address fields accepted without validation format
-- Files: `src/pages/hub/SignAgreement.tsx` (agreement input fields)
-- Current mitigation: Client-side validation only
-- Recommendations:
-  - Add server-side validation for NPN format (must be valid insurance producer number)
-  - Validate phone format before storing
-  - Sanitize address fields for injection attacks
-
-**Stripe Config Exposed in Browser Bundle:**
-- Risk: `getStripePromise()` exposes publishable keys but no validation of key format
-- Files: `src/config/stripe.ts`
-- Current mitigation: Stripe publishable keys are safe by design
-- Recommendations:
-  - Consider caching stripe instances at session level instead of process level
-  - Add fallback if key fetch fails instead of returning empty string
-
-## Performance Bottlenecks
-
-**useComputedWalletBalance Expensive Triple Query Pattern:**
-- Problem: Wallet balance calculation fetches wallet metadata, deposits, and daily spend in three separate queries
-- Files: `src/hooks/useComputedWalletBalance.ts` (lines 27-80)
-- Cause: Separate query for wallet config, deposits sum, and spend sum
-- Improvement path:
-  - Combine wallet metadata + deposits into single query with aggregation
-  - Use database view for `total_deposits_by_client` and cache aggressively
-  - Consider denormalized `wallet_balance_cache` table updated by triggers
-
-**Campaign Command Center Queries Entire Campaign List:**
-- Problem: `useCampaignCommandCenter` fetches ALL campaigns to compute stats instead of using aggregates
-- Files: `src/hooks/useCampaignCommandCenter.ts` (lines 620-700)
-- Cause: Multiple filter and count operations on full dataset in JavaScript
-- Improvement path:
-  - Create `campaign_stats_view` in Supabase with pre-computed counts by status
-  - Use aggregation functions in query instead of fetching and filtering in JS
-  - Implement caching with 5-minute TTL for dashboard stats
-
-**Stripe Sync Promise.all() Unbounded Parallelism:**
-- Problem: `syncGlobal()` calls `Promise.all()` on all pending records without rate limiting
-- Files: `supabase/functions/sync-stripe-charges/index.ts` (line 322)
-- Cause: No concurrent request limiting for Stripe API calls
-- Improvement path:
-  - Implement queue with max 5 concurrent Stripe fetches
-  - Add exponential backoff for rate-limited responses (429)
-  - Split sync into batches of 50 records max
-
-**Billing Records No Pagination on Large Accounts:**
-- Problem: `sync-stripe-charges` fetches ALL billing records without cursor-based pagination
-- Files: `supabase/functions/sync-stripe-charges/index.ts` (line 309)
-- Cause: Supabase query assumes all records fit in memory
-- Improvement path:
-  - Implement cursor-based pagination with 100-record batches
-  - Process in chunks to avoid timeout on high-volume accounts
-
-## Fragile Areas
-
-**ClientDetail Component Complexity:**
-- Files: `src/pages/portal/admin/ClientDetail.tsx`
-- Why fragile: 1678 lines handling multiple tabs, nested API calls, state synchronization across onboarding/billing/wallets
-- Safe modification:
-  - Extract each tab into separate component
-  - Create custom hooks for each data domain (useClientOnboarding, useClientBilling, useClientWallet)
-  - Use composition over monolithic page component
-- Test coverage: Appears to be no dedicated unit tests; relies on manual testing
-
-**Agreement Signing Flow State Management:**
-- Files: `src/pages/hub/SignAgreement.tsx` (1699 lines)
-- Why fragile: Complex state tracking for OTP, signature, initials, key term checkboxes across multiple steps
-- Safe modification:
-  - Break into smaller step components (OTPStep, SignatureStep, InitialsStep)
-  - Use reducer pattern for state instead of multiple useState
-  - Add step validation guards
-- Test coverage: No automated tests; one-off signature flow
-
-**useCampaignCommandCenter Hook:**
-- Files: `src/hooks/useCampaignCommandCenter.ts` (1125 lines)
-- Why fragile: Complex data aggregation, multiple status enums, proposal workflow with approval/denial branches
-- Safe modification:
-  - Extract stats calculation into pure function with unit tests
-  - Separate read queries from write mutations into separate hooks
-  - Add input validation on proposal actions
-- Test coverage: No tests for calculation logic; high risk of silent calculation errors
-
-**Billing and Wallet Interaction:**
-- Files: Multiple files interacting (useBillingRecords, useClientWallet, useComputedWalletBalance, sync-stripe-charges)
-- Why fragile: Payment flow depends on precise sequencing: billing record → wallet deposit → balance calculation
-- Safe modification:
-  - Document data flow in README
-  - Add integration tests covering full payment flow
-  - Add logging/observability to detect sync failures early
-- Test coverage: No tests; full flow only verified manually
-
-## Scaling Limits
-
-**Wallet Spend Aggregation on Query Time:**
-- Current capacity: Works up to ~10k daily spend records per client
-- Limit: Query timeout when summing >50k daily spend entries per client
-- Scaling path:
-  - Create `client_wallet_spend_aggregates` table with daily/monthly summaries
-  - Update via triggers on ad_spend_daily inserts
-  - Use aggregates for balance calculations instead of full table scan
-
-**sync-stripe-charges Pagination Limit:**
-- Current capacity: 250 invoices per customer (5 pages × 50)
-- Limit: Accounts with >250 invoices won't sync older invoices
-- Scaling path:
-  - Remove page limit (line 162) or increase to 1000
-  - Implement cursor tracking to resume from last synced invoice
-  - Add batch reconciliation for historical data
-
-**Proposal Execution Concurrency:**
-- Current capacity: Single proposal execution at a time per campaign
-- Limit: If 50 proposals approved simultaneously, approval handler may timeout
-- Scaling path:
-  - Queue proposal executions with worker pattern
-  - Track execution status separately from proposal status
-  - Add retry logic for failed executions
-
-**File Storage Without Limits:**
-- Current capacity: Agreement PDFs, screenshots, documents stored without quota
-- Limit: Storage will grow unbounded with no cleanup policy
-- Scaling path:
-  - Implement retention policy (delete documents >1 year old)
-  - Add file size limits on upload
-  - Use Supabase storage object lifecycle policies
-
-## Dependencies at Risk
-
-**Stripe SDK Version Pinned Without Updates:**
-- Risk: `@stripe/stripe-js@^8.7.0` may have security updates
-- Impact: Missing security patches in Stripe integration
-- Migration plan:
-  - Quarterly dependency updates
-  - Review Stripe changelog before updating
-  - Test payment flows after any Stripe upgrade
-
-**React Query Version Gap:**
-- Risk: `@tanstack/react-query@^5.83.0` released in late 2024, potential bugs in minor versions
-- Impact: Silent query state bugs, race conditions in data fetching
-- Migration plan:
-  - Update to latest 5.x version quarterly
-  - Monitor GitHub issues for critical bugs
-  - Add regression tests for cache invalidation logic
-
-**Deprecated Plaid Integration:**
-- Risk: `react-plaid-link@^4.1.1` has moving target for Plaid API versions
-- Impact: Account link failures, changing authentication requirements
-- Migration plan:
-  - Plan migration to Plaid's web components
-  - Monitor Plaid deprecation timeline
-  - Add feature flag to disable Plaid if API breaks
-
-**HLS.js Runtime Loading:**
-- Risk: `hls.js` loaded at runtime without version pinning
-- Impact: Breaking changes in HLS.js could crash video playback
-- Migration plan:
-  - Add version pinning in dynamic import or package.json
-  - Add error boundary for HLS initialization
-  - Consider native video player fallback
-
-## Missing Critical Features
-
-**No End-to-End Encryption for Payment Data:**
-- Problem: Billing records stored in plain text; no PCI compliance features
-- Blocks: Cannot legally handle credit card data end-to-end
-- Priority: High if handling direct card data
-
-**No Audit Trail for Financial Changes:**
-- Problem: Wallet deposits, billing updates have no change history
-- Blocks: Cannot investigate billing discrepancies or client disputes
-- Priority: High for compliance
-
-**No Webhook Validation Signature:**
-- Problem: stripe-webhook doesn't validate Stripe signature header
-- Blocks: Cannot detect forged webhook events
-- Priority: Critical
-
-**No Idempotency Keys on Payment Operations:**
-- Problem: Payment mutations in billing workflow lack idempotency tokens
-- Blocks: Retry logic may charge client twice
-- Priority: Critical
-
-**No Circuit Breaker for Stripe API:**
-- Problem: If Stripe API is down, sync functions fail and block webhooks
-- Blocks: Cannot gracefully degrade when external service fails
-- Priority: Medium
-
-## Test Coverage Gaps
-
-**No Tests for Wallet Balance Calculations:**
-- What's not tested: The entire `useComputedWalletBalance` calculation, performance percentage application
-- Files: `src/hooks/useComputedWalletBalance.ts`, `src/hooks/usePerformancePercentage.ts`
-- Risk: Silent calculation errors could under/over-bill clients
-- Priority: High
-
-**No Tests for Billing Sync Logic:**
-- What's not tested: sync-stripe-charges function, invoice mapping, wallet deposit creation
-- Files: `supabase/functions/sync-stripe-charges/index.ts`
-- Risk: Billing records may not sync or create duplicate deposits
-- Priority: Critical
-
-**No Tests for Agreement Signing:**
-- What's not tested: OTP verification flow, signature data storage, initials section completion
-- Files: `src/pages/hub/SignAgreement.tsx`
-- Risk: Agreements may not store properly, bypassing legal requirements
-- Priority: High
-
-**No Tests for Campaign Proposal Approval:**
-- What's not tested: Proposal execution, budget updates, approval workflow
-- Files: `src/hooks/useCampaignCommandCenter.ts`, proposal mutations
-- Risk: Campaigns may not update budgets or execute proposals correctly
-- Priority: High
-
-**No Integration Tests for Payment Flow:**
-- What's not tested: End-to-end from stripe webhook → billing record → wallet deposit → balance update
-- Files: Multiple files (stripe-webhook, sync-stripe-charges, useClientWallet, useComputedWalletBalance)
-- Risk: Payment sync failures go undetected until client reports missing credits
-- Priority: Critical
-
-**No E2E Tests:**
-- What's not tested: UI flows, form submissions, client portal features
-- Files: All frontend code
-- Risk: Regressions in critical user paths not caught
-- Priority: Medium
+**Analysis Date:** 2026-03-12
 
 ---
 
-*Concerns audit: 2026-03-04*
+## Security Issues
+
+### All 111 Edge Functions Have `verify_jwt = false`
+
+- Risk: Every edge function is publicly callable without any JWT. The anon key is all that is needed to invoke any function.
+- Files: `supabase/config.toml` (111 entries all with `verify_jwt = false`)
+- Current mitigation: None at the platform level. Some functions implement their own auth logic; many do not.
+- Impact: Unauthenticated callers can invoke billing, admin, Stripe charge, and user account management functions directly.
+- Fix approach: Audit each function and set `verify_jwt = true` for every function that is only called from the authenticated portal. Only externally-triggered webhooks (GHL, lead routing, Stripe) legitimately need JWT disabled.
+
+### `admin-delete-user` Has No Authorization Check
+
+- Risk: Any caller with the Supabase anon key can delete any auth user by supplying a `userId`.
+- Files: `supabase/functions/admin-delete-user/index.ts`
+- Current mitigation: The frontend calls it with the anon key (`VITE_SUPABASE_ANON_KEY`). There is no role check, secret header, or JWT verification inside the function.
+- Fix approach: Either set `verify_jwt = true` and validate the calling user has `admin` role via the JWT claims, or add a shared secret header validated against an env var.
+
+### `admin-reset-user` Has No Authorization Check
+
+- Risk: Any caller can reset any user's password and email, or create new users with any role, by knowing a `clientId`.
+- Files: `supabase/functions/admin-reset-user/index.ts`
+- Current mitigation: None. `verify_jwt = false`.
+- Fix approach: Same as admin-delete-user above.
+
+### `stripe-webhook` Does Not Verify Stripe Signatures
+
+- Risk: Any attacker can POST fake payment events (checkout.session.completed, payment_intent.succeeded) and trigger arbitrary conversion tracking writes.
+- Files: `supabase/functions/stripe-webhook/index.ts`
+- Current mitigation: None — `payload` is parsed from raw JSON with no signature check. Compare to `stripe-billing-webhook/index.ts` which does implement HMAC verification via `verifySignature()`.
+- Fix approach: Implement the same HMAC verification pattern used in `stripe-billing-webhook` using `STRIPE_WEBHOOK_SECRET`.
+
+### `sync-stripe-charges` Has No Authorization
+
+- Risk: Any anonymous caller can trigger a full Stripe sync, pulling and writing data for any client.
+- Files: `supabase/functions/sync-stripe-charges/index.ts` (line 678: `// No auth check — internal admin function`)
+- Current mitigation: Comment acknowledges the gap; no enforcement.
+- Fix approach: Set `verify_jwt = true` and check admin role, or add a service-key header.
+
+### ENCRYPTION_KEY Falls Back to SUPABASE_SERVICE_ROLE_KEY
+
+- Risk: If `ENCRYPTION_KEY` secret is missing from the deployed environment, three GHL functions silently use the Supabase service role key as the AES encryption key — effectively encrypting OAuth tokens with a key that is visible to every function.
+- Files: `supabase/functions/ghl-create-subaccount/index.ts:147`, `supabase/functions/ghl-inject-twilio/index.ts:197`, `supabase/functions/ghl-provision-phone/index.ts:260`
+- Pattern: `const encryptionKey = Deno.env.get("ENCRYPTION_KEY") || supabaseKey;`
+- Fix approach: Remove the fallback. If `ENCRYPTION_KEY` is missing, the function must fail loudly rather than silently degrade to an insecure state.
+
+### AES Key Derivation Pads Short Keys with Zeros
+
+- Risk: If `ENCRYPTION_KEY` is shorter than 32 characters it is padded with `'0'` characters. Any key under 32 chars is effectively a weaker key.
+- Files: `supabase/functions/crm-location-token/index.ts:12`, `supabase/functions/run-full-onboarding/index.ts:394`
+- Pattern: `key.padEnd(32, '0').slice(0, 32)`
+- Fix approach: Validate key length on startup and throw rather than silently pad.
+
+### `query-old-secrets` Exposes Old Production DB Credentials
+
+- Risk: The file contains a hardcoded full Postgres connection string for the old Supabase project (`qydkrpirrfelgtcqasdx`), including the database password, and uses a hardcoded secret `"bridge-migration-2024"` for auth. This is a migration artifact that was never removed.
+- Files: `alphahub-v2/supabase/functions/query-old-secrets/index.ts:3` (OLD_DB_URL hardcoded), line 8 (hardcoded secret)
+- Fix approach: Delete this file and the `alphahub-v2/` directory entirely. Rotate the old database password if it is still active.
+
+### Old Supabase Project (`qydkrpirrfelgtcqasdx`) Still Referenced in Production Code
+
+- Risk: `crm-location-token` proxies live production traffic to the deprecated project as a fallback. If that old project's Supabase anon key is ever rotated or the project deleted, GHL OAuth will silently break.
+- Files: `supabase/functions/crm-location-token/index.ts:112` (`OLD_PROJECT_URL = "https://qydkrpirrfelgtcqasdx.supabase.co"`)
+- Current state: The comment says "Temporary bridge… This will be removed once GHL OAuth is re-authenticated." This has not been resolved.
+- Fix approach: Complete GHL OAuth re-authentication on the new project and remove the entire proxy bridge.
+
+### Wildcard CORS on All Functions
+
+- Risk: All 82+ functions that set `'Access-Control-Allow-Origin': '*'` allow cross-origin requests from any domain, enabling CSRF-style attacks that exploit a victim's session.
+- Fix approach: Restrict to `https://alphaagent.io` for browser-facing functions. Webhook receivers (GHL, Stripe, Fathom, etc.) must remain permissive but should validate source authenticity via signatures instead.
+
+### MCP Proxy Exposes Write Operations and Raw SQL
+
+- Risk: The `mcp-proxy` function exposes `update_client`, `update_ad_budget`, `toggle_ads`, `send_message`, `send_slack_webhook`, and a `run_query` tool (SELECT-only but unvalidated). Protection is a single shared `MCP_PROXY_SECRET` header value.
+- Files: `supabase/functions/mcp-proxy/index.ts`
+- Impact: If the secret is leaked or brute-forced, an attacker can modify client data, toggle Google Ads, and read all database rows.
+- Fix approach: IP-allowlist the endpoint or move to OAuth-based machine auth.
+
+---
+
+## Operational / Deployment Risks
+
+### `sync-stripe-charges` Requires Manual `verify_jwt` Patch After Every Deploy
+
+- Risk: The function is deployed with `verify_jwt = false` in config.toml, but the deployed Supabase API overrides this back to `true` on each deploy. A manual API PATCH must be run after every deploy or the function breaks silently for all callers.
+- Files: `supabase/config.toml` — `sync-stripe-charges` section; `memory/MEMORY.md` documents the workaround
+- Impact: Missing the patch means billing syncs and wallet deposits stop working until discovered.
+- Fix approach: This is a Supabase CLI limitation with `config.toml`. The real fix is to add the PATCH call to a post-deploy script or CI step so it cannot be forgotten.
+
+### Vercel Auto-Deploy Webhook Is Broken
+
+- Risk: Pushing to `main` does NOT trigger a Vercel deploy. A manual API call is required every time or the production frontend silently goes stale.
+- Files: `memory/MEMORY.md` documents the workaround curl command
+- Impact: Code merged to main may not reach production until someone manually triggers a deploy. There is no CI step enforcing this.
+- Fix approach: Fix the Vercel GitHub webhook integration, or add a GitHub Actions workflow that calls the deploy API on push to main.
+
+### No Error Monitoring (No Sentry / Datadog / Rollbar)
+
+- Risk: Frontend JavaScript errors and edge function failures are invisible unless someone happens to check Supabase function logs. There is no alerting, aggregation, or error rate tracking.
+- Files: No monitoring SDK found in `package.json`, no imports of Sentry/LogRocket/Datadog in `src/`, no monitoring calls in edge functions.
+- Impact: Silent failures in billing, wallet sync, onboarding, or lead delivery go undetected.
+- Fix approach: Add Sentry to the Vite frontend. For edge functions, at minimum add a Slack notification on uncaught errors in the highest-impact functions (stripe-billing-webhook, sync-stripe-charges, run-full-onboarding, check-low-balance, auto-recharge-run).
+
+### No Tests at All — Zero Coverage
+
+- Risk: The project has no unit tests, integration tests, or end-to-end tests. Zero test files found in `src/` or `supabase/functions/`.
+- Impact: Every code change to billing, wallet computation, Stripe sync, or onboarding is deployed without any automated validation. Silent regressions are undetectable.
+- Fix approach: Start with the most financially sensitive code — `sync-stripe-charges` `ensureWalletDeposit()`, wallet balance computation in `useCampaignCommandCenter.ts`, and `stripe-billing-webhook` handler routing.
+
+### `alphahub-v2/` Is a Committed Migration Artifact
+
+- Risk: The `alphahub-v2/` directory at the repo root contains a separate `.git` repo, a full `node_modules`, built `dist/` assets, and the `query-old-secrets` function with hardcoded DB credentials. It is committed to the repo.
+- Files: `/alphahub-v2/` (entire directory)
+- Impact: Bloats the repo, creates confusion about which codebase to edit, and embeds sensitive credentials.
+- Fix approach: Delete `alphahub-v2/` from the repository entirely. Add it to `.gitignore` if a local copy is needed.
+
+---
+
+## Tech Debt
+
+### 51 Edge Functions Use Deprecated `serve()` from `deno.land/std@0.168.0`
+
+- Issue: The recommended pattern is `Deno.serve()` (built-in). 51 functions still import `serve` from `"https://deno.land/std@0.168.0/http/server.ts"`. 7 others use `std@0.190.0`. Only 56 use `Deno.serve()`.
+- Files: Majority of functions in `supabase/functions/` — examples: `lead-webhook`, `inject-lead-to-ghl`, `morning-review-job`, `mcp-proxy`, `check-low-balance`, `sync-meta-ads`
+- Impact: Supabase will eventually drop support for older Deno versions. Mixed patterns make the codebase harder to maintain.
+- Fix approach: Batch-replace `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"; serve(async (req)` with `Deno.serve(async (req)`.
+
+### Wallet Balance Computation Is Duplicated Across Multiple Layers
+
+- Issue: Wallet balance = `sum(wallet_transactions.amount WHERE type='deposit')` minus `sum(ad_spend_daily.cost WHERE date >= tracking_start_date)` with a performance percentage multiplier applied. This formula is recalculated independently in:
+  - `src/hooks/useCampaignCommandCenter.ts` (lines 398-412)
+  - `supabase/functions/mcp-proxy/computed-wallet.ts`
+  - `supabase/functions/check-low-balance/index.ts`
+  - `supabase/functions/auto-recharge-run/index.ts`
+- Impact: Any change to the formula must be applied in 4+ places. Drift between implementations has already occurred — the `mcp-proxy` has a separate `computed-wallet.ts` helper while the frontend recalculates inline.
+- Fix approach: Create a single Supabase database function or RPC (`compute_wallet_balance`) that is called everywhere, so the formula has one authoritative source.
+
+### `balance_after` Column Is Always Written as `0`
+
+- Issue: `wallet_transactions.balance_after` exists in the schema but is always inserted as `0`. It is a vestigial field from an earlier design.
+- Files: `src/hooks/useBillingRecords.ts:187`, `src/hooks/useBillingRecords.ts:311`, `src/hooks/useBillingRecords.ts:478` (comment: `// Computed field, not used anymore`)
+- Impact: The column contains no useful data, wastes storage, and creates confusion.
+- Fix approach: Remove the column in a migration or officially document it as deprecated.
+
+### AES-GCM Encryption Logic Is Copy-Pasted Across Multiple Functions
+
+- Issue: The `encryptToken` / `decryptToken` helper pair with `padEnd(32, '0').slice(0, 32)` key derivation is copy-pasted into at least 5 functions instead of being in a shared module: `crm-location-token`, `run-full-onboarding`, `crm-oauth-callback`, `ghl-create-subaccount`, `ghl-inject-twilio`.
+- Impact: Any bug fix must be applied in 5+ places. The padding bug noted above exists in all copies.
+- Fix approach: Move to a shared `_shared/crypto.ts` module imported via relative path.
+
+### `listUsers()` Called Without Pagination in Three Functions
+
+- Issue: `auth.admin.listUsers()` loads all auth users into memory with no pagination. As the user count grows this will eventually hit memory limits or become very slow.
+- Files: `supabase/functions/create-user-account/index.ts:67`, `supabase/functions/admin-reset-user/index.ts:68`, `supabase/functions/agent-onboarding-webhook/index.ts:667`
+- Fix approach: Replace with `listUsers({ page: 1, perPage: 1000 })` or, better, query the `profiles` or `clients` table for the specific email instead of loading all users.
+
+### Fuzzy Date-Matching for Billing Record Deduplication Is Brittle
+
+- Issue: `sync-stripe-charges` uses a ±3-day date window plus amount + billing_type to fuzzy-match Stripe invoices to manually created billing records. This can silently match the wrong record if two invoices of the same amount fall within 6 days.
+- Files: `supabase/functions/sync-stripe-charges/index.ts:356-389` (invoice fuzzy match), `supabase/functions/sync-stripe-charges/index.ts:507-537` (charge fuzzy match)
+- Impact: Incorrect back-filling of Stripe IDs causes wallet deposit double-counting or missed deposits.
+- Fix approach: Prefer exact `stripe_invoice_id` / `stripe_payment_intent_id` matching only. Fuzzy matching should require at minimum manual review before writing.
+
+### `sync-stripe-charges` Has a Hard Cap of 250 Invoices Per Client
+
+- Issue: Invoice pagination stops after 5 pages × 50 invoices = 250 invoices per Stripe customer. Clients with longer billing histories will have silent gaps.
+- Files: `supabase/functions/sync-stripe-charges/index.ts:299`: `while (hasMore && pageCount < 5)`
+- Fix approach: Remove the arbitrary `pageCount < 5` cap or add an explicit warning log when it is hit.
+
+### `morning-review-job` Is 1,850 Lines
+
+- Issue: The job does campaign health checks, AI proposal generation, safe mode triggering, Slack notifications, and budget adjustments all in one 1,850-line function. It has no timeout protection against hitting the Supabase edge function 60-second limit.
+- Files: `supabase/functions/morning-review-job/index.ts`
+- Impact: If the job times out mid-run, some campaigns get processed and others do not, with no retry and no indication of partial completion.
+- Fix approach: Split into composable sub-functions (evaluate-campaigns, generate-proposals, send-alerts). Add a progress checkpoint pattern so partial runs can resume.
+
+### `run-full-onboarding` Is 2,017 Lines and Contains Inline Sleeps
+
+- Issue: The function has a 12-second `await sleep(12000)` mid-execution and numerous other waits. With the 60-second edge function timeout, complex onboardings risk being cut off mid-step.
+- Files: `supabase/functions/run-full-onboarding/index.ts:1662`
+- Impact: Partial onboardings leave clients in broken intermediate states (e.g., GHL subaccount created but Twilio not injected).
+- Fix approach: Use a step-resumable state machine pattern already partially present (the `automation_runs` table). Each step should be individually retriable.
+
+### `client_name` Denormalized Into `billing_records`
+
+- Issue: `billing_records` stores `client_name` as a plain text column that is set at insert time and never updated. If a client is renamed, historical billing records show the old name.
+- Files: Migration `20260206020543` added the column; `supabase/functions/sync-stripe-charges/index.ts:162` (writes `clientName`)
+- Fix approach: Join to `clients.name` at query time instead of storing it.
+
+### `_backup/` Directory Contains Old Components in the Repo
+
+- Issue: `_backup/` at the project root contains `BillingSection.tsx`, `BillingStatsCards.tsx`, `BillingTimelineTable.tsx`, and `RevenueIntelligenceCard.tsx`. These are old component versions committed as a manual backup, not managed by git.
+- Files: `_backup/`
+- Fix approach: Delete the directory. Git history is the correct backup mechanism.
+
+### `behindPaceCount` Is Hardcoded to Zero
+
+- Issue: The Campaign Command Center dashboard metric `behindPaceCount` is always `0` with a comment indicating the real calculation was never implemented.
+- Files: `src/hooks/useCampaignCommandCenter.ts:665`: `const behindPaceCount = 0; // TODO: Calculate based on full pacing data`
+- Impact: The pacing alert count shown to admins is always zero, masking campaigns that are spending behind pace.
+- Fix approach: Implement pacing calculation based on `days_elapsed / days_in_month` vs `spend_so_far / wallet_balance`.
+
+---
+
+## Fragile Areas
+
+### GHL OAuth Token Chain Is a Single Point of Failure
+
+- What makes it fragile: All GHL API calls (onboarding, lead injection, subaccount creation, Twilio injection, calendar sync) depend on a single agency-level OAuth token stored in `ghl_oauth_tokens`. If this token expires and the refresh fails, all GHL-dependent workflows stop.
+- Files: `supabase/functions/crm-location-token/index.ts`, `supabase/functions/run-full-onboarding/index.ts:416-487`
+- Current state: There is still a live fallback proxy to the old Supabase project (`qydkrpirrfelgtcqasdx`) — meaning the old project's GHL OAuth token is still active and being used for some requests.
+- Safe modification: Always test GHL operations after any deploy of `crm-location-token`, `run-full-onboarding`, or `ghl-create-subaccount`. Never rotate the GHL OAuth credentials without updating the token in the new project first.
+
+### Wallet Balance Breaks If `tracking_start_date` Is Missing
+
+- What makes it fragile: If a `client_wallets` row exists but `tracking_start_date` is NULL, `walletRemaining` is returned as `0` rather than the actual balance. This is documented in CLAUDE.md but has no runtime warning.
+- Files: `src/hooks/useCampaignCommandCenter.ts:396-412`, `supabase/functions/sync-stripe-charges/index.ts:101-108`
+- Safe modification: Always verify `tracking_start_date` is set after any client wallet creation. The `sync-stripe-charges` function sets it on first deposit, but manually created wallets may not have it.
+
+### Two Stripe Accounts Without SDK — Raw `fetch()` Only
+
+- What makes it fragile: All Stripe API calls use raw `fetch()` with manual URL construction. There is no automatic retry, rate-limit handling, or typed response validation. A Stripe API version change or new field could silently break existing parsing.
+- Files: `supabase/functions/sync-stripe-charges/index.ts`, `supabase/functions/stripe-billing-webhook/index.ts`, `supabase/functions/auto-recharge-run/index.ts`, and 20 others
+- Safe modification: When adding or modifying Stripe interactions, manually check the API version header (`Stripe-Version`) and test against both the `management` and `ad_spend` Stripe accounts.
+
+### `VITE_` Env Vars Used Inside Edge Functions
+
+- What makes it fragile: `get-stripe-config/index.ts` reads `VITE_STRIPE_MANAGEMENT_PUBLISHABLE_KEY` and `VITE_STRIPE_AD_SPEND_PUBLISHABLE_KEY` — `VITE_` is a Vite frontend prefix and these secrets must be separately set as Supabase function secrets. If only the Vite env is updated, the edge function silently returns empty strings.
+- Files: `supabase/functions/get-stripe-config/index.ts:13-14`
+- Fix approach: Store these under non-prefixed secret names in Supabase and read them from `Deno.env.get('STRIPE_MANAGEMENT_PUBLISHABLE_KEY')`.
+
+### Google Ads Uses a Single Shared OAuth Refresh Token for All Clients
+
+- What makes it fragile: All Google Ads operations (budget updates, campaign sync, targeting sync, morning review) authenticate with a single `GOOGLE_ADS_REFRESH_TOKEN` env var. If this token is revoked (e.g., password change on the associated Google account) all Google Ads operations break for all clients simultaneously.
+- Files: `supabase/functions/update-google-ads-budget/index.ts`, `supabase/functions/sync-google-ads/index.ts`, `supabase/functions/morning-review-job/index.ts`, and 7 other functions
+- Safe modification: There is no per-client isolation. A single revocation is a full outage.
+
+---
+
+## Performance Concerns
+
+### `mcp-proxy` Is 2,644 Lines and Runs Unbounded Parallel DB Queries
+
+- Problem: The function fires up to 10 `Promise.all()` batches with 8-10 parallel Supabase queries each. For the `get_daily_dashboard` tool, 10 queries run in parallel on every call. With no query limits on some paths and 100+ clients, this can generate very large result sets.
+- Files: `supabase/functions/mcp-proxy/index.ts` (lines 839-870 — `getDailyDashboard` fires 10 parallel queries)
+- Impact: Slow response times and potential Supabase query timeout (default 30s) on large datasets.
+
+### `admin-reset-user` Calls `auth.admin.listUsers()` Which Loads All Users
+
+- Problem: On each call to create/reset a user, `listUsers()` fetches all auth users (no page size specified) and then filters in memory with `Array.find()`.
+- Files: `supabase/functions/admin-reset-user/index.ts:68`
+- Fix approach: Use `supabase.auth.admin.listUsers({ page: 1, perPage: 50 })` and paginate, or query `profiles` table by email instead.
+
+---
+
+## Missing Critical Features
+
+### No Post-Deploy Validation Step
+
+- Problem: There is no automated check after a Vercel deploy that the frontend is serving the expected version, and no check after edge function deploys that functions are returning healthy responses.
+- Impact: Broken deploys go undetected until a user reports an issue.
+
+### No Webhook Signature Verification for GHL Webhooks
+
+- Problem: `lead-webhook`, `lead-status-webhook`, `agent-onboarding-webhook`, and `agent-update-webhook` all accept GHL webhook payloads without verifying a shared secret or HMAC signature. Any caller knowing the endpoint URL can inject fake leads or status changes.
+- Files: `supabase/functions/lead-webhook/index.ts` (validates an API key from the DB — partial mitigation), `supabase/functions/lead-status-webhook/index.ts`, `supabase/functions/agent-onboarding-webhook/index.ts`, `supabase/functions/agent-update-webhook/index.ts`
+
+### No Retry or Dead-Letter Queue for Failed Edge Function Invocations
+
+- Problem: If `stripe-billing-webhook` or `run-full-onboarding` throws an unhandled error, the event is lost. Stripe will retry webhook delivery up to 3 times, but internal function-to-function calls (e.g., `morning-review-job` calling `update-google-ads-budget`) have no retry mechanism.
+- Impact: Missed billing events, incomplete onboardings, or stale campaign budgets with no visibility.
+
+---
+
+## Dependencies at Risk
+
+### `deno.land/std@0.168.0` — Outdated Deno Standard Library
+
+- Risk: 51 functions depend on this version from 2022. Supabase Edge Runtime has moved to newer Deno versions. Behavior differences between runtime and imported std can cause subtle bugs.
+- Migration plan: Migrate all functions to `Deno.serve()` and remove the `std` import entirely.
+
+### `esm.sh/@supabase/supabase-js@2` — Pinned at Major Version Only
+
+- Risk: All edge functions use `@supabase/supabase-js@2` from esm.sh with no minor/patch pin. A breaking change in a `@2.x` release would immediately affect all deployed functions on next cold start.
+- Migration plan: Pin to a specific version (e.g., `@supabase/supabase-js@2.43.4`) in all function imports.
+
+---
+
+*Concerns audit: 2026-03-12*

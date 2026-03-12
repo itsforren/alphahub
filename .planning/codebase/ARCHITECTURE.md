@@ -1,282 +1,274 @@
 # Architecture
 
-**Analysis Date:** 2026-03-04
+**Analysis Date:** 2026-03-12
 
 ## Pattern Overview
 
-**Overall:** React SPA with Supabase backend, edge functions, and context-based state management
+**Overall:** Multi-tenant SaaS platform with a React SPA frontend, Supabase (PostgreSQL + Deno) backend, and a companion iOS app. No traditional API server — all server logic lives in Supabase Edge Functions.
 
 **Key Characteristics:**
-- Client-side routing with React Router (v6) for multi-tenant hub experience
-- Lazy-loaded route components for performance optimization
-- TanStack React Query for server state management and caching
-- Supabase Auth with MFA support and role-based access control (RBAC)
-- Deno edge functions for webhook handling, billing, and external API integrations
-- Multi-context architecture for global state (Auth, Notifications, Calculator, Client Preview)
+- All data access from the frontend goes through TanStack React Query hooks that call the Supabase JS client directly
+- Business logic that requires secrets, external API calls, or elevated permissions runs in Deno edge functions
+- Supabase RLS (Row Level Security) enforces authorization at the database layer
+- Role-based access: `admin`, `member`, `guest`, `client`, `referrer` — determined at login via `get_user_role` RPC and surfaced through `AuthContext`
+- Multi-tenant in practice: two parallel Stripe accounts (`management` and `ad_spend`) for different billing concerns; GHL company ID is shared across all clients (`30bFOq4ZtlhKuMOvVPwA`)
 
 ## Layers
 
 **Presentation Layer:**
-- Purpose: React UI components using shadcn/ui (Radix primitives) with Tailwind CSS
-- Location: `src/components/`
-- Contains: Page components (`src/pages/`), feature components (portal, admin, hub, etc.), UI primitives
-- Depends on: Hooks, Contexts, Router, Icons (lucide-react)
-- Used by: BrowserRouter (entry point)
+- Purpose: UI rendering, user interaction, route-level access control
+- Location: `src/pages/`, `src/components/`
+- Contains: Route pages, layout shells, reusable widgets, portal components
+- Depends on: Data layer (hooks), context layer
+- Used by: End users (browser and iOS)
 
-**State Management Layer:**
-- Purpose: Global state and server state caching
-- Location: `src/contexts/`, TanStack React Query client
-- Contains: AuthContext, NotificationContext, CalculatorContext, ClientPreviewContext
-- Patterns: Context API for global app state, React Query for server state with automatic caching/refetching
-- Depends on: Supabase client, edge functions
-- Used by: All page and feature components
-
-**Data Access Layer:**
-- Purpose: Hooks and custom queries abstracting data fetching
+**Data Layer:**
+- Purpose: All Supabase reads and writes, caching, optimistic updates
 - Location: `src/hooks/`
-- Contains: 60+ custom hooks (useBillingRecords, useClients, useChat, useCampaignCommandCenter, etc.)
-- Pattern: Each hook wraps one or more React Query queries/mutations
-- Depends on: Supabase client, types from `src/integrations/supabase/types.ts`
-- Used by: Components throughout the app
+- Contains: TanStack React Query hooks, mutations, realtime subscriptions
+- Depends on: `src/integrations/supabase/client.ts`, `src/contexts/AuthContext.tsx`
+- Used by: Presentation layer only
 
-**Integration Layer:**
-- Purpose: Supabase client initialization and type generation
-- Location: `src/integrations/supabase/`
-- Contains: `client.ts` (Supabase client initialization), `types.ts` (auto-generated from database schema)
-- Pattern: Singleton Supabase client with auto-session persistence and refresh
-- Depends on: Environment variables (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)
-- Used by: All hooks and edge functions
+**Context Layer:**
+- Purpose: Global state that crosses component boundaries
+- Location: `src/contexts/`
+- Contains: `AuthContext`, `ClientPreviewContext`, `NotificationContext`, `CalculatorContext`
+- Depends on: Supabase client
+- Used by: All presentation and data layers
 
-**Edge Functions Layer:**
-- Purpose: Backend logic running on Supabase Deno runtime
-- Location: `supabase/functions/`
-- Contains: 110+ functions for webhooks, integrations, billing, onboarding, sync jobs
-- Patterns:
-  - Webhook receivers (lead-webhook, stripe-webhook, fathom-webhook, etc.)
-  - Scheduled jobs (auto-recharge-run, billing-collections-run, check-lead-router-health, etc.)
-  - OAuth callbacks (crm-oauth-callback, crm-location-token)
-  - One-off operations (create-user-account, sync-stripe-charges, etc.)
-- Depends on: Deno standard library, @supabase/supabase-js, fetch API
-- Used by: External webhooks, cron jobs via Supabase scheduler, frontend function invocation
+**Edge Function Layer:**
+- Purpose: Server-side logic requiring secrets, external API calls, or service-role DB access
+- Location: `supabase/functions/<function-name>/index.ts`
+- Contains: Deno HTTP handlers, Stripe API calls, Google Ads API, GHL API, Twilio, Plaid
+- Depends on: `SUPABASE_SERVICE_ROLE_KEY`, external secrets via `Deno.env.get()`
+- Used by: Frontend (via `supabase.functions.invoke()`), external webhooks (Stripe, GHL, lead sources), pg_cron scheduled jobs
 
-**Configuration Layer:**
-- Purpose: Static and runtime configuration
-- Location: `src/config/`
-- Contains: Stripe client initialization (management + ad_spend accounts), webhook config
-- Pattern: Lazy initialization and caching to avoid loading unused services
-- Depends on: Environment variables, Supabase functions for fetching secrets
-- Used by: Components requiring Stripe or webhook functionality
+**Database Layer:**
+- Purpose: Persistent state, RLS enforcement, computed functions
+- Location: `supabase/migrations/`
+- Contains: PostgreSQL tables, RLS policies, RPC functions (`get_user_role`, `link_client_to_user`)
+- Depends on: Nothing above it
+- Used by: Frontend JS client, edge functions (service role)
 
-**Utilities Layer:**
-- Purpose: Shared helper functions
-- Location: `src/lib/`
-- Contains: Attribution tracking (visitor ID, UTM capture, GTM integration), PDF generation, utils
-- Depends on: Supabase for tracking persistence
-- Used by: Pages, components, contexts
+**iOS App Layer:**
+- Purpose: Native mobile client for insurance agents (clients only, not admins)
+- Location: `AlphaHub/`
+- Contains: SwiftUI views, `DataManager` (central state), `AuthManager`, `RealtimeManager`
+- Depends on: Same Supabase project via Swift Supabase SDK
+- Used by: Client-role users on iOS
 
 ## Data Flow
 
 **Authentication Flow:**
 
-1. User visits `/login`
-2. LoginPage calls `AuthContext.signIn()` which invokes Supabase Auth
-3. AuthContext fetches user profile from `profiles` table, detects role
-4. User session persisted via Supabase auto-refresh to localStorage
-5. ProtectedRoute checks AuthContext.user; redirects if not authenticated
-6. Role-based access: ProtectedRoute checks requiredRole against user profile
+1. User submits credentials at `/login`
+2. `AuthContext.signIn()` calls `supabase.auth.signInWithPassword()`
+3. On success, `onAuthStateChange` fires; `fetchUserData()` runs
+4. `fetchUserData()` fetches `profiles` table and calls `get_user_role` RPC
+5. `link_client_to_user` RPC auto-links client record if email matches
+6. Role stored in `AuthContext.role`; `isAdmin`, `isClient`, etc. computed
+7. Admin routes check `requiredRole='admin'` in `ProtectedRoute`; MFA check added on top for admins with TOTP enrolled
+8. `/hub` index redirects admins to `/hub/admin/clients`, clients to their portal (`PortalAdminClientDetail`)
 
-**Hub Navigation Flow:**
+**Client Onboarding Flow:**
 
-1. ProtectedRoute wraps AgentHubLayout
-2. AgentHubLayout renders sidebar with role-based nav sections
-3. Sidebar items conditionally show based on isAdmin, isReferrer, etc.
-4. Routes under `/hub` are nested within AgentHubLayout outlet
-5. URL changes trigger Outlet re-render with matching page component
+1. Admin creates client record in `clients` table
+2. Admin triggers `run-full-onboarding` edge function with `clientId`
+3. 19-step automation runs sequentially (steps 10, 19 are manual):
+   - Steps 1-8: Webflow page creation (NFIA, scheduler, lander, profile, thank-you pages)
+   - Step 9: GHL subaccount creation via `ghl-create-subaccount`
+   - Step 10: Manual — admin activates SaaS in GHL
+   - Steps 11-15: GHL snapshot install, calendar pull, user assignment, custom field sync
+   - Step 16: Google Ads campaign creation via `create-google-ads-campaign`
+   - Steps 17-18: Final verification via `verify-onboarding`
+   - Step 19: Manual — Twilio phone provisioned via `ghl-inject-twilio` / `ghl-provision-phone`
+4. Progress tracked in `onboarding_automation_runs` table; frontend polls via `useOnboardingAutomation` hook
+5. After completion, client signs agreement (OTP-verified via `send-agreement-otp` / `verify-agreement-otp`)
+6. Client completes payment setup via `OnboardingPaymentFlow` component (Stripe Elements)
 
-**Billing Data Flow:**
+**Billing Cycle Flow (Management Fees):**
 
-1. Component (e.g., BillingDashboard) mounts
-2. Calls useBillingRecords() hook → React Query query
-3. Hook calls supabase.from('billing_records').select()
-4. Data cached by React Query, auto-refetch on stale interval
-5. useMutation in hook handles create/update operations
-6. Mutations trigger invalidateQueries to refresh cache
-7. Stripe webhook from supabase-functions/stripe-webhook/ creates new billing_record
-8. Next refetch picks up new data
+1. Stripe subscription created for client on `management` Stripe account
+2. `stripe-billing-webhook` edge function receives `invoice.paid` / `payment_intent.succeeded` events
+3. Webhook updates `billing_records` table (`status = 'paid'`, `paid_at` set)
+4. If billing record had `safe_mode` campaigns, webhook calls `update-google-ads-budget` to restore budgets
+5. Failed payments trigger `billing-collections-run` or `enforce-management-billing` scheduled functions
+6. `mark-overdue-billing` edge function marks records overdue; `weekly-billing-audit` audits consistency
+7. Admin views in `BillingDashboard` (`/hub/admin/billing`) consume `useBillingDashboard` hook
+8. `useBillingRecords` hook provides per-client billing record CRUD
 
-**Attribution Tracking Flow:**
+**Ad Spend Wallet Flow:**
 
-1. main.tsx calls initTracking() on app load
-2. tracking.ts generates/retrieves visitor_id from localStorage
-3. setupAutoTracking() captures UTM params from URL
-4. On page view: dispatch event to GTM dataLayer + Supabase tracking table
-5. First-touch (channel, source, campaign) stored once
-6. Last-touch updated on each page
-7. Referral code stored separately (aa_ref cookie fallback)
+1. Client adds payment method via `OnboardingPaymentFlow` or `PaymentMethodCard` on `ad_spend` Stripe account
+2. Admin or auto-billing creates charge on `ad_spend` Stripe account
+3. `stripe-webhook` receives `checkout.session.completed` or `payment_intent.succeeded` from ad spend account
+4. Webhook calls `add-wallet-credit` edge function with `client_id` and `amount`
+5. `add-wallet-credit` inserts into `wallet_transactions` (type=`deposit`), ensures `client_wallets` record exists with `tracking_start_date`
+6. Frontend computes balance in `useComputedWalletBalance`: `totalDeposits - displayedSpend`
+   - `totalDeposits` = sum of all `wallet_transactions` where `transaction_type='deposit'`
+   - `trackedSpend` = sum of `ad_spend_daily.cost` since `tracking_start_date`
+   - `displayedSpend` = `trackedSpend` inflated by `performancePercentage` setting
+7. When `remainingBalance <= low_balance_threshold`, `useComputedWalletBalance` automatically calls `check-low-balance` edge function
+8. `check-low-balance` attempts budget reduction to safe-mode ladder (`$0.01, $0.10, $1.00/day`), sets `campaigns.safe_mode = true`
+9. When wallet refilled (billing webhook), `stripe-billing-webhook` calls `update-google-ads-budget` to restore pre-safe-mode budgets
 
-**State Management:**
+**Ad Spend Tracking Flow:**
 
-- **AuthContext**: User session, profile, role, MFA status — refresh on app startup
-- **NotificationContext**: Live notifications with seeded random for consistency
-- **CalculatorContext**: ROI calculator state (budget, leads, ROI) — form state
-- **ClientPreviewContext**: Preview banner state for admins viewing clients
+1. pg_cron job triggers `sync-google-ads` edge function hourly
+2. `sync-google-ads` authenticates to Google Ads REST API via OAuth2 refresh token
+3. Fetches campaign metrics for all active clients; writes to `ad_spend_daily` table
+4. `morning-review-job` runs daily, evaluates campaign pacing vs. monthly budget
+5. Pacing logic produces `RulesResult`: proposes budget adjustments or safe-mode triggers
+6. Budget changes execute via `update-google-ads-budget` → Google Ads Mutate API → `campaign_audit_log` insert
+7. Campaign proposals requiring admin approval go to `proposals` table; UI shows in `CampaignCommandCenter`
+
+**Lead Pipeline Flow:**
+
+1. Leads arrive via `lead-webhook` edge function (authenticated by `webhook_api_keys` table)
+2. Webhook validates API key, parses lead data, inserts into `leads` table linked to `agent_id`
+3. Lead injected to GHL subaccount via `inject-lead-to-ghl` edge function
+4. Lead status transitions tracked via `lead-status-webhook`
+5. GHL appointment booking synced via `sync-ghl-appointments`
+6. Premium fields (`submitted_premium`, `approved_premium`, `issued_premium`) updated via GHL webhooks
+7. Frontend: `useLeads` hook for CRUD, `useLeadMetrics` hook computes aggregate metrics
+8. Lead router health monitored via `check-lead-router-health`, `check-lead-discrepancy`, `useRouterStatus` hook
+9. Admin lead stats visible in `CommandCenter > Router` tab (`/hub/admin/command?tab=router`)
+
+**Chat Flow (Client-to-Admin):**
+
+1. `ChatConversation` record auto-created or fetched per `client_id` via `useClientConversation` hook
+2. Messages inserted to `chat_messages` table with `sender_role` (client/admin)
+3. Realtime subscription on `chat_messages` channel provides live updates in `useChat`
+4. `chat-notification` edge function sends push/browser notifications on new messages
+5. File attachments uploaded to Supabase Storage; `attachment_url` stored on message row
+6. Admin inbox at `/hub/admin/chat?tab=inbox` (`UnifiedChat` → `ChatInbox` → `AdminChatView`)
+7. Client chat at `/hub/chat` (`PortalChat` → `ChatPanel`)
+8. SLA tracking via `useChatSLAMetrics` hook; settings via `useSLASettings`
+
+**Team Chat Flow (Admin-to-Admin):**
+
+1. Two modes: DM conversations (`admin_dm_conversations`, `admin_dm_messages`) and channels (`admin_channels`, `admin_channel_messages`)
+2. `useAdminChat` hook handles all admin-chat data fetching and realtime via Supabase channels
+3. `TeamChat` page at `/hub/admin/chat?tab=team` renders sidebar + message panel
+4. File attachments stored in Supabase Storage bucket with signed URLs
+
+**Sales Pipeline / Prospect Flow:**
+
+1. Prospects arrive via `prospect-contact-capture`, `prospect-booking-webhook`, or manual entry
+2. Stored in `prospects` table with `pipeline_stage_id` FK to `pipeline_stages`
+3. GHL contact sync via `prospect-sync-custom-fields`, `ghl-stage-sync`
+4. Admin works pipeline in `SalesKanbanBoard` (`UnifiedSales > Pipeline tab`)
+5. Disposition changes trigger `sync-disposition-to-ghl`
+6. Attribution tracked in `b2b_attribution_data`; visible in `Attribution` tab
 
 ## Key Abstractions
 
-**ProtectedRoute (Abstraction):**
-- Purpose: Guard routes requiring authentication/authorization
-- File: `src/components/app/ProtectedRoute.tsx`
-- Pattern: Wrapper component checking AuthContext.user and requiredRole
-- Usage: Wraps hub routes, admin routes, protected pages
-- Fallback: Redirects to /login if user not authenticated
+**Client Record (`clients` table):**
+- Central entity linking everything: billing, leads, wallet, campaigns, chat, onboarding
+- `agent_id` field is the string identifier used in GHL and lead delivery (NOT the same as `id`)
+- `user_id` field links to Supabase Auth user (set after client creates account)
+- Examples: queried everywhere via `useClients`, `useClient`, `useClientByUserId` in `src/hooks/useClients.ts`
 
-**Custom Hooks Pattern (Abstraction):**
-- Purpose: Encapsulate server state queries with React Query
-- Examples: `useBillingRecords`, `useClients`, `useChat`, `useCampaignCommandCenter`
-- Pattern:
-  ```typescript
-  export function useBillingRecords(clientId?: string) {
-    const { data, isLoading, error } = useQuery({
-      queryKey: ['billing_records', clientId],
-      queryFn: () => fetchFromSupabase(...)
-    });
-    const createMutation = useMutation({...});
-    return { data, isLoading, error, createBillingRecord: createMutation.mutate, ... }
-  }
-  ```
-- Benefit: Decouples components from query details, enables caching
+**Campaign Row (`campaigns` table):**
+- Represents one Google Ads campaign; a client can have multiple (primary + secondary)
+- Stores `google_customer_id`, `google_campaign_id` for API calls
+- `safe_mode` boolean + `pre_safe_mode_budget` for wallet-protection logic
+- `src/hooks/useCampaigns.ts`, `src/components/campaigns/CampaignCommandCenter.tsx`
 
-**Context Provider Chain (Abstraction):**
-- File: `src/App.tsx`
-- Pattern: Nested providers wrap routes
-- Order (innermost to outermost):
-  1. QueryClientProvider (React Query)
-  2. TooltipProvider (shadcn/ui)
-  3. CalculatorProvider
-  4. NotificationProvider
-  5. AuthProvider
-  6. BrowserNotificationProvider
-  7. BrowserRouter (React Router)
-  8. HelmetProvider (Meta tags)
+**Wallet (`client_wallets` + `wallet_transactions` + `ad_spend_daily`):**
+- `client_wallets`: configuration row (thresholds, auto-billing settings, `tracking_start_date`)
+- `wallet_transactions`: ledger of deposits (all Stripe ad spend charges)
+- `ad_spend_daily`: Google Ads actuals synced hourly; balance computed by subtracting since `tracking_start_date`
+- `src/hooks/useComputedWalletBalance.ts`, `src/hooks/useClientWallet.ts`
 
-**Edge Function Pattern (Abstraction):**
-- Purpose: Serverless handlers for webhooks and integrations
-- Pattern:
-  ```typescript
-  const corsHeaders = { 'Access-Control-Allow-Origin': '*' };
-  Deno.serve(async (req) => {
-    if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    try {
-      const payload = await req.json();
-      // Process payload
-      // Write to database via supabase
-      return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-    } catch (error) {
-      return errorResponse(error);
-    }
-  });
-  ```
+**Dual Stripe Accounts:**
+- `management` account: monthly management fees, subscriptions — `STRIPE_MANAGEMENT_SECRET_KEY`
+- `ad_spend` account: wallet top-ups, ad spend charges — `STRIPE_AD_SPEND_SECRET_KEY`
+- `client_payment_methods` table stores cards per account with `stripe_account` column
+- `src/config/stripe.ts` lazily loads publishable keys via `get-stripe-config` edge function
+
+**Onboarding Automation Run (`onboarding_automation_runs`):**
+- Tracks 19-step automation per client; `steps_completed[]`, `steps_failed[]`, `step_data` (JSONB)
+- `src/hooks/useOnboardingAutomation.ts` provides `startAutomation`, `resumeFromStep` mutations
+- Frontend widget: `src/components/admin/OnboardingAutomationWidget.tsx`
+
+**Support Ticket (`support_tickets` + `ticket_replies`):**
+- `ticket_type`: `client_support` or `internal`
+- SLA deadline enforced; `priority` enum: `low/normal/high/urgent`
+- `src/hooks/useTicketDashboard.ts` for admin; `src/hooks/useClients.ts` (useSupportTickets) for client view
+
+**GHL OAuth Token Storage:**
+- GHL access token stored encrypted (AES-GCM) in Supabase secrets or DB
+- `ghl-create-subaccount` and `ghl-inject-twilio` both perform AES-GCM decrypt before API calls
+- Company ID hardcoded: `30bFOq4ZtlhKuMOvVPwA`
 
 ## Entry Points
 
-**Client Entry Point:**
-- Location: `src/main.tsx`
-- Triggers: App load in `index.html`
-- Responsibilities:
-  1. Initialize tracking (visitor ID, UTM capture, auto-tracking)
-  2. Mount React app to DOM root element
-  3. Setup HelmetProvider for meta tags
-
-**App Root Component:**
-- Location: `src/App.tsx`
-- Triggers: main.tsx render
-- Responsibilities:
-  1. Wrap all providers (React Query, Auth, Router, Contexts)
-  2. Setup BrowserRouter with route definitions
-  3. Configure lazy-loaded routes with Suspense
-  4. Redirect old routes (legacy /app → /hub, /portal → /hub)
-  5. Render error boundary and global toasts (Toaster, Sonner)
+**Web App:**
+- Location: `src/main.tsx` → `src/App.tsx`
+- Triggers: Browser navigation to `alphaagent.io`
+- Responsibilities: Provider tree setup (QueryClient, Auth, Router, Contexts), all route definitions
 
 **Hub Layout:**
 - Location: `src/components/hub/AgentHubLayout.tsx`
-- Triggers: ProtectedRoute wrapping `/hub` routes
-- Responsibilities:
-  1. Render collapsible sidebar with role-based nav
-  2. Render main content area via Outlet
-  3. Render maintenance/preview banners
-  4. Handle sidebar collapse/expand state
+- Triggers: Any `/hub/*` route when authenticated
+- Responsibilities: Sidebar nav (admin vs. client nav sections), outlet rendering, unread badge
 
-**Webhook Entry Points:**
-- stripe-webhook: Payment events → create billing_record
-- lead-webhook: Inbound lead → create lead, assign to campaign
-- agent-onboarding-webhook: Agent signup → create user account, provision GHL
-- fathom-webhook: Call tracking → update call_tracking table
-- location: `supabase/functions/[function-name]/index.ts`
+**Hub Index Redirect:**
+- Location: `HubIndex` function in `src/App.tsx`
+- Triggers: `GET /hub` (root)
+- Responsibilities: Admins → `/hub/admin/clients`; clients → `PortalAdminClientDetail` (their own portal)
+
+**Client Detail (Admin):**
+- Location: `src/pages/portal/admin/ClientDetail.tsx`
+- Triggers: `/hub/admin/clients/:id` or `/hub` for client role
+- Responsibilities: All client data rendering via tabbed layout — onboarding, performance, leads, billing, wallet, campaigns, chat, settings
+
+**Edge Function Webhooks:**
+- `supabase/functions/lead-webhook/index.ts` — receives leads from lead sources (no JWT)
+- `supabase/functions/stripe-webhook/index.ts` — receives Stripe ad spend events (no JWT)
+- `supabase/functions/stripe-billing-webhook/index.ts` — receives Stripe management billing events
+- `supabase/functions/agent-onboarding-webhook/index.ts` — triggers onboarding from external sources
+
+**iOS App:**
+- Location: `AlphaHub/App/AlphaHubApp.swift`
+- Triggers: App launch
+- Responsibilities: Auth check, biometric lock, data load via `DataManager.loadAllData()`
 
 ## Error Handling
 
-**Strategy:** Multi-layer error catching with fallbacks
+**Strategy:** Fail visibly at query boundary, toast for mutations
 
 **Patterns:**
-
-1. **ErrorBoundary (React):**
-   - Location: `src/components/ErrorBoundary.tsx`
-   - Catches render errors in subtree
-   - Shows error stack in dev, graceful message in prod
-   - Allows user to retry
-   - Used at root and key sections
-
-2. **React Query Error States:**
-   - Components access `error` from hooks
-   - Show error toast via `toast.error(error.message)`
-   - Retry button available via `refetch()` from hook
-   - Example: `useBillingRecords` returns `{ error, refetch }`
-
-3. **Try-Catch in Async Functions:**
-   - Edge functions wrap all logic in try-catch
-   - Return 400+ status with error message
-   - Frontend mutations catch and display to user
-   - Example: Stripe webhook catches missing customer email
-
-4. **Network Error Handling:**
-   - Supabase client auto-retries with exponential backoff
-   - Edge functions validate CORS before processing
-   - Frontend displays connection error toast if offline
-
-5. **Validation Errors:**
-   - Form components use react-hook-form + Zod
-   - Invalid fields show inline error messages
-   - Edge functions validate payload shape and return 400 if invalid
+- TanStack Query `error` state displayed as UI fallback or skeleton in components
+- Mutations use `onError` callback to call `toast()` from `sonner`
+- Edge functions return structured `{ error: string }` JSON with HTTP status codes
+- `ErrorBoundary` wraps the entire route tree in `src/App.tsx`
+- Edge functions log errors via `console.error()` (visible in Supabase function logs)
+- Onboarding automation stores per-step errors in `onboarding_automation_runs.error_log` JSONB
 
 ## Cross-Cutting Concerns
 
-**Logging:**
-- Approach: console.log/error in edge functions for server logs
-- Frontend: No centralized logger (uses Sonner toast for user errors)
-- Browser console for debugging via dev tools
+**Logging:** `console.log/error` in edge functions; visible in Supabase dashboard logs. No structured logging framework.
 
-**Validation:**
-- Frontend: Zod schemas in form components (e.g., LoginForm)
-- Backend: Edge functions validate payload shape before processing
-- Database: Supabase RLS policies enforce access control
+**Validation:** Input validation is ad-hoc in edge functions (manual checks) and implicit via Supabase column constraints. No validation library.
 
 **Authentication:**
-- Supabase Auth with email/password + optional MFA
-- JWT token stored in browser localStorage (auto-managed by Supabase client)
-- AuthContext exposes signIn, signUp, signOut, MFA enrollment/verification
-- Role detection via profiles table (admin, member, client, referrer, guest)
+- Web: Supabase Auth JWT, session persisted in `localStorage`; role from `get_user_role` RPC
+- Edge functions: JWT verified by default; exceptions declared in `supabase/config.toml` with `verify_jwt = false`
+- MFA: TOTP optional for admins; enforced by `ProtectedRoute` checking `mfaStatus`
+- iOS: Supabase Auth + biometric lock layer in `BiometricManager`
 
-**Rate Limiting:**
-- No explicit client-side rate limiting (delegated to Supabase API)
-- Edge functions may implement rate limiting for webhooks (not detected in code)
-- Stripe API calls rate limited by Stripe
+**Realtime:**
+- Chat uses Supabase Realtime channels (`chat_messages`, `admin_dm_messages`, `admin_channel_messages`)
+- Ticket dashboard uses Realtime for live ticket updates (`useTicketRealtime` in `useTicketDashboard.ts`)
+- iOS: `RealtimeManager` manages channel subscriptions for chat unread counts
 
-**Caching:**
-- React Query caches server state with configurable TTL (staleTime)
-- Stripe client loaded once and cached per account type
-- Edge function data (e.g., tracking events) written directly to DB (no caching)
+**Multi-tenant:**
+- All clients share one Supabase project and one GHL company
+- Tenant isolation enforced by RLS on all client-linked tables (filtering by `client_id` or `user_id`)
+- "Multi-tenant" in the sense of two business owners (Alpha Agent + Tierre Browne) is not code-level — it is operational (separate Stripe accounts, separate GHL subaccounts per client)
 
 ---
 
-*Architecture analysis: 2026-03-04*
+*Architecture analysis: 2026-03-12*

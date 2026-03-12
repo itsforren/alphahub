@@ -1,216 +1,384 @@
 # External Integrations
 
-**Analysis Date:** 2025-03-04
+**Analysis Date:** 2026-03-12
 
 ## APIs & External Services
 
-**Payment Processing:**
-- Stripe - Primary payment processing and billing
-  - SDK: `@stripe/stripe-js` (8.7.0), `@stripe/react-stripe-js` (5.6.0)
-  - Auth: Dual publishable keys (management + ad_spend) fetched via `get-stripe-config` edge function
-  - Frontend: `src/config/stripe.ts` manages key loading
-  - Edge functions: `create-stripe-invoice`, `stripe-webhook`, `stripe-billing-webhook`, `create-setup-intent`, `save-payment-method`, `create-stripe-subscription`, `sync-stripe-cards`
+### Stripe (Dual-Account)
 
-**Banking & Transactions:**
-- Plaid - Bank account linking and transaction sync
-  - SDK: `react-plaid-link` (4.1.1)
-  - Auth: Via `PLAID_CLIENT_ID`, `PLAID_SECRET` edge function secrets
-  - Edge functions: `plaid-create-link-token`, `plaid-exchange-token`, `plaid-sync-transactions`, `plaid-get-balances`, `plaid-daily-refresh`
-  - Environment: Supports sandbox and production via `PLAID_ENV`
+Alpha Hub operates **two completely separate Stripe accounts** — never mix their keys.
 
-**Marketing Platform:**
-- Google Ads - Campaign and ad spend management
-  - Auth: OAuth credentials stored in database
-  - Edge functions: `sync-google-ads`, `create-google-ads-campaign`, `update-google-ads-budget`, `update-google-ads-targeting`, `sync-google-ads-targeting`, `verify-google-ads-campaign`, `pause-google-ads-campaign`, `add-keywords-to-campaign`, `update-google-ads-url`, `sync-a2p-status`, `sync-internal-google-ads`, `google-ads-enhanced-conversion`
-  - Geo-targeting: State abbreviations mapped to Google Ads geo constant IDs
+**Management Account** (`STRIPE_MANAGEMENT_SECRET_KEY`):
+- Purpose: Monthly management fees ($1,497/mo) and recurring subscription billing
+- Webhook secret: `STRIPE_MANAGEMENT_WEBHOOK_SECRET`
+- Events handled: `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.upcoming`, `payment_intent.succeeded`
+- Edge functions: `stripe-billing-webhook`, `create-stripe-subscription`, `create-stripe-invoice`, `create-setup-intent`, `save-payment-method`, `sync-stripe-charges`, `sync-stripe-cards`, `enforce-management-billing`, `get-stripe-config`
+- Frontend: `@stripe/stripe-js` + `@stripe/react-stripe-js` — publishable key fetched at runtime from `get-stripe-config` edge function
 
-**CRM & Lead Management:**
-- GoHighLevel (GHL) - CRM, contacts, calendars, workflows, messaging
-  - Auth: OAuth 2.0 via `GHL_CLIENT_ID`, `GHL_REDIRECT_URI`, `GHL_INSTALL_URL` env variables
-  - Scope requirements: locations, contacts, calendars, users, opportunities, conversations, workflows, SMS, phone
-  - Edge functions: `crm-oauth-start`, `crm-oauth-callback`, `crm-location-token`, `ghl-assign-user-to-all-calendars`, `inject-lead-to-ghl`, `ghl-sync-custom-fields`, `ghl-stage-sync`, `lookup-ghl-contact`, `sync-ghl-appointments`, `sync-disposition-to-ghl`, `ghl-inject-twilio`, `ghl-provision-phone`, `ghl-create-subaccount`, `ghl-create-user`
-  - API base: `https://services.leadconnectorhq.com`
+**Ad Spend Account** (`STRIPE_AD_SPEND_SECRET_KEY`):
+- Purpose: Client ad budget top-ups — when paid, triggers wallet deposit in `client_wallets`
+- Webhook secret: `STRIPE_AD_SPEND_WEBHOOK_SECRET`
+- Same webhook endpoint (`stripe-billing-webhook`) handles both accounts — verified by signature
+- On successful payment: creates `wallet_transactions` deposit record, sets `tracking_start_date`, exits safe mode on campaigns
+- Edge functions: `stripe-billing-webhook`, `create-stripe-invoice`, `auto-recharge-run`, `manual-wallet-refill`, `add-wallet-credit`
 
-**Webhooks & Lead Routing:**
-- GoHighLevel Webhook - Receives inbound leads
-  - URL: `https://services.leadconnectorhq.com/hooks/wDoj91sbkfxZnMbow2G5/webhook-trigger/12365034-57b1-4525-8db5-be30cfbd588f` (configured in `src/config/webhook.ts`)
-  - Edge functions: `lead-webhook`, `lead-status-webhook`, `verify-lead-delivery`, `check-lead-discrepancy`, `check-lead-router-health`, `retry-failed-lead-delivery`
+**Stripe API pattern:** All edge functions use raw `fetch()` to `https://api.stripe.com/v1/...` — no Stripe SDK. Requests are `application/x-www-form-urlencoded` POST or GET. See `supabase/functions/create-stripe-subscription/index.ts` for the canonical pattern.
 
-**SMS & Voice:**
-- Twilio - Phone provisioning
-  - Edge functions: `ghl-inject-twilio`, `ghl-provision-phone`
-  - Integration: Via GHL subaccount provisioning
+**Dispute handling:**
+- `dispute-webhook` — receives Stripe dispute events
+- `generate-dispute-evidence` — uses Claude AI (via `LLM_API_KEY`) to draft dispute responses
 
-**Meta Platform:**
-- Meta Ads - Ad campaign synchronization
-  - Edge functions: `sync-meta-ads`
+---
 
-**Call Tracking & Analytics:**
-- Fathom Analytics - Call tracking and analytics
-  - Edge functions: `fetch-fathom-calls`, `fathom-webhook`
+### GoHighLevel CRM (GHL / LeadConnector)
 
-**Website Builders:**
-- Webflow CMS - Content management
-  - Edge functions: `webflow-cms-create`, `webflow-cms-update`
+**Company ID:** `30bFOq4ZtlhKuMOvVPwA` (hardcoded in multiple functions)
 
-**Professional Networks:**
-- National Foundation of Independent Insurance Agents (NFIA) - Agent profile management
-  - Edge functions: `nfia-create-agent`
+**Auth:** OAuth 2.0 agency-level token, stored encrypted (AES-GCM) in `ghl_oauth_tokens` table. Auto-refreshes 5 minutes before expiry. Encryption key: `ENCRYPTION_KEY` secret (falls back to `SUPABASE_SERVICE_ROLE_KEY`).
 
-**Sales/Marketplace:**
-- Automated agent onboarding and proposal execution
-  - Edge functions: `run-full-onboarding`, `verify-onboarding`, `verify-onboarding-live`, `execute-proposal`
+**API Bases:**
+- Primary: `https://services.leadconnectorhq.com` (V2, most functions)
+- Legacy: `https://rest.gohighlevel.com/v1` and `/v2`
+- Backend: `https://backend.leadconnectorhq.com`
+- msgsndr: `https://services.msgsndr.com`
+- OAuth: `https://marketplace.leadconnectorhq.com/oauth/chooselocation`
 
-**Data & Monitoring:**
-- Supabase (primary database) - See "Data Storage" below
-- Google Analytics - Event tracking
-  - Edge functions: `track-event`, `tracking-script`
+**GHL Edge Functions:**
+- `crm-oauth-start` — initiates OAuth flow, builds authorization URL with full scope list
+- `crm-oauth-callback` — exchanges auth code for tokens, stores encrypted in `ghl_oauth_tokens`
+- `crm-location-token` — gets per-location access token from agency token
+- `crm-discovery-calendar` — fetches available calendars for a GHL location
+- `crm-snapshot-status` — checks snapshot installation status
+- `ghl-create-subaccount` — creates a new GHL location for an agent onboarding; `POST /locations/`, then `PUT /locations/{id}` (firstName/lastName rejected on POST)
+- `ghl-create-user` — creates a GHL user within a location
+- `ghl-inject-twilio` — two-phase: (1) switch location from LeadConnector to Twilio, (2) inject master Twilio credentials; tries 30+ endpoint variations across all API hosts
+- `ghl-provision-phone` — provisions a phone number for a GHL location
+- `ghl-assign-user-to-all-calendars` — assigns a user to every calendar in a location
+- `ghl-stage-sync` — syncs pipeline stage from GHL to internal database
+- `ghl-sync-custom-fields` — syncs custom field values to GHL contact
+- `inject-lead-to-ghl` — pushes a new lead into GHL as a contact+opportunity
+- `lookup-ghl-contact` — finds a contact by email/phone in GHL
+- `sync-disposition-to-ghl` — updates lead disposition in GHL opportunity
+- `sync-ghl-appointments` — syncs appointment data from GHL calendar events
+- `lead-status-webhook` — incoming webhook from GHL when lead status changes
+- `lead-webhook` — incoming webhook for new leads from GHL
 
-**Communication:**
-- Slack - Notifications and alerts
-  - Edge functions: `slack-ads-actions`, `ads-manager-slack-test`
+**OAuth Scopes** (from `crm-oauth-start`): `locations.*`, `contacts.*`, `calendars.*`, `users.*`, `workflows.readonly`, `opportunities.*`, `conversations.*`, `oauth.*`, `saas/company.*`, `saas/location.*`
+
+---
+
+### Google Ads
+
+**Auth:** OAuth 2.0 via `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN`. Token refreshed per-request via `https://oauth2.googleapis.com/token`.
+
+**Additional credentials:** `GOOGLE_ADS_DEVELOPER_TOKEN` (API access), `GOOGLE_ADS_MCC_CUSTOMER_ID` (manager account ID)
+
+**API:** Google Ads API v22 (`https://googleads.googleapis.com/v22/`) — raw fetch, no client library
+
+**Edge Functions:**
+- `sync-google-ads` — fetches campaign metrics (cost, impressions, clicks, conversions) for a specific campaign+date range; stores in `ad_spend_daily`
+- `sync-all-google-ads` — batch version: syncs all active campaigns for all clients
+- `sync-internal-google-ads` — syncs Google Ads data for internal marketing campaigns
+- `sync-google-ads-targeting` — syncs geo targeting settings from campaign to DB
+- `update-google-ads-budget` — changes daily budget for a campaign via `CampaignBudget.mutate()`
+- `update-google-ads-targeting` — updates geo targeting for a campaign
+- `update-google-ads-url` — updates final URL for ads
+- `create-google-ads-campaign` — creates a new search campaign for a client
+- `pause-google-ads-campaign` — pauses a campaign (sets status to PAUSED)
+- `verify-google-ads-campaign` — validates campaign exists and retrieves status
+- `add-keywords-to-campaign` — adds keywords to an existing campaign
+- `morning-review-job` — daily job: reviews campaign pacing, triggers safe mode if wallet balance low, posts alerts to Slack (`SLACK_ADS_MANAGER_WEBHOOK_URL`)
+- `check-low-balance` — checks wallet balance, triggers Google Ads safe mode (sets budget to $0.01) if balance below threshold (default $150)
+- `google-ads-enhanced-conversion` — sends hashed conversion data (email, phone, name) to Google Ads Enhanced Conversions API
+
+**Scheduled via pg_cron:** Hourly Stripe sync jobs (jobids 17, 18, 19); Google Ads syncs also run on schedule.
+
+---
+
+### Twilio
+
+**Master account** (used for all GHL subaccount injection):
+- `MASTER_TWILIO_ACCOUNT_SID`, `MASTER_TWILIO_AUTH_TOKEN`
+- Used in `ghl-inject-twilio` to inject shared Twilio credentials into each agent's GHL location
+
+**Notification account** (used for SMS alerts):
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+- Used in `chat-notification` to send SMS to hardcoded admin numbers on new chat messages
+
+**API:** Direct REST to `https://api.twilio.com/2010-04-01/Accounts/{SID}/Messages.json`
+
+**Edge Functions using Twilio:**
+- `chat-notification` — SMS alerts for new client chat messages
+- `ghl-inject-twilio` — injects master Twilio creds into GHL locations
+- `ghl-provision-phone` — provisions phone numbers through GHL/Twilio
+
+---
+
+### Anthropic Claude AI
+
+**Auth:** `LLM_API_KEY` (Anthropic API key)
+**Model:** `claude-sonnet-4-6`
+**API:** `https://api.anthropic.com/v1/messages` with `anthropic-version: 2023-06-01`
+
+**Edge Functions:**
+- `generate-agent-bio` — generates 100-word professional bio for insurance agents
+- `generate-dispute-evidence` — drafts Stripe dispute response letters with client context
+- `analyze-prospect` — analyzes prospect data and call history to provide sales recommendations
+
+---
+
+### Resend (Transactional Email)
+
+**Auth:** `RESEND_API_KEY`
+**SDK:** `https://esm.sh/resend@2.0.0` (Deno import)
+**From domain:** `@alphaagent.io`
+
+**Edge Functions:**
+- `send-auth-email` — login links, invitation emails with branded HTML template
+- `send-password-reset` — password reset emails
+- `chat-notification` — also sends email to `sierra@alphaagent.io` on new chat messages
+- `billing-collections-run` — sends collection notices
+- `ticket-notification` — sends ticket-related emails
+- `prospect-post-booking` — post-booking confirmation emails
+
+---
+
+### Slack
+
+**Webhook-based (incoming webhooks, no OAuth):**
+- `SLACK_ADS_MANAGER_WEBHOOK_URL` — posts to ads manager channel; used by `morning-review-job`, `check-low-balance`, `execute-proposal`, `check-lead-discrepancy`, `hourly-approval-reminder`
+- `SLACK_CHAT_WEBHOOK_URL` — posts to internal chat channel; used by `chat-notification`
+
+**Interactive Actions (Slack to server):**
+- `slack-ads-actions` — receives button-click payloads from Slack messages (signed with `SLACK_ADS_MANAGER_SIGNING_SECRET`); handles approve/reject/investigate actions on ad proposals
+- `ads-manager-slack-test` — test endpoint for Slack integration
+
+---
+
+### Webflow CMS
+
+**Auth:** `WEBFLOW_API_TOKEN` (bearer token)
+**Site:** `WEBFLOW_SITE_ID`
+**Collection IDs** (Tax Free Wealth Plan site, hardcoded):
+- schedulers: `687565796f669f888c649d2c`
+- landers: `687574b9d408f8f4b80263aa`
+- profiles: `6866a523d492c9734446c4af`
+- thankyou: `68dc40c4975ce7211a8534d5`
+
+**Edge Functions:**
+- `webflow-cms-create` — creates new CMS items (scheduler page, lander, profile, thank-you pages) for each agent during onboarding
+- `webflow-cms-update` — updates existing CMS items
+
+---
+
+### Meta Ads (Facebook)
+
+**Auth:** Per-client `access_token` and `ad_account_id` stored in `internal_marketing_settings` table under `setting_key = 'meta_ads_config'`
+**API:** `https://graph.facebook.com/v18.0/{adAccountId}/insights`
+
+**Edge Functions:**
+- `sync-meta-ads` — fetches MTD spend/impressions/clicks for internal Meta ad account; stores in `internal_marketing_metrics`
+
+---
+
+### Plaid (Bank Account Linking)
+
+**Auth:** `PLAID_CLIENT_ID`, `PLAID_SECRET`, `PLAID_ENV` (sandbox/development/production)
+**API:** Plaid REST API (no SDK — direct fetch to environment-specific base URL)
+
+**Edge Functions:**
+- `plaid-create-link-token` — creates Plaid Link token for bank connection UI (frontend uses `react-plaid-link`)
+- `plaid-exchange-token` — exchanges public token for access token after user connects bank
+- `plaid-get-balances` — fetches current account balances
+- `plaid-sync-transactions` — syncs transaction history
+- `plaid-daily-refresh` — scheduled daily refresh of Plaid connection data
+
+**Purpose:** Used for internal financial management / expense tracking, not client-facing billing.
+
+---
+
+### Fathom AI (Call Recording & Transcription)
+
+**Auth:** `FATHOM_API_KEY`
+**API:** Fathom REST API
+
+**Edge Functions:**
+- `fathom-webhook` — receives post-call webhooks; extracts summary, action items, sentiment, recording URL; stores in `call_logs` table; matches to client by participant email
+- `fetch-fathom-calls` — fetches call recordings and transcripts for a client; links to prospects in pipeline
+
+---
+
+### NFIA (National Field Insurance Association)
+
+**API:** `https://www.nationalfia.org/api/create-agent`
+
+**Edge Functions:**
+- `nfia-create-agent` — registers new agents on NFIA platform during onboarding; validates US state codes, uploads headshot image
+
+---
 
 ## Data Storage
 
 **Primary Database:**
-- Supabase PostgreSQL
-  - Project ID: `qydkrpirrfelgtcqasdx`
-  - URL: `https://qydkrpirrfelgtcqasdx.supabase.co`
-  - Client: `@supabase/supabase-js` (2.87.1)
-  - Connection: Via `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`
-  - Auto-generated types: `src/integrations/supabase/types.ts` (regenerated via `supabase gen types`)
-  - Schema: Managed via migrations in `supabase/migrations/`
+- Supabase PostgreSQL (project `qcunascacayiiuufjtaq`)
+- Connection: `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` (edge functions)
+- Client: `@supabase/supabase-js` v2 (frontend), `createClient` from `esm.sh` (Deno)
+- Key tables: `clients`, `billing_records`, `client_wallets`, `wallet_transactions`, `client_stripe_subscriptions`, `campaigns`, `ad_spend_daily`, `ghl_oauth_tokens`, `call_logs`, `internal_marketing_settings`, `system_alerts`, `campaign_audit_log`, `billing_collections`
 
 **File Storage:**
-- Supabase Storage (cloud file bucket)
-  - Used for: Profile photos, documents, attachments
-  - Access: Via Supabase client authenticated requests
+- Supabase Storage (same project)
+- Bucket: `media` — agent headshots stored at `media/agent-headshots/{clientId}.{ext}`
+- Used by `refresh-stable-headshot` to create stable public URLs for agent photos
+
+**Scheduled Jobs:**
+- pg_cron within Supabase PostgreSQL (jobids 17, 18, 19 = hourly Stripe charge syncs)
+- No `schedule` config in `supabase/config.toml` — jobs were created directly via SQL
 
 **Caching:**
-- React Query client-side cache (TanStack React Query)
-- No dedicated server cache layer
+- No dedicated cache layer (Redis/Memcached absent)
+- TanStack React Query handles client-side caching with configurable stale times
+
+---
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- Supabase Auth (JWT-based)
-  - Built-in with Supabase PostgreSQL
-  - Session persistence: localStorage via Supabase client config
-  - Auto token refresh enabled
-  - MFA support: `AuthContext.tsx` handles `AuthMFAEnrollResponse`, `AuthMFAVerifyResponse`
+- Supabase Auth (project `qcunascacayiiuufjtaq`)
+- Flows: email/password, magic links via Resend
+- Session storage: `localStorage` (web), Keychain via `KeychainLocalStorage` (iOS)
+- iOS flow type: PKCE
 
-**Implementation:**
-- Custom `AuthContext.tsx` wraps Supabase auth
-- User session managed in React Context
-- OTP support for agreements: `send-agreement-otp`, `verify-agreement-otp` edge functions
+**Frontend client** (`src/integrations/supabase/client.ts`):
+- `persistSession: true`, `autoRefreshToken: true`
 
-**Integration Flows:**
-- OAuth for Google Ads and GoHighLevel
-- Direct auth for user login/registration
+**Edge Function auth:**
+- Most functions have `verify_jwt = false` in `supabase/config.toml` — they authenticate via Supabase service role key or their own custom secret headers
+- `mcp-proxy` uses `x-mcp-secret` header checked against `MCP_PROXY_SECRET`
+- `slack-ads-actions` verifies Slack request signatures with HMAC-SHA256
+
+**Biometric auth (iOS):**
+- `BiometricManager.swift` — locks app on background, requires Face ID/Touch ID to unlock
+
+---
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- Not detected - Errors logged to browser console and Supabase function logs
+- No Sentry or similar service detected
 
 **Logs:**
-- Supabase Edge Function logs (viewable in dashboard)
-- Browser console logs via `console.log()`, `console.error()`
-- Function execution details captured in Supabase
+- `console.log` / `console.error` in all edge functions — visible in Supabase Edge Function logs
+- GHL API calls logged to `ghl_api_logs` table in database (see `ghl-inject-twilio`)
+- `system_alerts` table for high-severity events (payment failures trigger inserts)
 
-**Performance:**
-- Vite dev server with fast refresh
-- React Query request caching and deduplication
-
-## CI/CD & Deployment
-
-**Hosting:**
-- Frontend: Vercel (SPA deployment)
-  - Deployment config: `vercel.json`
-  - Rewrites: All routes to `/index.html` (SPA behavior)
-- Backend: Supabase Edge Functions (Deno)
-  - Deployed via `supabase functions deploy <function-name>`
-  - Config: `supabase/config.toml`
-
-**Build Pipeline:**
-- Local: `npm run build` (Vite production build)
-- Deployment: Vercel handles Git integration
-
-**Function Management:**
-- 100+ Edge Functions defined in `supabase/config.toml`
-- All functions have `verify_jwt = false` (webhook-friendly)
-- Manual deployment required after code changes
-
-## Environment Configuration
-
-**Required Frontend Env Vars:**
-- `VITE_SUPABASE_URL` - Supabase project URL
-- `VITE_SUPABASE_PUBLISHABLE_KEY` - Anonymous key for client auth
-- `VITE_SUPABASE_ANON_KEY` - Same as above (redundant)
-- `VITE_SUPABASE_PROJECT_ID` - Project reference (qydkrpirrfelgtcqasdx)
-
-**Required Edge Function Secrets:**
-- `SUPABASE_URL` - Injected automatically
-- `SUPABASE_SERVICE_ROLE_KEY` - Injected automatically
-- `GHL_CLIENT_ID` - GoHighLevel OAuth client ID
-- `GHL_REDIRECT_URI` - OAuth callback URL
-- `GHL_INSTALL_URL` - Static OAuth URL (deprecated in favor of dynamic)
-- `PLAID_CLIENT_ID` - Plaid API client ID
-- `PLAID_SECRET` - Plaid API secret
-- `PLAID_ENV` - Plaid environment (sandbox/production)
-- Stripe API secrets (managed separately, not in env)
-
-**Secrets Location:**
-- Frontend: `.env` file (gitignored, not committed)
-- Backend: Set via `supabase secrets set KEY="value"`
-- No secrets should be committed to repository
-
-**Template:**
-- `.env.example` provides documented template with placeholders
-
-## Webhooks & Callbacks
-
-**Incoming Webhooks:**
-- `stripe-webhook` - Stripe payment events (checkout.session.completed, payment_intent.succeeded)
-  - Events trigger wallet deposits and billing updates
-- `stripe-billing-webhook` - Stripe billing-specific events
-- `lead-webhook` - GoHighLevel incoming leads
-- `lead-status-webhook` - Lead status changes
-- `agent-onboarding-webhook` - Agent onboarding events
-- `agent-update-webhook` - Agent updates
-- `prospect-booking-webhook` - Booking confirmations
-- `prospect-abandoned-webhook` - Abandoned bookings
-- `fathom-webhook` - Call tracking data
-- `dispute-webhook` - Payment disputes
-- `submit-webhook` - Form submissions (gated by GoHighLevel)
-
-**Webhook Processing:**
-- All edge functions have `verify_jwt = false` to allow webhook delivery
-- POST request handling with CORS support
-- Payload validation and error handling
-
-**Outgoing Webhooks:**
-- Prospect qualification form → GoHighLevel webhook URL
-  - Submits contact updates, custom fields, tags
-- Lead delivery → GHL contact creation
-- Appointment sync → GHL appointments endpoint
-- Calendar events → GHL workflows
-
-## Integration Patterns
-
-**OAuth 2.0 Flow:**
-- `crm-oauth-start` - Initiates redirect to OAuth provider
-- `crm-oauth-callback` - Handles callback, exchanges code for tokens
-- Tokens stored in database for later API calls
-
-**Webhook Verification:**
-- Stripe: Signature verification expected (not implemented in current function)
-- GHL: No signature verification (open webhook)
-
-**Error Recovery:**
-- `retry-failed-lead-delivery` - Retry mechanism for failed lead sends
-- `check-lead-discrepancy` - Validation after delivery
+**Alerting:**
+- Slack webhooks for ads management events (budget proposals, low balance, discrepancies)
+- SMS via Twilio for new chat messages
 
 ---
 
-*Integration audit: 2025-03-04*
+## CI/CD & Deployment
+
+**Frontend Hosting:**
+- Vercel (project `prj_qjsttH6tKyeHt4uJSflL23CmBNF0`, org `JueM8hzm6WQGIjlRnFF9la1R`)
+- Deploy trigger: GitHub webhook is broken — must trigger manually via Vercel API
+- SPA routing: all paths rewrite to `/index.html` via `vercel.json`
+
+**Edge Functions:**
+- Deploy command: `supabase functions deploy <name> --project-ref qcunascacayiiuufjtaq`
+- CRITICAL: `sync-stripe-charges` resets `verify_jwt` to `true` on every deploy — must PATCH to `false` after each deploy
+- No CI pipeline for automatic edge function deployment
+
+**CI Pipeline:**
+- None detected
+
+---
+
+## Webhooks & Callbacks
+
+**Incoming (public, `verify_jwt = false`):**
+- `stripe-billing-webhook` — Stripe events from both management and ad_spend accounts; verified by HMAC signature
+- `stripe-webhook` — additional Stripe events (legacy/fallback)
+- `stripe-billing-webhook/dispute-webhook` — Stripe dispute events
+- `lead-webhook` — GHL lead creation events
+- `lead-status-webhook` — GHL lead status change events
+- `agent-onboarding-webhook` — triggered when agent onboarding completes in GHL
+- `agent-update-webhook` — triggered on agent profile updates in GHL
+- `submit-webhook` — external form submission entry point
+- `fathom-webhook` — Fathom call completion events
+- `prospect-booking-webhook` — booking confirmation from prospect funnel
+- `prospect-abandoned-webhook` — abandoned funnel events
+- `slack-ads-actions` — Slack interactive component payloads
+
+**Outgoing:**
+- Stripe: payment creation, invoice management, subscription management (management + ad_spend accounts)
+- GHL: location CRUD, contact/opportunity sync, calendar management
+- Google Ads: campaign management, budget updates, targeting updates
+- Resend: transactional emails
+- Slack: ads manager alerts and chat notifications
+- Webflow: CMS item creation/updates
+- Twilio: SMS notifications, GHL credential injection
+- NFIA: agent registration
+- Anthropic: bio generation, dispute evidence, prospect analysis
+- Google OAuth: token refresh for Google Ads
+
+---
+
+## MCP Proxy
+
+**Purpose:** Exposes internal Alpha Hub data to Claude AI tools (MCP - Model Context Protocol)
+**Auth:** `x-mcp-secret` header checked against `MCP_PROXY_SECRET`
+**Endpoint:** `supabase/functions/mcp-proxy/index.ts`
+**Available tools:** `list_clients`, `get_client_detail`, `search_clients`, `get_billing_summary`, `get_ad_spend_overview`, `get_campaign_health`, `get_lead_pipeline`, `get_communications`, `get_financial_projections`, `get_alerts`, `get_response_times`, `get_unread_overview`, `get_ticket_workload`, and more
+
+---
+
+## Environment Configuration
+
+**Required frontend env vars (`.env`):**
+```
+VITE_SUPABASE_URL
+VITE_SUPABASE_PROJECT_ID
+VITE_SUPABASE_PUBLISHABLE_KEY
+```
+
+**Required edge function secrets (set via `supabase secrets set`):**
+```
+STRIPE_MANAGEMENT_SECRET_KEY
+STRIPE_MANAGEMENT_WEBHOOK_SECRET
+STRIPE_AD_SPEND_SECRET_KEY
+STRIPE_AD_SPEND_WEBHOOK_SECRET
+GHL_CLIENT_ID
+GHL_CLIENT_SECRET
+GHL_REDIRECT_URI
+GHL_COMPANY_ID
+ENCRYPTION_KEY
+GOOGLE_ADS_CLIENT_ID
+GOOGLE_ADS_CLIENT_SECRET
+GOOGLE_ADS_REFRESH_TOKEN
+GOOGLE_ADS_DEVELOPER_TOKEN
+GOOGLE_ADS_MCC_CUSTOMER_ID
+MASTER_TWILIO_ACCOUNT_SID
+MASTER_TWILIO_AUTH_TOKEN
+TWILIO_ACCOUNT_SID
+TWILIO_AUTH_TOKEN
+TWILIO_PHONE_NUMBER
+RESEND_API_KEY
+LLM_API_KEY
+SLACK_ADS_MANAGER_WEBHOOK_URL
+SLACK_ADS_MANAGER_SIGNING_SECRET
+SLACK_CHAT_WEBHOOK_URL
+MCP_PROXY_SECRET
+WEBFLOW_API_TOKEN
+WEBFLOW_SITE_ID
+PLAID_CLIENT_ID
+PLAID_SECRET
+PLAID_ENV
+FATHOM_API_KEY
+```
+
+**Secrets location:** `~/.zprofile` on developer machine for local use; Supabase secrets manager for production edge functions
+
+---
+
+*Integration audit: 2026-03-12*
