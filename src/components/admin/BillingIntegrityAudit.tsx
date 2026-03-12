@@ -127,7 +127,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
-      return data as { stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string }>; customerIds: string[] };
+      return data as { stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string }>; customerIds: string[]; newlyLinked?: string[] };
     },
     enabled: !!clientId,
   });
@@ -440,6 +440,11 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             <span className="text-xs text-muted-foreground ml-2">
               Stripe: {stripeData.customerIds.join(', ')}
             </span>
+          )}
+          {stripeData?.newlyLinked && stripeData.newlyLinked.length > 0 && (
+            <Badge variant="outline" className="ml-2 text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
+              +{stripeData.newlyLinked.length} customer(s) auto-linked
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
