@@ -1348,13 +1348,11 @@ export default function SignAgreement() {
                       <h2 className="text-xl font-bold">Key Financial Terms</h2>
                       <p className="text-sm text-muted-foreground">Acknowledge each term and provide your initials</p>
                     </div>
-                    {(template?.key_terms?.length ?? 0) > 0 && (
-                      <div className="ml-auto">
-                        <Badge variant={allKeyTermsChecked ? 'default' : 'outline'} className={allKeyTermsChecked ? 'bg-emerald-500/20 text-emerald-600 border-0' : ''}>
-                          {keyTermsCompleteCount}/{template?.key_terms.length} Terms
-                        </Badge>
-                      </div>
-                    )}
+                    <div className="ml-auto">
+                      <Badge variant={allKeyTermsChecked ? 'default' : 'outline'} className={allKeyTermsChecked ? 'bg-emerald-500/20 text-emerald-600 border-0' : ''}>
+                        {keyTermsCompleteCount}/{template?.key_terms?.length || 0} Terms
+                      </Badge>
+                    </div>
                   </div>
                   
                   {/* Key Terms Accordion */}
