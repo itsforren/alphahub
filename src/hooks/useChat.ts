@@ -239,22 +239,30 @@ export function useSendMessage() {
         })
         .select()
         .single();
-      
-      if (error) throw error;
-      
-      // Send email notification for the new message
-      try {
-        await supabase.functions.invoke('chat-notification', {
-          body: { 
-            message: data,
-            type: 'INSERT'
-          }
-        });
-      } catch (notifError) {
-        console.error('Failed to send chat notification:', notifError);
-        // Don't throw - message was sent successfully, notification is secondary
+
+      if (error) {
+        // Silently ignore duplicate message errors from the DB trigger
+        if (error.code === '23505' || error.message?.includes('Duplicate message')) {
+          console.warn('Duplicate message suppressed');
+          return null;
+        }
+        throw error;
       }
       
+      // Send email notification for the new message (skip for suppressed duplicates)
+      if (data) {
+        try {
+          await supabase.functions.invoke('chat-notification', {
+            body: {
+              message: data,
+              type: 'INSERT'
+            }
+          });
+        } catch (notifError) {
+          console.error('Failed to send chat notification:', notifError);
+        }
+      }
+
       return data as ChatMessage;
     },
     onSuccess: (_, variables) => {

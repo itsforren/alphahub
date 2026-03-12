@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     const results: any[] = [];
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const rollingStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
 
     for (const wallet of wallets) {
       const clientId = wallet.client_id;
@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
             .eq('client_id', clientId)
             .eq('billing_type', 'ad_spend')
             .eq('status', 'paid')
-            .gte('paid_at', rollingStart);
+            .gte('paid_at', monthStart);
 
           const monthTotal = monthlyCharges?.reduce((sum: number, r: any) => sum + Number(r.amount), 0) ?? 0;
           const remainingCap = Number(wallet.monthly_ad_spend_cap) - monthTotal;

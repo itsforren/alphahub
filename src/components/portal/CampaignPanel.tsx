@@ -67,11 +67,13 @@ export function CampaignPanel({
       });
   }, []);
 
-  const buildGoogleAdsUrl = (campaignId: string) => {
+  const buildGoogleAdsUrl = (campaignId: string, customerId?: string) => {
     if (googleAdsLinkParams) {
       return `https://ads.google.com/aw/campaigns?${googleAdsLinkParams}&campaignId=${campaignId}`;
     }
-    return `https://ads.google.com/aw/campaigns?campaignId=${campaignId}`;
+    // Always include ocid so the link works for all team members, not just the default Google account
+    const ocid = customerId || '6551751244';
+    return `https://ads.google.com/aw/campaigns?ocid=${ocid}&campaignId=${campaignId}`;
   };
 
   const handleBuildCampaign = async (templateType: 'primary' | 'secondary') => {
@@ -223,7 +225,7 @@ export function CampaignPanel({
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center gap-2">
                 <a
-                  href={buildGoogleAdsUrl(campaign.google_campaign_id)}
+                  href={buildGoogleAdsUrl(campaign.google_campaign_id, campaign.google_customer_id)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-medium text-foreground hover:text-primary hover:underline inline-flex items-center gap-1 transition-colors"

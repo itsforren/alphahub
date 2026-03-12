@@ -1183,46 +1183,52 @@ serve(async (req) => {
           isIgnored = existingCampaign.ignored || false;
         }
 
-        // Skip processing if campaign is ignored
+        // Skip primary campaign rules/proposals if ignored, throttled, or on cooldown
+        // (additional campaigns still get health scores below)
+        let skipPrimary = false;
+        const now = new Date();
+
         if (isIgnored) {
           console.log(`  ⏭️ Campaign is ignored, skipping proposals`);
           results.push({ clientId: client.id, clientName: client.name, status: 'ignored', action: 'Skipped - campaign ignored' });
-          continue;
+          skipPrimary = true;
         }
 
-        // ============ 12-HOUR PROPOSAL THROTTLING ============
-        const { data: existingPending } = await supabase
-          .from('proposals')
-          .select('id, created_at')
-          .eq('campaign_id', campaignDbId)
-          .eq('status', 'pending')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        if (!skipPrimary) {
+          // ============ 12-HOUR PROPOSAL THROTTLING ============
+          const { data: existingPending } = await supabase
+            .from('proposals')
+            .select('id, created_at')
+            .eq('campaign_id', campaignDbId)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        const { data: campaignForCooldown } = await supabase
-          .from('campaigns')
-          .select('last_budget_change_at')
-          .eq('id', campaignDbId)
-          .maybeSingle();
+          const { data: campaignForCooldown } = await supabase
+            .from('campaigns')
+            .select('last_budget_change_at')
+            .eq('id', campaignDbId)
+            .maybeSingle();
 
-        const COOLDOWN_HOURS = 12;
-        const now = new Date();
-        const cooldownCutoff = new Date(now.getTime() - COOLDOWN_HOURS * 60 * 60 * 1000);
+          const COOLDOWN_HOURS = 12;
+          const cooldownCutoff = new Date(now.getTime() - COOLDOWN_HOURS * 60 * 60 * 1000);
 
-        if (existingPending) {
-          console.log(`  ⏸️ Pending proposal already exists (${existingPending.id}), skipping`);
-          results.push({ clientId: client.id, clientName: client.name, status: 'skipped', action: 'Pending proposal exists' });
-          continue;
+          if (existingPending) {
+            console.log(`  ⏸️ Pending proposal already exists (${existingPending.id}), skipping`);
+            results.push({ clientId: client.id, clientName: client.name, status: 'skipped', action: 'Pending proposal exists' });
+            skipPrimary = true;
+          }
+
+          if (!skipPrimary && campaignForCooldown?.last_budget_change_at &&
+              new Date(campaignForCooldown.last_budget_change_at) > cooldownCutoff) {
+            console.log(`  ⏸️ Budget changed within ${COOLDOWN_HOURS}h, cooldown active`);
+            results.push({ clientId: client.id, clientName: client.name, status: 'cooldown', action: 'Cooldown active' });
+            skipPrimary = true;
+          }
         }
 
-        if (campaignForCooldown?.last_budget_change_at && 
-            new Date(campaignForCooldown.last_budget_change_at) > cooldownCutoff) {
-          console.log(`  ⏸️ Budget changed within ${COOLDOWN_HOURS}h, cooldown active`);
-          results.push({ clientId: client.id, clientName: client.name, status: 'cooldown', action: 'Cooldown active' });
-          continue;
-        }
-
+        if (!skipPrimary) {
         // Run rules engine
         const rulesResult = runRulesEngine(
           todayMetrics,
@@ -1617,6 +1623,204 @@ serve(async (req) => {
             action: 'No action needed',
             healthScore: healthResult.totalScore
           });
+        }
+
+        } // end if (!skipPrimary)
+
+        // ============ MULTI-CAMPAIGN: Process additional campaigns for health scoring ============
+        const { data: additionalCampaigns } = await supabase
+          .from('campaigns')
+          .select('id, google_customer_id, google_campaign_id, ignored')
+          .eq('client_id', client.id)
+          .neq('google_campaign_id', campaignId);
+
+        for (const addCamp of (additionalCampaigns || [])) {
+          if (addCamp.ignored) continue;
+          const addCustomerId = addCamp.google_customer_id?.replace(/\D/g, '');
+          const addCampaignId = addCamp.google_campaign_id?.replace(/\D/g, '');
+          if (!addCustomerId || !addCampaignId) continue;
+
+          try {
+            console.log(`\n  📈 Additional campaign ${addCampaignId} for ${client.name}:`);
+
+            // Fetch Google Ads metrics
+            const { metrics: addAllMetrics, currentBudget: addBudget, campaignEnabled: addEnabled } =
+              await fetchGoogleAdsMetrics(accessToken!, addCustomerId, addCampaignId, prior7dStart, today);
+
+            // Find metrics by actual date
+            const addTodayMetrics = addAllMetrics.find(m => m.date === today) || null;
+            const addYesterdayMetrics = addAllMetrics.find(m => m.date === yesterday) || null;
+            const addDayBeforeMetrics = addAllMetrics.find(m => m.date === dayBefore) || null;
+
+            const addApiDates = addAllMetrics.map(m => m.date).slice(0, 10);
+            console.log(`    API dates: [${addApiDates.join(', ')}]`);
+            console.log(`    Found: today=${!!addTodayMetrics}, yesterday=${!!addYesterdayMetrics}, dayBefore=${!!addDayBeforeMetrics}`);
+
+            // 7-day aggregates
+            const addLast7dData = addAllMetrics.slice(0, 7);
+            const addLast7dTotalSpend = addLast7dData.reduce((s, m) => s + m.spend, 0);
+            const addLast7dTotalConversions = addLast7dData.reduce((s, m) => s + m.conversions, 0);
+            const addLast7dTotalClicks = addLast7dData.reduce((s, m) => s + m.clicks, 0);
+
+            const addLast7dMetrics: DailyMetrics | null = addLast7dData.length > 0 ? {
+              date: 'aggregate',
+              spend: addLast7dTotalSpend,
+              clicks: addLast7dTotalClicks,
+              impressions: addLast7dData.reduce((s, m) => s + m.impressions, 0),
+              conversions: addLast7dTotalConversions,
+              ctr: addLast7dData.reduce((s, m) => s + m.ctr, 0) / addLast7dData.length,
+              cvr: addLast7dTotalClicks > 0 ? (addLast7dTotalConversions / addLast7dTotalClicks) * 100 : 0,
+              cpl: addLast7dTotalConversions > 0 ? addLast7dTotalSpend / addLast7dTotalConversions : null,
+              cpc: addLast7dData.reduce((s, m) => s + m.cpc, 0) / addLast7dData.length,
+              budget: addBudget,
+              utilization: addLast7dData.reduce((s, m) => s + m.utilization, 0) / addLast7dData.length,
+              overdelivery: false,
+            } : null;
+
+            // Prior 7-day CPL for trend comparison
+            const addPrior7dData = addAllMetrics.slice(7, 14);
+            const addPrior7dTotalSpend = addPrior7dData.reduce((s, m) => s + m.spend, 0);
+            const addPrior7dTotalConversions = addPrior7dData.reduce((s, m) => s + m.conversions, 0);
+            const addPriorCpl = addPrior7dTotalConversions > 0 ? addPrior7dTotalSpend / addPrior7dTotalConversions : null;
+
+            // Upsert ad_spend_daily for yesterday
+            if (addYesterdayMetrics && addYesterdayMetrics.date === yesterday) {
+              console.log(`    ✅ Upserting data for ${yesterday}: $${addYesterdayMetrics.spend.toFixed(2)}`);
+              await supabase
+                .from('ad_spend_daily')
+                .upsert({
+                  client_id: client.id,
+                  campaign_id: addCampaignId,
+                  spend_date: addYesterdayMetrics.date,
+                  cost: addYesterdayMetrics.spend,
+                  impressions: addYesterdayMetrics.impressions,
+                  clicks: addYesterdayMetrics.clicks,
+                  conversions: addYesterdayMetrics.conversions,
+                  ctr: addYesterdayMetrics.ctr,
+                  cpc: addYesterdayMetrics.cpc,
+                  budget_daily: addBudget,
+                  budget_utilization: addYesterdayMetrics.utilization,
+                  overdelivery: addYesterdayMetrics.overdelivery,
+                  campaign_enabled: addEnabled,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: 'client_id,campaign_id,spend_date' });
+            } else {
+              console.log(`    ⚠️ No data from Google Ads for ${yesterday} - skipping upsert`);
+            }
+
+            // Run rules engine
+            const addRulesResult = runRulesEngine(
+              addTodayMetrics, addYesterdayMetrics, addDayBeforeMetrics, addLast7dMetrics,
+              settings, walletInfo, client.billing_status || 'active',
+              addBudget, addEnabled, performancePercentage
+            );
+
+            // Lead metrics
+            const addLeadMetrics = await calculateLeadMetrics(
+              supabase, client.id, client.agent_id, yesterday, last7dStart, prior7dStart, prior7dEnd
+            );
+
+            console.log(`    Leads 7d: ${addLeadMetrics.leads_last_7d}, Booked: ${addLeadMetrics.booked_calls_last_7d}, Rate: ${addLeadMetrics.booked_call_rate_7d?.toFixed(1) || 'N/A'}%`);
+
+            // Calculate health score
+            const addHealthResult = calculateDeterministicHealthScore(
+              addLast7dMetrics, addYesterdayMetrics, addDayBeforeMetrics, addPriorCpl,
+              addLeadMetrics, addRulesResult.pacingInfo, addRulesResult.utilizationInfo,
+              settings, addRulesResult.safeModeTriggered, addEnabled
+            );
+
+            console.log(`    Health Score: ${addHealthResult.totalScore}/95 (${addHealthResult.healthLabel})`);
+
+            // AI summary
+            const addAiResult = generateAISummary(addHealthResult, addRulesResult, addYesterdayMetrics);
+
+            // Calculate days remaining
+            let addDaysRemaining = 1;
+            if (cycleEnd) {
+              const end = new Date(cycleEnd);
+              const now = new Date();
+              addDaysRemaining = Math.max(1, Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+            }
+
+            // Update campaign record with health score and metrics
+            await supabase
+              .from('campaigns')
+              .update({
+                current_daily_budget: addBudget,
+                status: addRulesResult.status,
+                reason_codes: addRulesResult.reasonCodes,
+                health_score: addHealthResult.totalScore,
+                health_label: addHealthResult.healthLabel,
+                health_score_delivery: addHealthResult.delivery,
+                health_score_cvr: addHealthResult.cvr,
+                health_score_cpl: addHealthResult.cpl,
+                health_score_booked_call: addHealthResult.bookedCall,
+                health_drivers: addHealthResult.drivers,
+                ai_summary: addAiResult.summary,
+                leads_last_7d: addLeadMetrics.leads_last_7d,
+                booked_calls_last_7d: addLeadMetrics.booked_calls_last_7d,
+                booked_call_rate_7d: addLeadMetrics.booked_call_rate_7d,
+                leads_prior_7d: addLeadMetrics.leads_prior_7d,
+                booked_calls_prior_7d: addLeadMetrics.booked_calls_prior_7d,
+                booked_call_rate_prior_7d: addLeadMetrics.booked_call_rate_prior_7d,
+                leads_yesterday: addLeadMetrics.leads_yesterday,
+                booked_calls_yesterday: addLeadMetrics.booked_calls_yesterday,
+                booked_call_rate_yesterday: addLeadMetrics.booked_call_rate_yesterday,
+                wallet_remaining: walletRemaining,
+                days_remaining_in_cycle: addDaysRemaining,
+                required_daily_spend: addRulesResult.pacingInfo.requiredDailySpend,
+                pace_drift_pct: addRulesResult.pacingInfo.paceDriftPct,
+                last_status_change_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', addCamp.id);
+
+            // Rolling snapshot
+            await supabase
+              .from('rolling_snapshots')
+              .upsert({
+                campaign_id: addCamp.id,
+                snapshot_date: yesterday,
+                last_7d_spend: addLast7dMetrics?.spend || 0,
+                last_7d_clicks: addLast7dMetrics?.clicks || 0,
+                last_7d_impressions: addLast7dMetrics?.impressions || 0,
+                last_7d_conversions: addLast7dMetrics?.conversions || 0,
+                last_7d_ctr: addLast7dMetrics?.ctr || 0,
+                last_7d_cvr: addLast7dMetrics?.cvr || 0,
+                last_7d_cpl: addLast7dMetrics?.cpl,
+                last_7d_cpc: addLast7dMetrics?.cpc || 0,
+                last_7d_avg_utilization: addLast7dMetrics?.utilization || 0,
+                leads_7d: addLeadMetrics.leads_last_7d,
+                booked_calls_7d: addLeadMetrics.booked_calls_last_7d,
+                booked_call_rate_7d: addLeadMetrics.booked_call_rate_7d,
+                prior_7d_cpl: addPriorCpl,
+                health_score_breakdown: {
+                  total: addHealthResult.totalScore,
+                  delivery: addHealthResult.delivery,
+                  cvr: addHealthResult.cvr,
+                  cpl: addHealthResult.cpl,
+                  bookedCall: addHealthResult.bookedCall,
+                  label: addHealthResult.healthLabel,
+                },
+              }, { onConflict: 'campaign_id,snapshot_date' });
+
+            results.push({
+              clientId: client.id,
+              clientName: client.name,
+              status: addRulesResult.status,
+              action: `Campaign ${addCampaignId}: ${addHealthResult.healthLabel} (${addHealthResult.totalScore}/95)`,
+              healthScore: addHealthResult.totalScore,
+            });
+
+          } catch (addCampError) {
+            console.error(`    ❌ Error processing additional campaign ${addCamp.google_campaign_id}:`, addCampError);
+            results.push({
+              clientId: client.id,
+              clientName: client.name,
+              status: 'error',
+              action: `Campaign ${addCampaignId}: ${String(addCampError)}`,
+            });
+          }
         }
 
       } catch (clientError) {

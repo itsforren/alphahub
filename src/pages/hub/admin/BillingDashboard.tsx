@@ -13,6 +13,7 @@ import { WalletVerificationWidget } from '@/components/admin/WalletVerificationW
 import { ManagementFeeEnforcerWidget } from '@/components/admin/ManagementFeeEnforcerWidget';
 import { WeeklyAuditWidget } from '@/components/admin/WeeklyAuditWidget';
 import { AdSpendIntelligenceWidget } from '@/components/admin/AdSpendIntelligenceWidget';
+import { BillingIntegrityAudit } from '@/components/admin/BillingIntegrityAudit';
 import { toast } from 'sonner';
 import {
   useRevenueIntelligence,
@@ -186,6 +187,9 @@ export default function BillingDashboard() {
           isLoading={intelLoading}
         />
       </div>
+
+      {/* Billing Integrity Audit — per-client reconciliation */}
+      <BillingIntegrityAudit />
 
       {/* Bottom Row: Pipeline + Failed + Disputes + Weekly Audit */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

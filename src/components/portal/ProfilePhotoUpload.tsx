@@ -13,6 +13,7 @@ interface ProfilePhotoUploadProps {
   onUpload: (url: string) => Promise<void>;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  cacheKey?: string | null;
 }
 
 export function ProfilePhotoUpload({
@@ -22,6 +23,7 @@ export function ProfilePhotoUpload({
   onUpload,
   size = 'md',
   className,
+  cacheKey,
 }: ProfilePhotoUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,7 +87,10 @@ export function ProfilePhotoUpload({
   return (
     <div className={cn("relative group", className)}>
       <Avatar className={cn(sizeClasses[size], "border-2 border-primary/20")}>
-        <AvatarImage src={currentImageUrl || undefined} alt={name} />
+        <AvatarImage
+          src={currentImageUrl ? `${currentImageUrl}${currentImageUrl.includes('?') ? '&' : '?'}v=${cacheKey || ''}` : undefined}
+          alt={name}
+        />
         <AvatarFallback className="bg-primary/10 text-primary font-semibold">
           {initials}
         </AvatarFallback>

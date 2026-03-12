@@ -25,6 +25,7 @@ export interface TicketWithDetails {
   created_at: string;
   last_reply_at: string | null;
   onboarding_checklist_id: string | null;
+  resolution_notes: string | null;
   // Joined data
   client?: {
     id: string;
@@ -181,7 +182,7 @@ export function useUpdateTicket() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, status, priority, resolved_at, due_date, labels, ticket_type, assigned_to }: {
+    mutationFn: async ({ id, status, priority, resolved_at, due_date, labels, ticket_type, assigned_to, resolution_notes }: {
       id: string;
       status?: string;
       priority?: TicketPriority;
@@ -190,6 +191,7 @@ export function useUpdateTicket() {
       labels?: string[];
       ticket_type?: string;
       assigned_to?: string | null;
+      resolution_notes?: string | null;
     }) => {
       const updates: Record<string, unknown> = {};
       if (status) updates.status = status;
@@ -201,6 +203,7 @@ export function useUpdateTicket() {
         updates.assigned_to = assigned_to;
         updates.assigned_at = assigned_to ? new Date().toISOString() : null;
       }
+      if (resolution_notes !== undefined) updates.resolution_notes = resolution_notes;
 
       // If resolving, set resolved_at
       if (status === 'resolved') {

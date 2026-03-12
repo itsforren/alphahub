@@ -1,19 +1,23 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
-import { 
-  MessageCircle, 
-  Hash, 
-  Plus, 
-  Send, 
+import {
+  MessageCircle,
+  Hash,
+  Plus,
+  Send,
   Users,
   Loader2,
-  Search
+  Search,
+  FileText,
+  Download,
+  ImageOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ClickableText } from '@/components/ui/clickable-text';
+import { ChatInput } from '@/components/portal/chat/ChatInput';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
@@ -41,10 +45,9 @@ type SelectedChat = { type: ChatType; id: string } | null;
 export default function TeamChat() {
   const { user } = useAuth();
   const [selectedChat, setSelectedChat] = useState<SelectedChat>(null);
-  const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateChannel, setShowCreateChannel] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const { data: adminUsers = [], isLoading: loadingUsers } = useAdminUsers();
   const { data: dmConversations = [] } = useAdminDMConversations();
@@ -67,9 +70,12 @@ export default function TeamChat() {
 
   const messages = selectedChat?.type === 'dm' ? dmMessages : channelMessages;
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  // Snap to bottom BEFORE paint so user never sees the top
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el && messages.length > 0) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
 
   // Filter admins not in existing conversations for new DM
@@ -99,16 +105,16 @@ export default function TeamChat() {
     setSelectedChat({ type: 'channel', id: channel.id });
   };
 
-  const handleSendMessage = async () => {
-    if (!messageInput.trim() || !selectedChat) return;
+  const handleSendMessage = async (message: string, attachment?: { url: string; type: string; name: string }) => {
+    if (!message.trim() && !attachment) return;
+    if (!selectedChat) return;
 
     try {
       if (selectedChat.type === 'dm') {
-        await sendDM.mutateAsync({ conversationId: selectedChat.id, message: messageInput });
+        await sendDM.mutateAsync({ conversationId: selectedChat.id, message, attachment });
       } else {
-        await sendChannelMessage.mutateAsync({ channelId: selectedChat.id, message: messageInput });
+        await sendChannelMessage.mutateAsync({ channelId: selectedChat.id, message, attachment });
       }
-      setMessageInput('');
     } catch (error) {
       console.error('Failed to send message:', error);
     }
@@ -298,7 +304,7 @@ export default function TeamChat() {
           </div>
 
           {/* Messages */}
-          <ScrollArea className="flex-1 p-4">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 min-h-0">
             {!selectedChat ? (
               <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
@@ -315,7 +321,9 @@ export default function TeamChat() {
                 {messages.map((msg) => {
                   const isOwn = msg.sender_id === user?.id;
                   const sender = 'sender' in msg ? msg.sender : undefined;
-                  
+                  const hasAttachment = 'attachment_url' in msg && msg.attachment_url;
+                  const isImage = 'attachment_type' in msg && msg.attachment_type === 'image';
+
                   return (
                     <div
                       key={msg.id}
@@ -341,52 +349,70 @@ export default function TeamChat() {
                             {format(new Date(msg.created_at), 'h:mm a')}
                           </span>
                         </div>
-                        <div
-                          className={cn(
-                            "rounded-lg px-4 py-2 inline-block text-left",
-                            isOwn
-                              ? "bg-primary text-primary-foreground"
-                              : "bg-muted"
-                          )}
-                        >
-                          <ClickableText text={msg.message} className="text-sm" />
-                        </div>
+                        {msg.message && !msg.message.startsWith('Sent ') && (
+                          <div
+                            className={cn(
+                              "rounded-lg px-4 py-2 inline-block text-left",
+                              isOwn
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-muted"
+                            )}
+                          >
+                            <ClickableText text={msg.message} className="text-sm" />
+                          </div>
+                        )}
+                        {hasAttachment && (
+                          <div className={cn("mt-1", isOwn && "flex justify-end")}>
+                            {isImage ? (
+                              <a
+                                href={(msg as any).attachment_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block"
+                              >
+                                <img
+                                  src={(msg as any).attachment_url}
+                                  alt={(msg as any).attachment_name || 'Image'}
+                                  className="max-w-[320px] max-h-[240px] object-cover rounded-lg border border-border/50 hover:border-border transition-colors"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                href={(msg as any).attachment_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border/50 hover:bg-muted transition-colors max-w-[280px]"
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                                  <FileText className="w-5 h-5 text-primary" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {(msg as any).attachment_name || 'File'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">Click to download</p>
+                                </div>
+                                <Download className="w-4 h-4 text-muted-foreground" />
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
                 })}
-                <div ref={messagesEndRef} />
               </div>
             )}
-          </ScrollArea>
+          </div>
 
           {/* Message Input */}
           {selectedChat && (
-            <div className="p-4 border-t border-border">
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleSendMessage();
-                }}
-                className="flex gap-2"
-              >
-                <Input
-                  value={messageInput}
-                  onChange={(e) => setMessageInput(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1"
-                />
-                <Button 
-                  type="submit" 
-                  disabled={!messageInput.trim() || sendDM.isPending || sendChannelMessage.isPending}
-                >
-                  {(sendDM.isPending || sendChannelMessage.isPending) ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
-                  )}
-                </Button>
-              </form>
+            <div className="flex-shrink-0 border-t border-border">
+              <ChatInput
+                onSend={handleSendMessage}
+                disabled={sendDM.isPending || sendChannelMessage.isPending}
+                placeholder="Type a message..."
+              />
             </div>
           )}
         </div>

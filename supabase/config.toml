@@ -329,3 +329,6 @@ verify_jwt = false
 
 [functions.token-bridge]
 verify_jwt = false
+
+[functions.add-wallet-credit]
+verify_jwt = false

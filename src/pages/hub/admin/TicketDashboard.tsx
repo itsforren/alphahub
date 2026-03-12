@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Ticket,
@@ -30,6 +30,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   useAllTickets,
   useTicketMetrics,
@@ -115,12 +116,14 @@ function MetricCard({ title, value, icon: Icon, variant }: {
   );
 }
 
-function TicketCard({ ticket, onStatusChange, onAssign }: {
+function TicketCard({ ticket, onStatusChange, onAssign, onUpdateNotes }: {
   ticket: TicketWithDetails;
   onStatusChange: (ticketId: string, status: string) => void;
   onAssign: (ticketId: string, assigneeId: string | null) => void;
+  onUpdateNotes: (ticketId: string, notes: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [notesValue, setNotesValue] = useState<string | null>(null);
   const navigate = useNavigate();
   const { data: agents } = useSupportAgents();
 
@@ -337,6 +340,32 @@ function TicketCard({ ticket, onStatusChange, onAssign }: {
                 )}
               </div>
 
+              {/* Resolution Notes */}
+              <div className="pt-2 border-t border-border/50">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Resolution Notes</p>
+                <Textarea
+                  value={notesValue ?? ticket.resolution_notes ?? ''}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Document what was fixed, how it was resolved, and any follow-up needed..."
+                  className="min-h-[80px] resize-y text-sm"
+                  rows={3}
+                />
+                {(notesValue !== null && notesValue !== (ticket.resolution_notes ?? '')) && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onUpdateNotes(ticket.id, notesValue || '');
+                        setNotesValue(null);
+                      }}
+                    >
+                      Save Notes
+                    </Button>
+                    <span className="text-xs text-muted-foreground">Unsaved changes</span>
+                  </div>
+                )}
+              </div>
+
               {/* Activity Timeline */}
               {activities.length > 0 && (
                 <div className="pt-2 border-t border-border/50">
@@ -353,32 +382,28 @@ function TicketCard({ ticket, onStatusChange, onAssign }: {
 }
 
 // Lazy-loaded kanban board
-let TicketKanbanBoard: React.ComponentType<{
-  tickets: TicketWithDetails[];
-  onStatusChange: (ticketId: string, newStatus: string) => void;
-  onAssign: (ticketId: string, assigneeId: string | null) => void;
-}> | null = null;
+const LazyKanbanBoardComponent = lazy(() =>
+  import('@/components/admin/tickets/TicketKanbanBoard').then((m) => ({
+    default: m.TicketKanbanBoard,
+  }))
+);
 
 function LazyKanbanBoard(props: {
   tickets: TicketWithDetails[];
   onStatusChange: (ticketId: string, newStatus: string) => void;
   onAssign: (ticketId: string, assigneeId: string | null) => void;
 }) {
-  const [Board, setBoard] = useState<typeof TicketKanbanBoard>(TicketKanbanBoard);
-
-  if (!Board) {
-    import('@/components/admin/tickets/TicketKanbanBoard').then((m) => {
-      TicketKanbanBoard = m.TicketKanbanBoard;
-      setBoard(() => m.TicketKanbanBoard);
-    });
-    return (
-      <div className="flex items-center justify-center p-12">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  return <Board {...props} />;
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <LazyKanbanBoardComponent {...props} />
+    </Suspense>
+  );
 }
 
 export default function TicketDashboard() {
@@ -424,6 +449,15 @@ export default function TicketDashboard() {
       toast.success(assigneeId ? 'Ticket assigned' : 'Ticket unassigned');
     } catch (error) {
       toast.error('Failed to assign ticket');
+    }
+  };
+
+  const handleUpdateNotes = async (ticketId: string, notes: string) => {
+    try {
+      await updateTicket.mutateAsync({ id: ticketId, resolution_notes: notes || null });
+      toast.success('Resolution notes saved');
+    } catch (error) {
+      toast.error('Failed to save notes');
     }
   };
 
@@ -782,6 +816,7 @@ export default function TicketDashboard() {
               ticket={ticket}
               onStatusChange={handleStatusChange}
               onAssign={handleAssign}
+              onUpdateNotes={handleUpdateNotes}
             />
           ))}
         </div>

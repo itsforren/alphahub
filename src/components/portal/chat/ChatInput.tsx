@@ -25,10 +25,14 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false);
 
   const handleSubmit = async () => {
     const trimmedMessage = message.trim();
     if ((!trimmedMessage && !attachment) || disabled || isUploading) return;
+    // Synchronous guard — prevents double-submit from keyboard repeat or rapid clicks
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
 
     let attachmentData: { url: string; type: string; name: string } | undefined;
 
@@ -43,6 +47,7 @@ export function ChatInput({
           if (refreshError) {
             toast.error('Session expired. Please refresh the page and try again.');
             setIsUploading(false);
+            isSendingRef.current = false;
             return;
           }
         }
@@ -66,6 +71,7 @@ export function ChatInput({
             toast.error(`Upload failed: ${uploadError.message}`);
           }
           setIsUploading(false);
+          isSendingRef.current = false;
           return;
         }
 
@@ -82,6 +88,7 @@ export function ChatInput({
         console.error('Upload error:', error);
         toast.error(error?.message || 'Failed to upload file');
         setIsUploading(false);
+        isSendingRef.current = false;
         return;
       }
       setIsUploading(false);
@@ -90,6 +97,8 @@ export function ChatInput({
     onSend(trimmedMessage || `Sent ${attachmentData?.type === 'image' ? 'an image' : 'a file'}`, attachmentData);
     setMessage('');
     setAttachment(null);
+    // Release guard after a short delay to let isPending propagate
+    setTimeout(() => { isSendingRef.current = false; }, 500);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

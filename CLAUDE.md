@@ -1,48 +1,58 @@
+> **Knowledge Base**: Read `~/knowledge/projects/alphahub.md` first for consolidated reference.
+> Full system context: `~/knowledge/SYSTEM.md` | APIs: `~/knowledge/apis/` | Runbooks: `~/knowledge/runbooks/`
+> This CLAUDE.md has additional project-specific details below.
+
 # Alpha Hub — Claude Code Instructions
 
 ## Quick Connect
 
-This is the **Alpha Agent Flow** platform (aka "Alpha Hub").
+This is the **Alpha Hub** production platform at `alphaagent.io`.
 
-- **Repo**: https://github.com/itsforren/alpha-agent-flow.git
-- **Local path**: `/Users/forren/workspace/alpha-agent-flow-review/`
-- **Live app**: https://alpha-agent-flow.lovable.app
-- **Supabase project**: `qydkrpirrfelgtcqasdx`
+- **Official Repo**: https://github.com/itsforren/alphahub.git
+- **Local working path**: `/Users/forren/workspace/copy-alphahub/`
+- **Live app**: https://alphaagent.io (Vercel, auto-deploys from `main`)
+- **Supabase project**: `qcunascacayiiuufjtaq`
 - **Stack**: Vite + React 18 + TypeScript + Tailwind CSS + shadcn/ui + Supabase
 
-If you're told to "connect to Alpha Hub" or "update Alpha Hub", this is the repo. Navigate here:
+## ⚠️ CRITICAL: Repo Identity
+
+**ALWAYS push to `itsforren/alphahub` — this is the ONLY correct repo.**
+
+**NEVER touch `itsforren/alpha-agent-flow`** — that is the OLD Lovable app, completely separate, not connected to alphaagent.io. Pushing there does nothing for production.
+
+To work in this repo:
 ```bash
-cd /Users/forren/workspace/alpha-agent-flow-review
+cd /Users/forren/workspace/copy-alphahub
+git pull origin main
 ```
+
+Edge functions deploy directly to Supabase (separate from Vercel):
+```bash
+cd /Users/forren/workspace/copy-alphahub/alphahub-v2
+supabase functions deploy <function-name> --project-ref qcunascacayiiuufjtaq
+```
+
+## Deployment Flow
+
+1. **Frontend** → push to `main` on `itsforren/alphahub` → Vercel auto-deploys to `alphaagent.io`
+2. **Edge Functions** → `supabase functions deploy <name> --project-ref qcunascacayiiuufjtaq`
+3. **DB changes** → Supabase Management API or migrations
 
 ## CRITICAL: Multi-Agent Safety Protocol
 
-Multiple Claude Code instances AND Lovable may be editing this repo concurrently. Follow these rules **every time**:
-
 ### Before ANY edit:
-1. **Pull first** — always start with `git pull origin main` to get the latest
-2. **Check for uncommitted changes** — run `git status`. If there are unstaged changes from another session, do NOT overwrite them. Ask the user what to do.
-3. **Never force push** — `git push --force` is forbidden. It will destroy other agents' work.
+1. **Pull first** — `git pull origin main` from `/Users/forren/workspace/copy-alphahub`
+2. **Check for uncommitted changes** — `git status`. Do NOT overwrite them without asking.
+3. **Never force push** — forbidden.
 
 ### While editing:
-4. **Work on a feature branch** if your task is multi-file or takes more than a few minutes:
-   ```bash
-   git checkout -b feature/<short-name>
-   ```
-   Merge back to main when done: `git checkout main && git pull && git merge feature/<short-name>`
-5. **If staying on main** (small changes), commit frequently — small atomic commits, not one big dump at the end.
-6. **Never amend commits** that have been pushed. Create new commits instead.
+4. **Feature branch for multi-file changes**: `git checkout -b feature/<short-name>`
+5. **Small changes**: stay on main, commit frequently.
+6. **Never amend pushed commits.**
 
 ### After editing:
-7. **Push promptly** — don't leave committed changes sitting locally. Push so other agents can pull.
-8. **If push fails** (rejected), pull with rebase: `git pull --rebase origin main`, resolve any conflicts, then push.
-
-## Lovable Sync Awareness
-
-- Lovable auto-commits to this repo when the user makes changes in the Lovable UI
-- After pushing your changes, the user clicks **"Publish"** in Lovable to deploy the frontend
-- Lovable creates snapshot branches like `lovable-snapshot-YYYY-MM-DD` — **do not delete these**
-- If you see unexpected recent commits you didn't make, they're likely from Lovable — pull and work on top of them
+7. **Push promptly** — `git push origin main` (or merge feature branch)
+8. **If push fails**: `git pull --rebase origin main`, resolve conflicts, push.
 
 ## Project Structure
 
@@ -57,41 +67,32 @@ src/
 supabase/
 ├── functions/             # Deno edge functions (deployed via Supabase CLI)
 ├── migrations/            # SQL migrations
-└── config.toml            # Function registration + cron schedules
+└── config.toml            # Function registration
 ```
 
 ## Supabase Edge Functions
 
-Edge functions are in `supabase/functions/`. Each function is a directory with an `index.ts` file using Deno runtime.
-
-**Deploy a function:**
 ```bash
-supabase functions deploy <function-name>
-```
+# Deploy a function
+supabase functions deploy <function-name> --project-ref qcunascacayiiuufjtaq
 
-**Deploy a migration:**
-```bash
-supabase db push
-```
+# Regenerate types after schema changes
+supabase gen types typescript --project-id qcunascacayiiuufjtaq > src/integrations/supabase/types.ts
 
-**Regenerate types after schema changes:**
-```bash
-supabase gen types typescript --project-id qydkrpirrfelgtcqasdx > src/integrations/supabase/types.ts
+# Link CLI to project
+supabase link --project-ref qcunascacayiiuufjtaq
 ```
-
-The Supabase CLI must be linked first: `supabase link --project-ref qydkrpirrfelgtcqasdx`
 
 ## Environment Variables
 
-- Frontend env vars are in `.env` (VITE_* prefix) — **never commit secrets**
-- Edge function secrets are set via `supabase secrets set KEY="value"` — NOT in any file
-- `.env` is gitignored. If it's missing, create from this template:
+- `.env` in project root (gitignored, never commit)
+- Correct values:
   ```
-  VITE_SUPABASE_URL=https://qydkrpirrfelgtcqasdx.supabase.co
-  VITE_SUPABASE_ANON_KEY=<ask user>
-  VITE_STRIPE_MANAGEMENT_PUBLISHABLE_KEY=<ask user>
-  VITE_STRIPE_AD_SPEND_PUBLISHABLE_KEY=<ask user>
+  VITE_SUPABASE_PROJECT_ID="qcunascacayiiuufjtaq"
+  VITE_SUPABASE_URL="https://qcunascacayiiuufjtaq.supabase.co"
+  VITE_SUPABASE_PUBLISHABLE_KEY="<anon key>"
   ```
+- Edge function secrets: `supabase secrets set KEY="value" --project-ref qcunascacayiiuufjtaq`
 
 ## Key Patterns
 
@@ -100,12 +101,12 @@ The Supabase CLI must be linked first: `supabase link --project-ref qydkrpirrfel
 - **Toasts**: `import { toast } from 'sonner'`
 - **Icons**: `lucide-react`
 - **Supabase client**: `import { supabase } from '@/integrations/supabase/client'`
-- **Edge functions**: Raw `fetch()` to Stripe API (no SDK), `createClient` from `@supabase/supabase-js` for DB
+- **Edge functions**: Raw `fetch()` to Stripe API (no SDK), `createClient` from `@supabase/supabase-js`
 
 ## Do NOT
 
-- Delete or modify `.lovable/` directory
+- Push to `itsforren/alpha-agent-flow` — wrong repo, old Lovable app
 - Force push to main
 - Commit `.env` files or API keys
-- Edit `src/integrations/supabase/types.ts` manually (it's auto-generated)
-- Delete branches named `lovable-snapshot-*`
+- Edit `src/integrations/supabase/types.ts` manually (auto-generated)
+- Use Supabase project ID `qydkrpirrfelgtcqasdx` — that is the OLD project

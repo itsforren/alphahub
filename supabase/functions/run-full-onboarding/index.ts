@@ -1329,16 +1329,17 @@ Deno.serve(async (req) => {
                 address_city: client.address_city,
                 address_state: client.address_state,
                 address_zip: client.address_zip,
+                snapshot_id: SNAPSHOT_ID,
               });
               if (result.success && result.location_id) {
                 const crmLink = `https://app.alphaagentcrm.com/v2/location/${result.location_id}`;
-                await supabase.from('clients').update({ 
+                await supabase.from('clients').update({
                   subaccount_id: result.location_id,
                   crm_link: crmLink,
                 }).eq('id', clientId);
                 client.subaccount_id = result.location_id;
                 client.crm_link = crmLink;
-                subaccountResult = { locationId: result.location_id, crmLink };
+                subaccountResult = { locationId: result.location_id, crmLink, snapshotId: SNAPSHOT_ID, locationUpdateResult: result.locationUpdateResult };
               } else {
                 throw new Error(result.error || 'Failed to create GHL subaccount');
               }
@@ -1415,9 +1416,10 @@ Deno.serve(async (req) => {
           }
 
           case 'install_snapshot': {
-            // Step 11: Poll for Discovery Calendar (snapshot verification only)
-            // SaaS activation has been moved to Step 10
-            
+            // Step 11: Poll for Discovery Calendar (snapshot verification)
+            // SaaS activation is done manually in Step 10 — SaaS enable API is disabled
+            // When SaaS is activated manually, the snapshot should auto-apply and create the Discovery calendar
+
             if (!isNonEmptyString(client.subaccount_id)) {
               throw new Error('Missing subaccount_id (locationId) required for snapshot verification');
             }
@@ -1425,7 +1427,6 @@ Deno.serve(async (req) => {
             const locationId = client.subaccount_id;
             console.log(`[Step 11] Polling for Discovery calendar on location: ${locationId}`);
 
-            // Pure Discovery calendar polling - no SaaS enable here
             const maxMs = 90 * 1000;
             const pollEveryMs = 10 * 1000;
             const startedAt = Date.now();
@@ -1439,7 +1440,7 @@ Deno.serve(async (req) => {
               const statusResp = await getSnapshotStatusDetailed(GHL_COMPANY_ID, locationId);
               const statusJson = statusResp.json;
               lastStatus = statusJson;
-              
+
               attempts.push({
                 poll,
                 ok: statusResp.ok,
@@ -1462,8 +1463,8 @@ Deno.serve(async (req) => {
 
             if (discoveryCalendarId) {
               // Save discovery_calendar_id to client record
-              await supabase.from('clients').update({ 
-                discovery_calendar_id: discoveryCalendarId 
+              await supabase.from('clients').update({
+                discovery_calendar_id: discoveryCalendarId
               }).eq('id', clientId);
               client.discovery_calendar_id = discoveryCalendarId;
 
@@ -1477,7 +1478,7 @@ Deno.serve(async (req) => {
               });
             } else {
               // Bounded wait exceeded - fail with explicit snapshot diagnostics
-              const snapshotError = 'Snapshot not found: Discovery calendar was not found within 90s. Install/apply the snapshot, then retry Step 11.';
+              const snapshotError = 'Snapshot not found: Discovery calendar was not found within 90s. Verify SaaS was activated and snapshot was applied in GHL, then retry Step 11.';
               const stepData = (automationRun.step_data || {}) as Record<string, any>;
               stepData[`step_${i}`] = {
                 locationId,

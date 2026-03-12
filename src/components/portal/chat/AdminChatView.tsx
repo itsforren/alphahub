@@ -139,12 +139,12 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
             </Button>
           )}
 
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center overflow-hidden">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center overflow-hidden flex-shrink-0">
             {client?.profile_image_url ? (
               <img
-                src={client.profile_image_url}
+                src={`${client.profile_image_url}${client.profile_image_url.includes('?') ? '&' : '?'}v=${(client as any).headshot_updated_at || (client as any).updated_at || ''}`}
                 alt={client.name}
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-full h-full object-cover"
                 onError={(e) => {
                   e.currentTarget.style.display = 'none';
                   if (e.currentTarget.nextElementSibling) {

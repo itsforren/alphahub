@@ -27,6 +27,9 @@ export interface AdminDMMessage {
   message: string;
   read_at: string | null;
   created_at: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
   sender?: AdminProfile;
 }
 
@@ -45,6 +48,9 @@ export interface AdminChannelMessage {
   sender_id: string;
   message: string;
   created_at: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
   sender?: AdminProfile;
 }
 
@@ -191,7 +197,7 @@ export function useSendAdminDM() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ conversationId, message }: { conversationId: string; message: string }) => {
+    mutationFn: async ({ conversationId, message, attachment }: { conversationId: string; message: string; attachment?: { url: string; type: string; name: string } }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase
@@ -200,9 +206,20 @@ export function useSendAdminDM() {
           conversation_id: conversationId,
           sender_id: user.id,
           message,
+          ...(attachment && {
+            attachment_url: attachment.url,
+            attachment_type: attachment.type,
+            attachment_name: attachment.name,
+          }),
         });
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505' || error.message?.includes('Duplicate message')) {
+          console.warn('Duplicate DM suppressed');
+          return;
+        }
+        throw error;
+      }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-dm-messages', variables.conversationId] });
@@ -326,7 +343,7 @@ export function useSendChannelMessage() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ channelId, message }: { channelId: string; message: string }) => {
+    mutationFn: async ({ channelId, message, attachment }: { channelId: string; message: string; attachment?: { url: string; type: string; name: string } }) => {
       if (!user?.id) throw new Error('Not authenticated');
 
       const { error } = await supabase
@@ -335,9 +352,20 @@ export function useSendChannelMessage() {
           channel_id: channelId,
           sender_id: user.id,
           message,
+          ...(attachment && {
+            attachment_url: attachment.url,
+            attachment_type: attachment.type,
+            attachment_name: attachment.name,
+          }),
         });
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505' || error.message?.includes('Duplicate message')) {
+          console.warn('Duplicate channel message suppressed');
+          return;
+        }
+        throw error;
+      }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['admin-channel-messages', variables.channelId] });

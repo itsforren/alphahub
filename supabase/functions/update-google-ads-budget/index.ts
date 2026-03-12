@@ -38,7 +38,7 @@ serve(async (req) => {
   }
 
   try {
-    const { clientId, campaignRowId, newDailyBudget } = await req.json();
+    const { clientId, campaignRowId, newDailyBudget, changeSource, changeReason } = await req.json();
 
     if (!clientId) {
       throw new Error('clientId is required');
@@ -48,7 +48,7 @@ serve(async (req) => {
       throw new Error('newDailyBudget must be a positive number');
     }
 
-    console.log(`Updating daily budget to $${newDailyBudget} for client ${clientId}, campaignRowId: ${campaignRowId || 'primary'}`);
+    console.log(`Updating daily budget to $${newDailyBudget} for client ${clientId}, campaignRowId: ${campaignRowId || 'primary'}, source: ${changeSource || 'unknown'}`);
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -182,6 +182,15 @@ serve(async (req) => {
 
     // Update local database — campaigns table if campaignRowId, also always update clients
     if (campaignRowId) {
+      // Get old budget for history logging
+      const { data: oldCampaign } = await supabase
+        .from('campaigns')
+        .select('current_daily_budget, google_campaign_id')
+        .eq('id', campaignRowId)
+        .single();
+
+      const oldBudget = oldCampaign?.current_daily_budget ?? null;
+
       const { error: campaignUpdateError } = await supabase
         .from('campaigns')
         .update({
@@ -194,6 +203,18 @@ serve(async (req) => {
       if (campaignUpdateError) {
         console.error('Error updating campaign budget:', campaignUpdateError);
       }
+
+      // Log budget change to history
+      await supabase.from('campaign_budget_changes').insert({
+        campaign_id: campaignRowId,
+        client_id: clientId,
+        google_campaign_id: oldCampaign?.google_campaign_id || campaignId,
+        old_budget: oldBudget,
+        new_budget: newDailyBudget,
+        change_source: changeSource || 'unknown',
+        change_reason: changeReason || null,
+        triggered_by: 'system',
+      });
 
       // Also update clients.target_daily_spend as sum of all campaign budgets
       const { data: allCampaigns } = await supabase
@@ -208,6 +229,13 @@ serve(async (req) => {
           .eq('id', clientId);
       }
     } else {
+      // Get old budget for history logging
+      const { data: oldClient } = await supabase
+        .from('clients')
+        .select('target_daily_spend, google_campaign_id')
+        .eq('id', clientId)
+        .single();
+
       const { error: updateError } = await supabase
         .from('clients')
         .update({
@@ -219,6 +247,17 @@ serve(async (req) => {
       if (updateError) {
         console.error('Error updating local client:', updateError);
       }
+
+      // Log budget change to history (client-level, no campaign row)
+      await supabase.from('campaign_budget_changes').insert({
+        client_id: clientId,
+        google_campaign_id: oldClient?.google_campaign_id || null,
+        old_budget: oldClient?.target_daily_spend ?? null,
+        new_budget: newDailyBudget,
+        change_source: changeSource || 'unknown',
+        change_reason: changeReason || null,
+        triggered_by: 'system',
+      });
     }
 
     return new Response(JSON.stringify({

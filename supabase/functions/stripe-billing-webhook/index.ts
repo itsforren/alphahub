@@ -49,7 +49,7 @@ async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) 
           'Authorization': `Bearer ${supabaseServiceKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget }),
+        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget, changeSource: 'safe_mode_exit', changeReason: 'Wallet refilled via Stripe payment' }),
       });
 
       if (!budgetRes.ok) {

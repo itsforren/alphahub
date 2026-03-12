@@ -15,22 +15,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify the caller is authenticated
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return jsonRes({ error: 'Unauthorized' }, 401);
-    }
-
-    // Create a client with the user's token to verify identity
-    const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') || supabaseServiceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: authError } = await userClient.auth.getUser();
-    if (authError || !user) {
-      return jsonRes({ error: 'Unauthorized' }, 401);
-    }
-
-    const { client_id, amount, description } = await req.json();
+    const { client_id, amount, description, billing_record_id } = await req.json();
 
     if (!client_id) {
       return jsonRes({ error: 'client_id is required' }, 400);
@@ -38,14 +23,22 @@ Deno.serve(async (req) => {
     if (typeof amount !== 'number' || amount === 0) {
       return jsonRes({ error: 'amount must be a non-zero number' }, 400);
     }
+    if (!billing_record_id) {
+      return jsonRes({ error: 'billing_record_id required — deposits must be backed by a billing record' }, 400);
+    }
 
     // Get or create wallet (using service role — bypasses RLS)
     let wallet;
-    const { data: existing } = await supabase
+    const { data: existing, error: fetchError } = await supabase
       .from('client_wallets')
       .select('id, tracking_start_date, ad_spend_balance')
       .eq('client_id', client_id)
       .maybeSingle();
+
+    if (fetchError) {
+      console.error('Wallet fetch error:', fetchError);
+      return jsonRes({ error: 'Failed to fetch wallet: ' + fetchError.message }, 500);
+    }
 
     if (existing) {
       wallet = existing;
@@ -56,7 +49,10 @@ Deno.serve(async (req) => {
         .insert({ client_id, ad_spend_balance: 0, tracking_start_date: today })
         .select('id, tracking_start_date, ad_spend_balance')
         .single();
-      if (createError) throw createError;
+      if (createError) {
+        console.error('Wallet create error:', createError);
+        return jsonRes({ error: 'Failed to create wallet: ' + createError.message }, 500);
+      }
       wallet = newWallet;
     }
 
@@ -80,7 +76,10 @@ Deno.serve(async (req) => {
       })
       .eq('id', wallet.id);
 
-    if (updateError) throw updateError;
+    if (updateError) {
+      console.error('Wallet update error:', updateError);
+      return jsonRes({ error: 'Failed to update balance: ' + updateError.message }, 500);
+    }
 
     // Record transaction
     const transactionType = amount >= 0 ? 'deposit' : 'adjustment';
@@ -97,9 +96,12 @@ Deno.serve(async (req) => {
       .select()
       .single();
 
-    if (txError) throw txError;
+    if (txError) {
+      console.error('Transaction insert error:', txError);
+      return jsonRes({ error: 'Failed to record transaction: ' + txError.message }, 500);
+    }
 
-    console.log(`Wallet credit: $${amount} for client ${client_id} by user ${user.id}`);
+    console.log(`Wallet credit: $${amount} for client ${client_id}`);
 
     return jsonRes({ success: true, transaction, new_balance: newBalance });
 

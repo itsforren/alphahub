@@ -1234,6 +1234,163 @@ export function useUpdateExcludedCampaigns() {
   });
 }
 
+// Billing Integrity Audit — per-client reconciliation of ad spend, wallet deposits, and Stripe charges
+export interface BillingIntegrityRow {
+  clientId: string;
+  clientName: string;
+  mtdAdSpend: number;
+  totalDeposits: number;
+  totalAdjustments: number;
+  walletBalance: number;
+  stripeBackedTotal: number;
+  stripeBackedCount: number;
+  unbackedTotal: number;
+  unbackedCount: number;
+  billingRecordTotal: number;
+  billingRecordCount: number;
+  status: 'clean' | 'warning' | 'problem';
+  issues: string[];
+}
+
+export function useBillingIntegrity() {
+  return useQuery({
+    queryKey: ['billing-integrity'],
+    queryFn: async (): Promise<BillingIntegrityRow[]> => {
+      const now = new Date();
+      const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
+
+      const [clientsRes, walletsRes, adSpendRes, depositsRes, adjustmentsRes, billingRes] = await Promise.all([
+        supabase.from('clients').select('id, name').in('status', ['active', 'onboarding']),
+        supabase.from('client_wallets').select('client_id, tracking_start_date'),
+        // MTD ad spend
+        supabase.from('ad_spend_daily').select('client_id, cost').gte('spend_date', monthStart),
+        // All deposits
+        supabase.from('wallet_transactions').select('client_id, amount, billing_record_id').eq('transaction_type', 'deposit'),
+        // All adjustments
+        supabase.from('wallet_transactions').select('client_id, amount').eq('transaction_type', 'adjustment'),
+        // All paid ad_spend billing records
+        supabase.from('billing_records').select('id, client_id, amount, stripe_payment_intent_id, stripe_account, notes').eq('billing_type', 'ad_spend').eq('status', 'paid'),
+      ]);
+
+      const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
+      const walletClients = new Set((walletsRes.data || []).map(w => w.client_id));
+      const trackingMap = new Map((walletsRes.data || []).map(w => [w.client_id, w.tracking_start_date]));
+
+      // MTD ad spend per client
+      const mtdSpend = new Map<string, number>();
+      for (const row of adSpendRes.data || []) {
+        mtdSpend.set(row.client_id, (mtdSpend.get(row.client_id) || 0) + Number(row.cost || 0));
+      }
+
+      // All-time wallet deposits per client + count unbacked
+      const depositsByClient = new Map<string, { total: number; records: Array<{ amount: number; billing_record_id: string | null }> }>();
+      for (const tx of depositsRes.data || []) {
+        const entry = depositsByClient.get(tx.client_id) || { total: 0, records: [] };
+        entry.total += Number(tx.amount || 0);
+        entry.records.push({ amount: Number(tx.amount || 0), billing_record_id: tx.billing_record_id });
+        depositsByClient.set(tx.client_id, entry);
+      }
+
+      // All-time adjustments per client
+      const adjustmentsByClient = new Map<string, number>();
+      for (const tx of adjustmentsRes.data || []) {
+        adjustmentsByClient.set(tx.client_id, (adjustmentsByClient.get(tx.client_id) || 0) + Number(tx.amount || 0));
+      }
+
+      // Billing records per client — split by Stripe-backed or not
+      const billingByClient = new Map<string, { backed: number; backedCount: number; unbacked: number; unbackedCount: number; total: number; count: number }>();
+      for (const rec of billingRes.data || []) {
+        const entry = billingByClient.get(rec.client_id) || { backed: 0, backedCount: 0, unbacked: 0, unbackedCount: 0, total: 0, count: 0 };
+        const amt = Number(rec.amount || 0);
+        entry.total += amt;
+        entry.count++;
+        if (rec.stripe_payment_intent_id) {
+          entry.backed += amt;
+          entry.backedCount++;
+        } else {
+          entry.unbacked += amt;
+          entry.unbackedCount++;
+        }
+        billingByClient.set(rec.client_id, entry);
+      }
+
+      // Compute tracked spend per client for balance
+      const trackingDates = [...trackingMap.values()].filter(Boolean) as string[];
+      const earliest = trackingDates.length > 0 ? trackingDates.reduce((a, b) => a < b ? a : b) : null;
+      let allSpendData: Array<{ client_id: string; spend_date: string; cost: number | null }> = [];
+      if (earliest) {
+        const { data } = await supabase.from('ad_spend_daily').select('client_id, spend_date, cost').gte('spend_date', earliest);
+        allSpendData = data || [];
+      }
+      const trackedSpendByClient = new Map<string, number>();
+      for (const row of allSpendData) {
+        const trackStart = trackingMap.get(row.client_id);
+        if (!trackStart || row.spend_date < trackStart) continue;
+        trackedSpendByClient.set(row.client_id, (trackedSpendByClient.get(row.client_id) || 0) + Number(row.cost || 0));
+      }
+
+      // Build rows for all clients that have a wallet
+      const rows: BillingIntegrityRow[] = [];
+      for (const clientId of walletClients) {
+        const name = clientMap.get(clientId);
+        if (!name) continue;
+
+        const mtd = mtdSpend.get(clientId) || 0;
+        const deps = depositsByClient.get(clientId);
+        const totalDeposits = deps?.total || 0;
+        const totalAdjustments = adjustmentsByClient.get(clientId) || 0;
+        const trackedSpend = trackedSpendByClient.get(clientId) || 0;
+        const walletBalance = totalDeposits + totalAdjustments - trackedSpend;
+        const billing = billingByClient.get(clientId) || { backed: 0, backedCount: 0, unbacked: 0, unbackedCount: 0, total: 0, count: 0 };
+
+        // Check for deposits without a billing_record_id (unbacked deposits)
+        const unbackedDeposits = deps?.records.filter(r => !r.billing_record_id) || [];
+        const unbackedDepositTotal = unbackedDeposits.reduce((s, r) => s + r.amount, 0);
+
+        const issues: string[] = [];
+        if (billing.unbackedCount > 0) {
+          issues.push(`${billing.unbackedCount} billing record(s) ($${billing.unbacked.toFixed(0)}) without Stripe PI`);
+        }
+        if (unbackedDeposits.length > 0) {
+          issues.push(`${unbackedDeposits.length} deposit(s) ($${unbackedDepositTotal.toFixed(0)}) without billing record`);
+        }
+        if (walletBalance < 0) {
+          issues.push(`Negative balance: -$${Math.abs(walletBalance).toFixed(2)}`);
+        }
+
+        let status: 'clean' | 'warning' | 'problem' = 'clean';
+        if (billing.unbackedCount > 0 || unbackedDeposits.length > 0) status = 'problem';
+        else if (walletBalance < 0) status = 'warning';
+
+        rows.push({
+          clientId,
+          clientName: name,
+          mtdAdSpend: mtd,
+          totalDeposits,
+          totalAdjustments,
+          walletBalance,
+          stripeBackedTotal: billing.backed,
+          stripeBackedCount: billing.backedCount,
+          unbackedTotal: billing.unbacked + unbackedDepositTotal,
+          unbackedCount: billing.unbackedCount + unbackedDeposits.length,
+          billingRecordTotal: billing.total,
+          billingRecordCount: billing.count,
+          status,
+          issues,
+        });
+      }
+
+      // Sort: problems first, then warnings, then clean
+      const order = { problem: 0, warning: 1, clean: 2 };
+      rows.sort((a, b) => order[a.status] - order[b.status] || a.clientName.localeCompare(b.clientName));
+
+      return rows;
+    },
+    staleTime: 30_000,
+    gcTime: 5 * 60 * 1000,
+  });
+}
+
 // Global Stripe sync — reconciles all pending/overdue records against Stripe
 export function useSyncAllStripe() {
   const queryClient = useQueryClient();

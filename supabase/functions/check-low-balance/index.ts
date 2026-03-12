@@ -347,6 +347,18 @@ serve(async (req) => {
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', camp.campaignDbId);
+
+              // Log budget change to history
+              await supabase.from('campaign_budget_changes').insert({
+                campaign_id: camp.campaignDbId,
+                client_id: client.id,
+                google_campaign_id: camp.campaignId,
+                old_budget: camp.currentBudget,
+                new_budget: result.budgetUsed,
+                change_source: 'safe_mode_enter',
+                change_reason: `Low wallet balance ($${remainingBalance.toFixed(2)})`,
+                triggered_by: 'system',
+              });
             }
 
             // Create audit log entry per campaign

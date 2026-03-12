@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target, Plus, ShieldCheck } from 'lucide-react';
+import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,7 +32,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     refetch: refetchComputedBalance
   } = useComputedWalletBalance(clientId);
   const createOrUpdateWallet = useCreateOrUpdateWallet();
-  const [isAddingCredit, setIsAddingCredit] = useState(false);
 
   // Fetch client billing info for monthly cap period calculation
   const { data: clientBilling } = useQuery({
@@ -84,9 +83,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const capPeriodDaysTotal = 30;
 
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const [creditModalOpen, setCreditModalOpen] = useState(false);
-  const [creditAmount, setCreditAmount] = useState('');
-  const [creditNote, setCreditNote] = useState('');
   const [threshold, setThreshold] = useState('');
   const [autoCharge, setAutoCharge] = useState('');
   const [editTrackingDate, setEditTrackingDate] = useState('');
@@ -145,43 +141,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
     setBillingModeInput(wallet?.billing_mode || 'manual');
     setEditTrackingDate(trackingStartDate || '');
     setSettingsModalOpen(true);
-  };
-
-  const handleAddCredit = async () => {
-    const amount = parseFloat(creditAmount);
-    if (!amount || amount <= 0) {
-      toast.error('Enter a valid amount');
-      return;
-    }
-    setIsAddingCredit(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('add-wallet-credit', {
-        body: {
-          client_id: clientId,
-          amount,
-          description: `Admin credit${creditNote ? ' — ' + creditNote : ''}`,
-        },
-      });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      // Invalidate computed balance
-      queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
-      queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['tracked-ad-spend', clientId], exact: false });
-      queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId], exact: false });
-      refetchComputedBalance();
-      toast.success(`$${amount.toLocaleString()} credit added`);
-      setCreditModalOpen(false);
-      setCreditAmount('');
-      setCreditNote('');
-    } catch (error) {
-      console.error('Add credit error:', error);
-      toast.error('Failed to add credit');
-    } finally {
-      setIsAddingCredit(false);
-    }
   };
 
   if (isLoading) {
@@ -397,25 +356,14 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                 </div>
               )}
               {isAdmin && (
-                <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setCreditModalOpen(true)}
-                    className="h-9 w-9"
-                    title="Add credit"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={openSettings}
-                    className="h-9 w-9"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </Button>
-                </>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={openSettings}
+                  className="h-9 w-9"
+                >
+                  <Settings className="w-4 h-4" />
+                </Button>
               )}
             </div>
           </div>
@@ -515,49 +463,6 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         </DialogContent>
       </Dialog>
 
-      {/* Add Credit Modal */}
-      <Dialog open={creditModalOpen} onOpenChange={setCreditModalOpen}>
-        <DialogContent className="sm:max-w-[360px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="w-5 h-5 text-emerald-500" />
-              Add Wallet Credit
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Amount</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                <Input
-                  type="number"
-                  step="1"
-                  min="1"
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(e.target.value)}
-                  className="pl-7"
-                  placeholder="500"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Note (optional)</Label>
-              <Input
-                value={creditNote}
-                onChange={(e) => setCreditNote(e.target.value)}
-                placeholder="e.g. Admin comp, refund, etc."
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddCredit} disabled={isAddingCredit}>
-              {isAddingCredit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Add Credit
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
