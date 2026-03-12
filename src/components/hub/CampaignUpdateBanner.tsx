@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Rocket } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useClient } from '@/hooks/useClientData';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
@@ -11,20 +12,26 @@ import {
 const POPUP_EXPIRES_AT = '2026-03-18T23:59:59Z';
 const DISMISS_KEY = 'campaign-update-popup-dismissed-mar2026';
 
+const ONBOARDING_STATUSES = ['pending', 'in_progress'];
+
 export function CampaignUpdateBanner() {
   const [open, setOpen] = useState(false);
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
+  const { data: client } = useClient();
 
   useEffect(() => {
     const now = new Date();
     const expires = new Date(POPUP_EXPIRES_AT);
     const dismissed = localStorage.getItem(DISMISS_KEY);
 
+    // Don't show to onboarding clients
+    if (client && ONBOARDING_STATUSES.includes(client.onboarding_status ?? '')) return;
+
     if (now < expires && !dismissed) {
       const timer = setTimeout(() => setOpen(true), 600);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [client]);
 
   const handleClose = () => {
     setOpen(false);
@@ -79,7 +86,7 @@ export function CampaignUpdateBanner() {
           </p>
 
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Thank you for your patience. We value your business extremely, and we value your business more than you know.
+            We appreciate your patience and your trust. Your success is what drives everything we do here.
           </p>
 
           <div className="pt-1 sm:pt-2 space-y-0.5">
