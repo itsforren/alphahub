@@ -298,11 +298,6 @@ export default function SignAgreement() {
   const uploadSignature = useUploadSignature();
   const uploadPdf = useUploadAgreementPdf();
   
-  // NPN validation helper (8-10 digits only)
-  const isValidNPN = (npn: string): boolean => {
-    return /^\d{8,10}$/.test(npn);
-  };
-  
   // Pre-fill form with client data
   useEffect(() => {
     if (client) {
@@ -359,7 +354,7 @@ export default function SignAgreement() {
     signerInfo.city.trim() && 
     signerInfo.state.trim() && 
     signerInfo.zip.trim() &&
-    isValidNPN(signerInfo.npn) &&
+    signerInfo.npn.trim() &&
     signerInfo.licenseStates.length > 0
   );
   const step3Complete = agreementScrolledToBottom && confirmedRead;
@@ -379,7 +374,7 @@ export default function SignAgreement() {
   }, [auditLog.initialsSections, expectedInitials]);
   
   const step4Complete = allKeyTermsChecked && allInitialsComplete;
-  const step5Complete = electronicIntent && hasDrawnSignature && typedSignature.trim() !== '' && printedName.trim() !== '';
+  const step5Complete = electronicIntent && hasDrawnSignature && typedSignature.trim() !== '';
   
   const canSign = step1Complete && step2Complete && step3Complete && step4Complete && step5Complete;
   
@@ -672,15 +667,15 @@ export default function SignAgreement() {
   // Loading state
   if (clientLoading || templateLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-background via-background to-red-950/10 font-montserrat">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-background via-background to-blue-950/10 font-montserrat">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center"
         >
           <div className="relative">
-            <div className="w-16 h-16 border-4 border-red-500/20 rounded-full animate-spin border-t-red-500" />
-            <FileText className="h-6 w-6 text-red-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="w-16 h-16 border-4 border-blue-500/20 rounded-full animate-spin border-t-blue-500" />
+            <FileText className="h-6 w-6 text-blue-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
           </div>
           <p className="text-muted-foreground mt-4">Loading your agreement...</p>
         </motion.div>
@@ -691,7 +686,7 @@ export default function SignAgreement() {
   // No client
   if (!client) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-background via-background to-red-950/10 p-4 font-montserrat">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-background via-background to-blue-950/10 p-4 font-montserrat">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -1149,22 +1144,11 @@ export default function SignAgreement() {
                         id="npn"
                         value={signerInfo.npn}
                         onChange={(e) => {
-                          // Only allow digits, max 10
-                          const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setSignerInfo(prev => ({ ...prev, npn: cleaned }));
+                          setSignerInfo(prev => ({ ...prev, npn: e.target.value }));
                         }}
-                        placeholder="12345678"
-                        className={`mt-1.5 ${signerInfo.npn && !isValidNPN(signerInfo.npn) ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                        maxLength={10}
+                        placeholder="Enter your NPN"
+                        className="mt-1.5"
                       />
-                      {signerInfo.npn && !isValidNPN(signerInfo.npn) && (
-                        <p className="text-xs text-red-500 mt-1">NPN must be 8-10 digits</p>
-                      )}
-                      {isValidNPN(signerInfo.npn) && (
-                        <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
-                          <Check className="h-3 w-3" /> Valid NPN format
-                        </p>
-                      )}
                     </div>
                     <div>
                       <Label className="text-sm font-medium">States Licensed *</Label>
@@ -1364,11 +1348,13 @@ export default function SignAgreement() {
                       <h2 className="text-xl font-bold">Key Financial Terms</h2>
                       <p className="text-sm text-muted-foreground">Acknowledge each term and provide your initials</p>
                     </div>
-                    <div className="ml-auto">
-                      <Badge variant={allKeyTermsChecked ? 'default' : 'outline'} className={allKeyTermsChecked ? 'bg-emerald-500/20 text-emerald-600 border-0' : ''}>
-                        {keyTermsCompleteCount}/{template?.key_terms.length || 0} Terms
-                      </Badge>
-                    </div>
+                    {(template?.key_terms?.length ?? 0) > 0 && (
+                      <div className="ml-auto">
+                        <Badge variant={allKeyTermsChecked ? 'default' : 'outline'} className={allKeyTermsChecked ? 'bg-emerald-500/20 text-emerald-600 border-0' : ''}>
+                          {keyTermsCompleteCount}/{template?.key_terms.length} Terms
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Key Terms Accordion */}
@@ -1436,7 +1422,7 @@ export default function SignAgreement() {
                     <div className="flex items-center gap-3 mb-2">
                       <Shield className="h-5 w-5 text-blue-500" />
                       <h3 className="text-lg font-semibold">
-                        Critical Provisions <span className="text-destructive">- Initials Required</span>
+                        Critical Provisions <span className="text-blue-500">- Initials Required</span>
                       </h3>
                       <Badge variant="outline" className={initialsCompleteCount === INITIALS_SECTIONS.length ? 'bg-emerald-500/20 text-emerald-600 border-0' : ''}>
                         {initialsCompleteCount}/{INITIALS_SECTIONS.length} Complete
@@ -1537,30 +1523,6 @@ export default function SignAgreement() {
                     <div className="flex-1 h-px bg-border" />
                   </div>
                   
-                  {/* Electronic Intent */}
-                  <div className="p-5 rounded-xl border bg-blue-500/5 border-blue-500/20 mb-6">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        id="electronicIntent"
-                        checked={electronicIntent}
-                        onCheckedChange={(checked) => handleElectronicIntentChange(!!checked)}
-                        className="mt-0.5"
-                      />
-                      <div className="flex-1">
-                        <Label htmlFor="electronicIntent" className="cursor-pointer text-sm leading-relaxed">
-                          I intend to sign this agreement electronically, and I understand that my electronic 
-                          signature has the same legal effect as a handwritten signature. <span className="text-muted-foreground">(UETA/ESIGN Act Acknowledgment)</span>
-                        </Label>
-                        {electronicIntentAt && (
-                          <p className="text-xs text-emerald-600 mt-1">
-                            <Check className="h-3 w-3 inline mr-1" />
-                            Accepted at {format(new Date(electronicIntentAt), 'h:mm:ss a')}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  
                   {/* Signature Canvas */}
                   <div className="mb-6">
                     <Label className="mb-2 block font-medium">Draw Your Signature</Label>
@@ -1596,34 +1558,49 @@ export default function SignAgreement() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   {/* Typed Signature */}
-                  <div className="grid gap-5 md:grid-cols-2 mb-8">
-                    <div>
-                      <Label htmlFor="typedSignature" className="font-medium">Type Your Signature *</Label>
-                      <Input
-                        id="typedSignature"
-                        value={typedSignature}
-                        onChange={(e) => handleTypedSignatureChange(e.target.value)}
-                        placeholder="Type your full name"
-                        className="mt-1.5 font-serif italic text-lg"
+                  <div className="mb-6">
+                    <Label htmlFor="typedSignature" className="font-medium">Type Your Full Legal Name *</Label>
+                    <Input
+                      id="typedSignature"
+                      value={typedSignature}
+                      onChange={(e) => {
+                        handleTypedSignatureChange(e.target.value);
+                        handlePrintedNameChange(e.target.value);
+                      }}
+                      placeholder="Type your full name"
+                      className="mt-1.5 font-serif italic text-lg"
+                    />
+                    {typedSignature && (
+                      <div className="mt-2 p-3 bg-muted/50 rounded-lg">
+                        <p className="text-xs text-muted-foreground mb-1">Preview:</p>
+                        <p style={{ fontFamily: "'Dancing Script', cursive" }} className="text-2xl text-primary">{typedSignature}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Electronic Intent */}
+                  <div className="p-5 rounded-xl border bg-blue-500/5 border-blue-500/20 mb-8">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="electronicIntent"
+                        checked={electronicIntent}
+                        onCheckedChange={(checked) => handleElectronicIntentChange(!!checked)}
+                        className="mt-0.5"
                       />
-                      {typedSignature && (
-                        <div className="mt-2 p-3 bg-muted/50 rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-1">Preview:</p>
-                          <p style={{ fontFamily: "'Dancing Script', cursive" }} className="text-2xl text-primary">{typedSignature}</p>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="printedName" className="font-medium">Printed Legal Name *</Label>
-                      <Input
-                        id="printedName"
-                        value={printedName}
-                        onChange={(e) => handlePrintedNameChange(e.target.value)}
-                        placeholder="Your full legal name"
-                        className="mt-1.5"
-                      />
+                      <div className="flex-1">
+                        <Label htmlFor="electronicIntent" className="cursor-pointer text-sm leading-relaxed">
+                          I intend to sign this agreement electronically, and I understand that my electronic
+                          signature has the same legal effect as a handwritten signature. <span className="text-muted-foreground">(UETA/ESIGN Act Acknowledgment)</span>
+                        </Label>
+                        {electronicIntentAt && (
+                          <p className="text-xs text-emerald-600 mt-1">
+                            <Check className="h-3 w-3 inline mr-1" />
+                            Accepted at {format(new Date(electronicIntentAt), 'h:mm:ss a')}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                   

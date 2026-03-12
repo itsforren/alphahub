@@ -1,5 +1,6 @@
 import React from 'react';
-import { Shield, Check, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -25,7 +26,6 @@ export function InitialsSection({
   id,
   title,
   description,
-  icon,
   value,
   typingValue = '',
   expectedInitials,
@@ -41,35 +41,26 @@ export function InitialsSection({
   const variantStyles = {
     default: 'border-border bg-muted/30',
     warning: 'border-alert/30 bg-alert/5',
-    danger: 'border-destructive/30 bg-destructive/5',
-  };
-
-  const iconBgStyles = {
-    default: 'bg-muted text-muted-foreground',
-    warning: 'bg-alert/15 text-alert',
-    danger: 'bg-destructive/15 text-destructive',
+    danger: 'border-blue-500/20 bg-blue-500/5',
   };
 
   return (
     <div
       className={`border rounded-xl p-5 transition-all font-montserrat ${
-        isComplete ? 'border-success/30 bg-success/5' : variantStyles[variant]
+        isComplete ? 'border-emerald-500/30 bg-emerald-500/5' : variantStyles[variant]
       }`}
     >
       <div className="flex items-start gap-4">
-        <div
-          className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-            isComplete ? 'bg-success/15 text-success' : iconBgStyles[variant]
-          }`}
-        >
-          {isComplete ? <Check className="h-5 w-5" /> : (icon || <Shield className="h-5 w-5" />)}
-        </div>
+        <Checkbox
+          checked={isComplete || false}
+          className="mt-1 h-5 w-5 pointer-events-none"
+        />
 
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-2">
             <h3 className="font-semibold text-foreground font-montserrat">{title}</h3>
             {showRequired && !isComplete && (
-              <Badge variant="outline" className="text-xs border-destructive/30 text-destructive font-montserrat">
+              <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-500 font-montserrat">
                 <AlertTriangle className="h-3 w-3 mr-1" /> Required
               </Badge>
             )}
@@ -83,9 +74,9 @@ export function InitialsSection({
             <div className="flex-1">
               <Label
                 htmlFor={`initials-${id}`}
-                className={`whitespace-nowrap text-sm font-montserrat ${showRequired && !isComplete ? 'text-destructive' : ''}`}
+                className={`whitespace-nowrap text-sm font-montserrat ${showRequired && !isComplete ? 'text-blue-500' : ''}`}
               >
-                Your Initials{showRequired ? <span className="text-destructive"> *</span> : null}
+                Your Initials{showRequired ? <span className="text-blue-500"> *</span> : null}
                 {expectedInitials ? (
                   <span className="text-muted-foreground"> (Expected: {expectedInitials})</span>
                 ) : null}
@@ -106,7 +97,7 @@ export function InitialsSection({
 
                 {isComplete && (
                   <div className="flex items-center gap-2">
-                    <Badge className="bg-success/15 text-success border-0 font-montserrat">
+                    <Badge className="bg-emerald-500/15 text-emerald-600 border-0 font-montserrat">
                       <Check className="h-3 w-3 mr-1" /> Done
                     </Badge>
                     <span className="text-xs text-muted-foreground font-montserrat">
