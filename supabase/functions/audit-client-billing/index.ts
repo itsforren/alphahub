@@ -12,8 +12,15 @@ function jsonResponse(data: unknown, status = 200) {
   });
 }
 
-// Search Stripe customers by email
-async function searchStripeByEmail(stripeKey: string, email: string): Promise<string[]> {
+interface StripeCustomerInfo {
+  id: string;
+  email: string | null;
+  name: string | null;
+  created: string;
+}
+
+// Search Stripe customers by email (ad_spend account only — uses the key passed in)
+async function searchStripeByEmail(stripeKey: string, email: string): Promise<StripeCustomerInfo[]> {
   try {
     const url = new URL('https://api.stripe.com/v1/customers');
     url.searchParams.set('email', email);
@@ -23,14 +30,19 @@ async function searchStripeByEmail(stripeKey: string, email: string): Promise<st
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return (data.data || []).map((c: any) => c.id);
+    return (data.data || []).map((c: any) => ({
+      id: c.id,
+      email: c.email || null,
+      name: c.name || null,
+      created: new Date(c.created * 1000).toISOString(),
+    }));
   } catch {
     return [];
   }
 }
 
-// Search Stripe customers by name
-async function searchStripeByName(stripeKey: string, name: string): Promise<string[]> {
+// Search Stripe customers by name (ad_spend account only)
+async function searchStripeByName(stripeKey: string, name: string): Promise<StripeCustomerInfo[]> {
   try {
     const url = new URL('https://api.stripe.com/v1/customers/search');
     url.searchParams.set('query', `name~"${name}"`);
@@ -40,7 +52,12 @@ async function searchStripeByName(stripeKey: string, name: string): Promise<stri
     });
     if (!res.ok) return [];
     const data = await res.json();
-    return (data.data || []).map((c: any) => c.id);
+    return (data.data || []).map((c: any) => ({
+      id: c.id,
+      email: c.email || null,
+      name: c.name || null,
+      created: new Date(c.created * 1000).toISOString(),
+    }));
   } catch {
     return [];
   }
@@ -106,18 +123,28 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
-    const { clientId, sinceDate } = await req.json();
+    const { clientId, sinceDate, linkCustomerId } = await req.json();
     if (!clientId) return jsonResponse({ error: 'clientId required' }, 400);
 
     const adSpendKey = Deno.env.get('STRIPE_AD_SPEND_SECRET_KEY') || '';
     if (!adSpendKey) return jsonResponse({ error: 'Stripe key not configured' }, 500);
+
+    // ── Handle explicit link request ──
+    if (linkCustomerId) {
+      const { error } = await supabase
+        .from('client_stripe_customers')
+        .insert({ client_id: clientId, stripe_account: 'ad_spend', stripe_customer_id: linkCustomerId });
+      if (error) return jsonResponse({ error: `Failed to link: ${error.message}` }, 400);
+      console.log(`Linked Stripe customer ${linkCustomerId} to client ${clientId}`);
+      return jsonResponse({ success: true, linked: linkCustomerId });
+    }
 
     // Default 60 days, or use sinceDate from request
     const since = sinceDate
       ? Math.floor(new Date(sinceDate).getTime() / 1000)
       : Math.floor(Date.now() / 1000) - (60 * 24 * 60 * 60);
 
-    // 1. Get linked Stripe customer IDs from our DB
+    // 1. Get linked Stripe customer IDs from our DB (ad_spend only)
     const { data: linkedCustomers } = await supabase
       .from('client_stripe_customers')
       .select('stripe_customer_id')
@@ -126,69 +153,66 @@ Deno.serve(async (req) => {
 
     const linkedIds = new Set((linkedCustomers || []).map(c => c.stripe_customer_id));
 
-    // 2. Get client email and name to search Stripe for unlinked customers
+    // 2. Get client email and name to search Stripe ad_spend account for unlinked customers
     const { data: client } = await supabase
       .from('clients')
       .select('email, name')
       .eq('id', clientId)
       .single();
 
-    const discoveredIds = new Set<string>();
-    const newlyLinked: string[] = [];
+    const discoveredCustomers: Array<{ id: string; email: string | null; name: string | null; created: string }> = [];
+    const seenDiscovered = new Set<string>();
 
+    // Search by email on ad_spend Stripe account
     if (client?.email) {
       const emailResults = await searchStripeByEmail(adSpendKey, client.email);
-      for (const id of emailResults) {
-        if (!linkedIds.has(id)) discoveredIds.add(id);
+      for (const cust of emailResults) {
+        if (!linkedIds.has(cust.id) && !seenDiscovered.has(cust.id)) {
+          seenDiscovered.add(cust.id);
+          discoveredCustomers.push(cust);
+        }
       }
     }
 
+    // Search by name on ad_spend Stripe account
     if (client?.name) {
       const nameResults = await searchStripeByName(adSpendKey, client.name);
-      for (const id of nameResults) {
-        if (!linkedIds.has(id)) discoveredIds.add(id);
+      for (const cust of nameResults) {
+        if (!linkedIds.has(cust.id) && !seenDiscovered.has(cust.id)) {
+          seenDiscovered.add(cust.id);
+          discoveredCustomers.push(cust);
+        }
       }
     }
 
-    // 3. Auto-link any discovered customers to our DB
-    for (const custId of discoveredIds) {
-      const { error } = await supabase
-        .from('client_stripe_customers')
-        .insert({ client_id: clientId, stripe_account: 'ad_spend', stripe_customer_id: custId })
-        .select()
-        .single();
-
-      if (!error) {
-        newlyLinked.push(custId);
-        linkedIds.add(custId);
-        console.log(`Auto-linked Stripe customer ${custId} to client ${clientId}`);
-      }
-    }
-
-    // 4. Fetch payment intents from ALL customers (linked + newly discovered)
-    const allCustomerIds = [...linkedIds];
+    // 3. Fetch payment intents from linked customers only
     const allCharges = [];
-
-    for (const custId of allCustomerIds) {
+    for (const custId of linkedIds) {
       const charges = await fetchPaymentIntents(adSpendKey, custId, since);
       allCharges.push(...charges);
     }
 
-    // Dedupe by PI id (same PI can't belong to multiple customers, but just in case)
+    // Also fetch from discovered customers so admin can see what's there
+    const discoveredCharges = [];
+    for (const cust of discoveredCustomers) {
+      const charges = await fetchPaymentIntents(adSpendKey, cust.id, since);
+      discoveredCharges.push(...charges);
+    }
+
+    // Dedupe
     const seen = new Set<string>();
-    const dedupedCharges = allCharges.filter(c => {
+    const dedupedCharges = [...allCharges, ...discoveredCharges].filter(c => {
       if (seen.has(c.id)) return false;
       seen.add(c.id);
       return true;
     });
 
-    // Sort newest first
     dedupedCharges.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
 
     return jsonResponse({
       stripeCharges: dedupedCharges,
-      customerIds: allCustomerIds,
-      newlyLinked,
+      customerIds: [...linkedIds],
+      discoveredCustomers,
     });
   } catch (err) {
     console.error('audit-client-billing error:', err);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBillingIntegrity, BillingIntegrityRow } from '@/hooks/useBillingDashboard';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
@@ -127,12 +127,31 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
-      return data as { stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string }>; customerIds: string[]; newlyLinked?: string[] };
+      return data as {
+        stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string }>;
+        customerIds: string[];
+        discoveredCustomers?: Array<{ id: string; email: string | null; name: string | null; created: string }>;
+      };
     },
     enabled: !!clientId,
   });
 
-  return { adSpend, billingRecords, walletTransactions, stripeCharges };
+  // Google Ads customer ID for linking to ads dashboard
+  const googleCustomerId = useQuery({
+    queryKey: ['audit-google-customer-id', clientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('campaigns')
+        .select('google_customer_id')
+        .eq('client_id', clientId!)
+        .limit(1)
+        .maybeSingle();
+      return data?.google_customer_id || null;
+    },
+    enabled: !!clientId,
+  });
+
+  return { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId: googleCustomerId.data };
 }
 
 // ── Weekly aggregation for ad spend ──
@@ -402,16 +421,18 @@ function Row({
 
 // ── Full audit detail panel (3-column layout) ──
 function AuditDetail({ clientId, clientName }: { clientId: string; clientName: string }) {
+  const queryClient = useQueryClient();
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 60), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const { adSpend, billingRecords, walletTransactions, stripeCharges } = useClientAuditDetail(clientId, startDate, endDate);
+  const [linkingId, setLinkingId] = useState<string | null>(null);
+  const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
 
   const adSpendData = adSpend.data || [];
   const billingData = billingRecords.data || [];
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
-  // Filter Stripe charges to the date range (edge function returns from sinceDate, but we also clamp to endDate)
+  // Filter Stripe charges to the date range
   const filteredStripeCharges = (stripeData?.stripeCharges || []).filter(c => {
     const d = c.created.split('T')[0];
     return d >= startDate && d <= endDate;
@@ -420,50 +441,84 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const weeklySpend = aggregateWeekly(adSpendData);
   const totalAdSpend = adSpendData.reduce((s, r) => s + Number(r.cost || 0), 0);
 
-  // Match billing records to Stripe PIs (use filteredStripeCharges for display, but full set for cross-ref)
   const stripePiIds = new Set(filteredStripeCharges.map(c => c.id));
   const billingPiIds = new Set(billingData.filter(r => r.stripe_payment_intent_id).map(r => r.stripe_payment_intent_id!));
-
-  // Stripe charges NOT in Alpha billing records
   const stripeOnly = filteredStripeCharges.filter(c => !billingPiIds.has(c.id));
-  // Billing records with PI that's NOT in Stripe (shouldn't happen but check)
   const alphaOnlyPi = billingData.filter(r => r.stripe_payment_intent_id && !stripePiIds.has(r.stripe_payment_intent_id));
+
+  // Google Ads link helper
+  const gadsUrl = googleCustomerId
+    ? `https://ads.google.com/aw/campaigns?ocid=${googleCustomerId}`
+    : null;
+
+  // Link a discovered Stripe customer
+  const handleLinkCustomer = async (custId: string) => {
+    setLinkingId(custId);
+    try {
+      const { data, error } = await supabase.functions.invoke('audit-client-billing', {
+        body: { clientId, linkCustomerId: custId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      // Refetch to reflect the link
+      queryClient.invalidateQueries({ queryKey: ['audit-stripe-charges', clientId] });
+    } catch (err: any) {
+      console.error('Link failed:', err);
+    } finally {
+      setLinkingId(null);
+    }
+  };
 
   return (
     <div className="border-t border-blue-500/20 bg-blue-500/5 p-4">
       {/* Header + Date Range */}
       <div className="mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <ShieldCheck className="w-4 h-4 text-blue-400" />
           <span className="text-sm font-semibold text-foreground">Detailed Audit: {clientName}</span>
           {stripeData?.customerIds && stripeData.customerIds.length > 0 && (
             <span className="text-xs text-muted-foreground ml-2">
-              Stripe: {stripeData.customerIds.join(', ')}
+              Stripe: {stripeData.customerIds.map(id => (
+                <a key={id} href={`https://dashboard.stripe.com/customers/${id}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline mr-1">{id}</a>
+              ))}
             </span>
-          )}
-          {stripeData?.newlyLinked && stripeData.newlyLinked.length > 0 && (
-            <Badge variant="outline" className="ml-2 text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
-              +{stripeData.newlyLinked.length} customer(s) auto-linked
-            </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-muted-foreground">From</label>
-          <Input
-            type="date"
-            value={startDate}
-            onChange={e => setStartDate(e.target.value)}
-            className="h-7 w-36 text-xs"
-          />
+          <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-7 w-36 text-xs" />
           <label className="text-xs text-muted-foreground">To</label>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={e => setEndDate(e.target.value)}
-            className="h-7 w-36 text-xs"
-          />
+          <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-7 w-36 text-xs" />
         </div>
       </div>
+
+      {/* Discovered unlinked Stripe customers — require confirmation to link */}
+      {stripeData?.discoveredCustomers && stripeData.discoveredCustomers.length > 0 && (
+        <div className="mb-3 space-y-1">
+          {stripeData.discoveredCustomers.map(cust => (
+            <div key={cust.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-violet-500/10 border border-violet-500/20">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-violet-400 shrink-0" />
+                <span className="text-xs text-violet-300">
+                  Found unlinked Stripe customer: <a href={`https://dashboard.stripe.com/customers/${cust.id}`} target="_blank" rel="noopener noreferrer" className="text-violet-200 hover:underline font-medium">{cust.id}</a>
+                  {cust.email && <span className="text-muted-foreground"> · {cust.email}</span>}
+                  {cust.name && <span className="text-muted-foreground"> · {cust.name}</span>}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] gap-1 border-violet-500/40 text-violet-300 hover:bg-violet-500/20"
+                disabled={linkingId === cust.id}
+                onClick={() => handleLinkCustomer(cust.id)}
+              >
+                {linkingId === cust.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CircleCheck className="w-3 h-3" />}
+                Link to {clientName}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Reconciliation alerts */}
       {(stripeOnly.length > 0 || alphaOnlyPi.length > 0) && (
@@ -496,6 +551,11 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
               Google Ad Spend
+              {gadsUrl && (
+                <a href={gadsUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300">
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">{fmt(totalAdSpend)}</span>
           </div>
@@ -584,11 +644,14 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                         </td>
                         <td className="px-3 py-1.5 text-center">
                           {hasPI ? (
-                            piInStripe ? (
-                              <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title={rec.stripe_payment_intent_id!} />
-                            ) : (
-                              <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 inline" title="PI not found in Stripe" />
-                            )
+                            <a href={`https://dashboard.stripe.com/payments/${rec.stripe_payment_intent_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:opacity-80" title={rec.stripe_payment_intent_id!}>
+                              {piInStripe ? (
+                                <CircleCheck className="w-3.5 h-3.5 text-green-400" />
+                              ) : (
+                                <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />
+                              )}
+                              <ExternalLink className="w-2.5 h-2.5 text-muted-foreground" />
+                            </a>
                           ) : (
                             <CircleX className="w-3.5 h-3.5 text-red-400 inline" title="No Stripe payment intent" />
                           )}
@@ -695,7 +758,12 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                           !inAlpha && 'bg-yellow-500/5'
                         )}
                       >
-                        <td className="px-3 py-1.5 text-foreground">{fmtDate(charge.created)}</td>
+                        <td className="px-3 py-1.5">
+                          <a href={`https://dashboard.stripe.com/payments/${charge.id}`} target="_blank" rel="noopener noreferrer" className="text-foreground hover:text-blue-400 hover:underline inline-flex items-center gap-1">
+                            {fmtDate(charge.created)}
+                            <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+                          </a>
+                        </td>
                         <td className="px-3 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(charge.amount)}</td>
                         <td className="px-3 py-1.5 text-center">
                           <Badge
