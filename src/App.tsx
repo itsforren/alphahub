@@ -11,6 +11,13 @@ import { BrowserNotificationProvider } from "@/components/BrowserNotificationPro
 import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useAuth } from "@/contexts/AuthContext";
+
+function HubIndex() {
+  const { isAdmin } = useAuth();
+  if (isAdmin) return <Navigate to="/hub/admin/clients" replace />;
+  return <PortalAdminClientDetail />;
+}
 
 // Public pages
 import Index from "./pages/Index";
@@ -141,7 +148,7 @@ const App = () => (
                       <AgentHubLayout />
                     </ProtectedRoute>
                   }>
-                    <Route index element={<PortalAdminClientDetail />} />
+                    <Route index element={<HubIndex />} />
                     
                     {/* My Business - redirect old routes to hub */}
                     <Route path="portal" element={<Navigate to="/hub" replace />} />
