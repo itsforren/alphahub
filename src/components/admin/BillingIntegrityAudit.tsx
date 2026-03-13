@@ -64,6 +64,18 @@ function fmt(n: number) {
   return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/** Short ID for cross-referencing (first 4 chars of UUID) */
+function sid(id: string | null | undefined) {
+  if (!id) return '';
+  return id.slice(0, 4);
+}
+
+/** Short PI for display (last 6 chars) */
+function shortPi(pi: string | null | undefined) {
+  if (!pi) return '';
+  return '...' + pi.slice(-6);
+}
+
 function fmtDate(d: string) {
   try { return format(new Date(d), 'MMM d, yyyy'); } catch { return d; }
 }
@@ -430,7 +442,9 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 60), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [linkingId, setLinkingId] = useState<string | null>(null);
-  const [linkingPi, setLinkingPi] = useState<string | null>(null); // billing record being linked to a PI
+  const [linkingPi, setLinkingPi] = useState<string | null>(null);
+  // Cross-column highlight: stores a billing record ID — highlights matching rows everywhere
+  const [highlightBrId, setHighlightBrId] = useState<string | null>(null);
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
   const walletBalance = useComputedWalletBalance(clientId);
 
@@ -452,8 +466,20 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
 
   const stripePiIds = new Set(filteredStripeCharges.map(c => c.id));
   const billingPiIds = new Set(billingData.filter(r => r.stripe_payment_intent_id).map(r => r.stripe_payment_intent_id!));
-  const stripeOnly = filteredStripeCharges.filter(c => !billingPiIds.has(c.id));
+  const stripeOnly = filteredStripeCharges.filter(c => c.status === 'succeeded' && !c.refunded && !billingPiIds.has(c.id));
   const alphaOnlyPi = billingData.filter(r => r.stripe_payment_intent_id && !stripePiIds.has(r.stripe_payment_intent_id));
+
+  // Cross-reference maps: PI → billing record ID, billing record ID → PI
+  const piBrMap = new Map<string, string>(); // stripe PI → billing record ID
+  const brPiMap = new Map<string, string>(); // billing record ID → stripe PI
+  billingData.forEach(r => {
+    if (r.stripe_payment_intent_id) {
+      piBrMap.set(r.stripe_payment_intent_id, r.id);
+      brPiMap.set(r.id, r.stripe_payment_intent_id);
+    }
+  });
+  // wallet billing_record_id → billing record set
+  const walletBrIds = new Set(walletData.filter(tx => tx.billing_record_id).map(tx => tx.billing_record_id!));
 
   // Wallet totals
   const depositTotal = walletData.filter(tx => tx.transaction_type === 'deposit').reduce((s, tx) => s + Number(tx.amount || 0), 0);
@@ -657,10 +683,11 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/30 bg-muted/20">
-                    <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
-                    <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
-                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Status</th>
-                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Stripe PI</th>
+                    <th className="px-2 py-1.5 text-left text-muted-foreground font-medium">Date</th>
+                    <th className="px-2 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
+                    <th className="px-2 py-1.5 text-center text-muted-foreground font-medium">Status</th>
+                    <th className="px-2 py-1.5 text-left text-muted-foreground font-medium">Stripe PI</th>
+                    <th className="px-2 py-1.5 text-center text-muted-foreground font-medium">Wallet</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -668,18 +695,25 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                     const hasPI = !!rec.stripe_payment_intent_id;
                     const piInStripe = hasPI && stripePiIds.has(rec.stripe_payment_intent_id!);
                     const isFlagged = rec.notes?.includes('FLAGGED');
+                    const hasWalletDeposit = walletBrIds.has(rec.id);
+                    const isHighlighted = highlightBrId === rec.id;
                     return (
                       <tr
                         key={rec.id}
                         className={cn(
-                          'border-b border-border/20 hover:bg-muted/30',
-                          isFlagged && 'bg-red-500/5',
-                          !hasPI && rec.status === 'paid' && 'bg-yellow-500/5',
+                          'border-b border-border/20 cursor-pointer transition-colors',
+                          isHighlighted ? 'bg-blue-500/15 ring-1 ring-blue-500/30' : 'hover:bg-muted/30',
+                          isFlagged && !isHighlighted && 'bg-red-500/5',
+                          !hasPI && rec.status === 'paid' && !isHighlighted && 'bg-yellow-500/5',
                         )}
+                        onClick={() => setHighlightBrId(isHighlighted ? null : rec.id)}
                       >
-                        <td className="px-3 py-1.5 text-foreground">{fmtDate(rec.paid_at || rec.created_at)}</td>
-                        <td className="px-3 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(Number(rec.amount))}</td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className="px-2 py-1.5">
+                          <div className="text-foreground">{fmtDate(rec.paid_at || rec.created_at)}</div>
+                          <div className="text-[10px] text-violet-400 font-mono">#{sid(rec.id)}</div>
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(Number(rec.amount))}</td>
+                        <td className="px-2 py-1.5 text-center">
                           <Badge
                             variant="outline"
                             className={cn('text-[10px] px-1.5',
@@ -691,23 +725,24 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                             {rec.status}
                           </Badge>
                         </td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className="px-2 py-1.5">
                           {hasPI ? (
-                            <a href={`https://dashboard.stripe.com/payments/${rec.stripe_payment_intent_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-0.5 hover:opacity-80" title={rec.stripe_payment_intent_id!}>
+                            <a href={`https://dashboard.stripe.com/payments/${rec.stripe_payment_intent_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:opacity-80" title={rec.stripe_payment_intent_id!} onClick={e => e.stopPropagation()}>
                               {piInStripe ? (
-                                <CircleCheck className="w-3.5 h-3.5 text-green-400" />
+                                <CircleCheck className="w-3 h-3 text-green-400 shrink-0" />
                               ) : (
-                                <AlertTriangle className="w-3.5 h-3.5 text-yellow-400" />
+                                <AlertTriangle className="w-3 h-3 text-yellow-400 shrink-0" />
                               )}
-                              <ExternalLink className="w-2.5 h-2.5 text-muted-foreground" />
+                              <span className="text-[10px] text-muted-foreground font-mono">{shortPi(rec.stripe_payment_intent_id)}</span>
                             </a>
                           ) : linkingPi === rec.id ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground inline" />
-                          ) : unlinkableStripeCharges.length > 0 ? (
+                          ) : (
                             <Popover>
                               <PopoverTrigger asChild>
-                                <button className="inline-flex items-center gap-0.5 text-red-400 hover:text-blue-400 transition-colors" title="Click to link a Stripe charge">
-                                  <Link2 className="w-3.5 h-3.5" />
+                                <button className="inline-flex items-center gap-1 text-red-400 hover:text-blue-400 transition-colors" title="Link to a Stripe charge" onClick={e => e.stopPropagation()}>
+                                  <Link2 className="w-3 h-3" />
+                                  <span className="text-[10px]">link</span>
                                 </button>
                               </PopoverTrigger>
                               <PopoverContent className="w-72 p-0" align="end">
@@ -715,7 +750,9 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                                   <span className="text-xs font-semibold text-foreground">Link to Stripe Charge</span>
                                 </div>
                                 <div className="max-h-48 overflow-y-auto">
-                                  {unlinkableStripeCharges.map(charge => (
+                                  {unlinkableStripeCharges.length === 0 ? (
+                                    <div className="px-3 py-2 text-xs text-muted-foreground">No unlinked Stripe charges available</div>
+                                  ) : unlinkableStripeCharges.map(charge => (
                                     <button
                                       key={charge.id}
                                       className="w-full px-3 py-2 text-left text-xs hover:bg-muted/50 flex items-center justify-between gap-2 border-b border-border/20 last:border-0"
@@ -723,14 +760,19 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                                     >
                                       <span className="text-foreground">{fmtDate(charge.created)}</span>
                                       <span className="text-foreground font-medium tabular-nums">{fmt(charge.amount)}</span>
-                                      <span className="text-muted-foreground truncate text-[10px] max-w-[80px]" title={charge.id}>{charge.id.slice(-8)}</span>
+                                      <span className="text-muted-foreground font-mono text-[10px]">{shortPi(charge.id)}</span>
                                     </button>
                                   ))}
                                 </div>
                               </PopoverContent>
                             </Popover>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          {hasWalletDeposit ? (
+                            <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Wallet deposit exists" />
                           ) : (
-                            <CircleX className="w-3.5 h-3.5 text-red-400 inline" title="No Stripe payment intent — no unlinked charges available" />
+                            <CircleX className="w-3.5 h-3.5 text-red-400 inline" title="No wallet deposit for this charge" />
                           )}
                         </td>
                       </tr>
@@ -773,36 +815,45 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/30 bg-muted/20">
-                    <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
-                    <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
-                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Status</th>
-                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">In Alpha</th>
+                    <th className="px-2 py-1.5 text-left text-muted-foreground font-medium">Date</th>
+                    <th className="px-2 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
+                    <th className="px-2 py-1.5 text-center text-muted-foreground font-medium">Status</th>
+                    <th className="px-2 py-1.5 text-center text-muted-foreground font-medium">Alpha</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredStripeCharges.map(charge => {
                     const inAlpha = billingPiIds.has(charge.id);
+                    const linkedBrId = piBrMap.get(charge.id);
                     const isRefunded = !!charge.refunded;
                     const isFailed = charge.status !== 'succeeded';
                     const isExcluded = isFailed || isRefunded;
+                    const isHighlighted = linkedBrId && highlightBrId === linkedBrId;
+                    // Billing records without a PI that could be linked to this Stripe charge
+                    const unlinkableBillingRecords = billingData.filter(r => !r.stripe_payment_intent_id && r.status === 'paid');
                     return (
                       <tr
                         key={charge.id}
                         className={cn(
-                          'border-b border-border/20 hover:bg-muted/30',
+                          'border-b border-border/20 cursor-pointer transition-colors',
+                          isHighlighted ? 'bg-blue-500/15 ring-1 ring-blue-500/30' :
                           isFailed ? 'bg-red-500/5 opacity-70' :
                           isRefunded ? 'bg-orange-500/5 opacity-70' :
-                          !inAlpha && 'bg-yellow-500/5'
+                          !inAlpha ? 'bg-yellow-500/5 hover:bg-muted/30' : 'hover:bg-muted/30'
                         )}
+                        onClick={() => linkedBrId ? setHighlightBrId(highlightBrId === linkedBrId ? null : linkedBrId) : undefined}
                       >
-                        <td className="px-3 py-1.5">
-                          <a href={`https://dashboard.stripe.com/payments/${charge.id}`} target="_blank" rel="noopener noreferrer" className={cn('hover:underline inline-flex items-center gap-1', isExcluded ? 'text-muted-foreground hover:text-foreground' : 'text-foreground hover:text-blue-400')}>
-                            {fmtDate(charge.created)}
-                            <ExternalLink className="w-2.5 h-2.5 opacity-50" />
-                          </a>
+                        <td className="px-2 py-1.5">
+                          <div>
+                            <a href={`https://dashboard.stripe.com/payments/${charge.id}`} target="_blank" rel="noopener noreferrer" className={cn('hover:underline inline-flex items-center gap-1', isExcluded ? 'text-muted-foreground hover:text-foreground' : 'text-foreground hover:text-blue-400')} onClick={e => e.stopPropagation()}>
+                              {fmtDate(charge.created)}
+                              <ExternalLink className="w-2.5 h-2.5 opacity-50" />
+                            </a>
+                          </div>
+                          <div className="text-[10px] text-emerald-400 font-mono">{shortPi(charge.id)}</div>
                         </td>
-                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', isFailed ? 'text-red-400 line-through' : isRefunded ? 'text-orange-400 line-through' : 'text-foreground')}>{fmt(charge.amount)}</td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className={cn('px-2 py-1.5 text-right font-medium tabular-nums', isFailed ? 'text-red-400 line-through' : isRefunded ? 'text-orange-400 line-through' : 'text-foreground')}>{fmt(charge.amount)}</td>
+                        <td className="px-2 py-1.5 text-center">
                           <Badge
                             variant="outline"
                             className={cn('text-[10px] px-1.5',
@@ -814,9 +865,41 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                             {isRefunded ? 'refunded' : charge.status === 'succeeded' ? 'paid' : 'failed'}
                           </Badge>
                         </td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           {inAlpha ? (
-                            <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Tracked in Alpha" />
+                            <span className="inline-flex flex-col items-center gap-0.5">
+                              <CircleCheck className="w-3.5 h-3.5 text-green-400" />
+                              {linkedBrId && <span className="text-[10px] text-violet-400 font-mono">#{sid(linkedBrId)}</span>}
+                            </span>
+                          ) : isExcluded ? (
+                            <span className="text-[10px] text-muted-foreground">-</span>
+                          ) : unlinkableBillingRecords.length > 0 ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button className="inline-flex items-center gap-1 text-yellow-400 hover:text-blue-400 transition-colors" title="Link to Alpha Hub record" onClick={e => e.stopPropagation()}>
+                                  <Link2 className="w-3 h-3" />
+                                  <span className="text-[10px]">link</span>
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-72 p-0" align="end">
+                                <div className="px-3 py-2 border-b border-border/50 bg-muted/40">
+                                  <span className="text-xs font-semibold text-foreground">Link to Alpha Hub Record</span>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto">
+                                  {unlinkableBillingRecords.map(rec => (
+                                    <button
+                                      key={rec.id}
+                                      className="w-full px-3 py-2 text-left text-xs hover:bg-muted/50 flex items-center justify-between gap-2 border-b border-border/20 last:border-0"
+                                      onClick={() => handleLinkPI(rec.id, charge.id)}
+                                    >
+                                      <span className="text-violet-400 font-mono">#{sid(rec.id)}</span>
+                                      <span className="text-foreground">{fmtDate(rec.paid_at || rec.created_at)}</span>
+                                      <span className="text-foreground font-medium tabular-nums">{fmt(Number(rec.amount))}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           ) : (
                             <CircleX className="w-3.5 h-3.5 text-yellow-400 inline" title="NOT tracked in Alpha" />
                           )}
@@ -863,9 +946,9 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border/30 bg-muted/20">
-                    <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
-                    <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
-                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Status</th>
+                    <th className="px-2 py-1.5 text-left text-muted-foreground font-medium">Date</th>
+                    <th className="px-2 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
+                    <th className="px-2 py-1.5 text-center text-muted-foreground font-medium">Ref</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -874,33 +957,43 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                     const isReversed = !isAdjustment && tx.billing_record_id && cancelledBillingIds.has(tx.billing_record_id);
                     const hasBillingRecord = !isAdjustment && !!tx.billing_record_id && !isReversed;
                     const isUnbacked = !isAdjustment && !tx.billing_record_id;
+                    const linkedPi = tx.billing_record_id ? brPiMap.get(tx.billing_record_id) : null;
+                    const isHighlighted = tx.billing_record_id && highlightBrId === tx.billing_record_id;
                     return (
                       <tr
                         key={tx.id}
                         className={cn(
-                          'border-b border-border/20 hover:bg-muted/30',
-                          isReversed && 'bg-red-500/5 line-through opacity-60',
-                          isAdjustment && 'bg-blue-500/5',
-                          isUnbacked && 'bg-yellow-500/5',
+                          'border-b border-border/20 cursor-pointer transition-colors',
+                          isHighlighted ? 'bg-blue-500/15 ring-1 ring-blue-500/30' :
+                          isReversed ? 'bg-red-500/5 line-through opacity-60' :
+                          isAdjustment ? 'bg-blue-500/5 hover:bg-muted/30' :
+                          isUnbacked ? 'bg-yellow-500/5 hover:bg-muted/30' : 'hover:bg-muted/30',
                         )}
+                        onClick={() => tx.billing_record_id ? setHighlightBrId(highlightBrId === tx.billing_record_id ? null : tx.billing_record_id) : undefined}
                       >
-                        <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
-                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums',
+                        <td className="px-2 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
+                        <td className={cn('px-2 py-1.5 text-right font-medium tabular-nums',
                           isAdjustment ? 'text-blue-400' : isReversed ? 'text-red-400' : 'text-foreground'
                         )}>
                           {isAdjustment && (Number(tx.amount) < 0 ? '-' : '+')}{fmt(Number(tx.amount))}
                         </td>
-                        <td className="px-3 py-1.5 text-center">
+                        <td className="px-2 py-1.5 text-center">
                           {isReversed ? (
                             <Badge variant="outline" className="text-[10px] px-1.5 bg-red-500/10 text-red-400 border-red-500/30">reversed</Badge>
                           ) : isAdjustment ? (
                             <span className="text-[10px] text-muted-foreground truncate max-w-[80px] inline-block" title={tx.description || ''}>
-                              {tx.description?.replace('Reversed: phantom billing record ', 'Rev: ').replace('Reversed: ', 'Rev: ') || 'adjustment'}
+                              {tx.description?.replace('Reversed: phantom billing record ', 'Rev: ').replace('Reversed: ', 'Rev: ') || 'adj'}
                             </span>
                           ) : hasBillingRecord ? (
-                            <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Backed by billing record" />
+                            <span className="inline-flex flex-col items-center gap-0.5">
+                              <span className="text-[10px] text-violet-400 font-mono">#{sid(tx.billing_record_id)}</span>
+                              {linkedPi && <span className="text-[10px] text-emerald-400 font-mono">{shortPi(linkedPi)}</span>}
+                            </span>
                           ) : (
-                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 inline" title="No billing record — unbacked" />
+                            <span className="inline-flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                              <span className="text-[10px] text-yellow-400">unbacked</span>
+                            </span>
                           )}
                         </td>
                       </tr>
