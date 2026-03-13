@@ -95,7 +95,6 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
         .select('id, amount, status, paid_at, created_at, stripe_payment_intent_id, stripe_account, notes, charge_attempts, last_charge_error')
         .eq('client_id', clientId!)
         .eq('billing_type', 'ad_spend')
-        .neq('status', 'cancelled')
         .gte('created_at', startDate + 'T00:00:00Z')
         .lte('created_at', endDate + 'T23:59:59Z')
         .order('paid_at', { ascending: false, nullsFirst: false });
@@ -431,7 +430,9 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
 
   const adSpendData = adSpend.data || [];
-  const billingData = billingRecords.data || []; // cancelled records excluded in query
+  const allBillingData = billingRecords.data || [];
+  const billingData = allBillingData.filter(r => r.status !== 'cancelled');
+  const cancelledBillingIds = new Set(allBillingData.filter(r => r.status === 'cancelled').map(r => r.id));
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
@@ -458,11 +459,10 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
 
   // Refresh all audit data
   const handleRefresh = () => {
-    queryClient.invalidateQueries({ queryKey: ['audit-ad-spend', clientId] });
-    queryClient.invalidateQueries({ queryKey: ['audit-billing-records', clientId] });
-    queryClient.invalidateQueries({ queryKey: ['audit-wallet-tx', clientId] });
-    queryClient.invalidateQueries({ queryKey: ['audit-stripe-charges', clientId] });
-    queryClient.invalidateQueries({ queryKey: ['audit-google-customer-id', clientId] });
+    adSpend.refetch();
+    billingRecords.refetch();
+    walletTransactions.refetch();
+    stripeCharges.refetch();
   };
 
   // Google Ads link helper
@@ -566,7 +566,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
       )}
 
       {/* 3-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-h-[500px] overflow-y-auto">
 
         {/* Column 1: Google Ad Spend */}
         <div className="rounded-lg border border-border/50 overflow-hidden">
@@ -582,7 +582,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">{fmt(totalAdSpend)}</span>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div>
             {adSpend.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
             ) : weeklySpend.length === 0 ? (
@@ -622,7 +622,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <span className="text-muted-foreground font-normal ml-1">({billingData.length})</span>
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div>
             {billingRecords.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
             ) : billingData.length === 0 ? (
@@ -701,7 +701,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <span className="text-muted-foreground font-normal ml-1">({filteredStripeCharges.length})</span>
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div>
             {stripeCharges.isLoading ? (
               <div className="p-4 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -782,81 +782,65 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               {fmt(netWalletCredits)}
               {adjustmentTotal !== 0 && (
                 <span className="text-blue-400 font-normal ml-1 text-[10px]">
-                  (net: {fmt(depositTotal)} {adjustmentTotal < 0 ? '-' : '+'} {fmt(adjustmentTotal)})
+                  (net)
                 </span>
               )}
             </span>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div>
             {walletTransactions.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
-            ) : walletData.filter(tx => tx.transaction_type === 'deposit').length === 0 && walletData.filter(tx => tx.transaction_type === 'adjustment').length === 0 ? (
+            ) : walletData.length === 0 ? (
               <div className="p-4 text-xs text-muted-foreground text-center">No wallet credits</div>
             ) : (
-              <>
-                {/* Deposits */}
-                {walletData.filter(tx => tx.transaction_type === 'deposit').length > 0 && (
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border/30 bg-muted/20">
-                        <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
-                        <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
-                        <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Backed</th>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border/30 bg-muted/20">
+                    <th className="px-3 py-1.5 text-left text-muted-foreground font-medium">Date</th>
+                    <th className="px-3 py-1.5 text-right text-muted-foreground font-medium">Amount</th>
+                    <th className="px-3 py-1.5 text-center text-muted-foreground font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {walletData.map(tx => {
+                    const isAdjustment = tx.transaction_type === 'adjustment';
+                    const isReversed = !isAdjustment && tx.billing_record_id && cancelledBillingIds.has(tx.billing_record_id);
+                    const hasBillingRecord = !isAdjustment && !!tx.billing_record_id && !isReversed;
+                    const isUnbacked = !isAdjustment && !tx.billing_record_id;
+                    return (
+                      <tr
+                        key={tx.id}
+                        className={cn(
+                          'border-b border-border/20 hover:bg-muted/30',
+                          isReversed && 'bg-red-500/5 line-through opacity-60',
+                          isAdjustment && 'bg-blue-500/5',
+                          isUnbacked && 'bg-yellow-500/5',
+                        )}
+                      >
+                        <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
+                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums',
+                          isAdjustment ? 'text-blue-400' : isReversed ? 'text-red-400' : 'text-foreground'
+                        )}>
+                          {isAdjustment && (Number(tx.amount) < 0 ? '-' : '+')}{fmt(Number(tx.amount))}
+                        </td>
+                        <td className="px-3 py-1.5 text-center">
+                          {isReversed ? (
+                            <Badge variant="outline" className="text-[10px] px-1.5 bg-red-500/10 text-red-400 border-red-500/30">reversed</Badge>
+                          ) : isAdjustment ? (
+                            <span className="text-[10px] text-muted-foreground truncate max-w-[80px] inline-block" title={tx.description || ''}>
+                              {tx.description?.replace('Reversed: phantom billing record ', 'Rev: ').replace('Reversed: ', 'Rev: ') || 'adjustment'}
+                            </span>
+                          ) : hasBillingRecord ? (
+                            <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Backed by billing record" />
+                          ) : (
+                            <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 inline" title="No billing record — unbacked" />
+                          )}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {walletData.filter(tx => tx.transaction_type === 'deposit').map(tx => {
-                        const hasBillingRecord = !!tx.billing_record_id;
-                        return (
-                          <tr
-                            key={tx.id}
-                            className={cn(
-                              'border-b border-border/20 hover:bg-muted/30',
-                              !hasBillingRecord && 'bg-yellow-500/5'
-                            )}
-                          >
-                            <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
-                            <td className="px-3 py-1.5 text-right text-foreground font-medium tabular-nums">{fmt(Number(tx.amount))}</td>
-                            <td className="px-3 py-1.5 text-center">
-                              {hasBillingRecord ? (
-                                <CircleCheck className="w-3.5 h-3.5 text-green-400 inline" title="Has billing record" />
-                              ) : (
-                                <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 inline" title="No billing record — unbacked deposit" />
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-
-                {/* Adjustments */}
-                {walletData.filter(tx => tx.transaction_type === 'adjustment').length > 0 && (
-                  <>
-                    <div className="px-3 py-1.5 bg-blue-500/10 border-y border-blue-500/20">
-                      <span className="text-[10px] font-semibold text-blue-400">
-                        Adjustments ({walletData.filter(tx => tx.transaction_type === 'adjustment').length})
-                      </span>
-                    </div>
-                    <table className="w-full text-xs">
-                      <tbody>
-                        {walletData.filter(tx => tx.transaction_type === 'adjustment').map(tx => (
-                          <tr key={tx.id} className="border-b border-border/20 bg-blue-500/5">
-                            <td className="px-3 py-1.5 text-foreground">{fmtDate(tx.created_at)}</td>
-                            <td className="px-3 py-1.5 text-right font-medium tabular-nums text-blue-400">
-                              {Number(tx.amount) < 0 ? '-' : '+'}{fmt(Number(tx.amount))}
-                            </td>
-                            <td className="px-3 py-1.5 text-muted-foreground text-xs truncate max-w-[120px]" title={tx.description || ''}>
-                              {tx.description}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </>
-                )}
-              </>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
