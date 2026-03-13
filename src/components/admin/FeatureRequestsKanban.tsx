@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -17,7 +17,20 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
+import { FeatureRequestModal } from '@/components/hub/FeatureRequestModal';
 
 interface FeatureRequest {
   id: string;
@@ -190,9 +204,91 @@ function RequestCard({ request, onStatusChange }: { request: FeatureRequest; onS
   );
 }
 
+function AdminAddRequestModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [clientId, setClientId] = useState('');
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!open) return;
+    supabase
+      .from('clients')
+      .select('id, name')
+      .eq('status', 'active')
+      .order('name')
+      .then(({ data }) => setClients(data || []));
+  }, [open]);
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !clientId) return;
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from('feature_requests')
+        .insert({ client_id: clientId, title: title.trim(), description: description.trim() || null, category: category || null, status: 'requested' });
+      if (error) throw error;
+      toast.success('Request added');
+      queryClient.invalidateQueries({ queryKey: ['feature-requests'] });
+      setTitle(''); setDescription(''); setCategory(''); setClientId('');
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogTitle className="flex items-center gap-2"><Lightbulb className="w-5 h-5 text-amber-400" /> Add Feature Request</DialogTitle>
+        <div className="space-y-3 pt-2">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Client <span className="text-destructive">*</span></label>
+            <Select value={clientId} onValueChange={setClientId}>
+              <SelectTrigger><SelectValue placeholder="Select client" /></SelectTrigger>
+              <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Title <span className="text-destructive">*</span></label>
+            <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Feature title" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Description</label>
+            <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Details..." rows={3} className="resize-none" />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Category</label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="campaigns">Campaigns</SelectItem>
+                <SelectItem value="billing">Billing</SelectItem>
+                <SelectItem value="crm">CRM</SelectItem>
+                <SelectItem value="hub">Hub</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handleSubmit} disabled={!title.trim() || !clientId || isSubmitting} className="w-full">
+            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Lightbulb className="w-4 h-4 mr-2" />}
+            Add Request
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function FeatureRequestsKanban() {
   const { data: requests, isLoading } = useFeatureRequests();
   const updateRequest = useUpdateFeatureRequest();
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const handleStatusChange = (id: string, status: string) => {
     updateRequest.mutate(
@@ -225,7 +321,13 @@ export function FeatureRequestsKanban() {
           <h1 className="text-xl font-bold">Feature Requests</h1>
           <Badge variant="secondary" className="rounded-full">{totalRequests}</Badge>
         </div>
+        <Button size="sm" onClick={() => setAddModalOpen(true)} className="gap-2">
+          <Lightbulb className="w-4 h-4" />
+          Add Request
+        </Button>
       </div>
+
+      <AdminAddRequestModal open={addModalOpen} onOpenChange={setAddModalOpen} />
 
       {/* Kanban Board */}
       <div className="flex-1 overflow-x-auto p-4">
