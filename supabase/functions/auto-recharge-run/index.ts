@@ -349,28 +349,34 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Look up Stripe customer and payment method ──
-        const { data: stripeCustomer } = await supabase
-          .from('client_stripe_customers')
-          .select('stripe_customer_id')
+        // ── Look up payment method and Stripe customer ──
+        const { data: paymentMethod } = await supabase
+          .from('client_payment_methods')
+          .select('stripe_payment_method_id, stripe_customer_id')
           .eq('client_id', clientId)
           .eq('stripe_account', 'ad_spend')
+          .eq('is_default', true)
           .maybeSingle();
 
-        if (!stripeCustomer) {
+        // Resolve Stripe customer: prefer PM's customer (authoritative), fall back to lookup
+        let stripeCustomerId: string | null = paymentMethod?.stripe_customer_id ?? null;
+        if (!stripeCustomerId) {
+          const { data: customerRows } = await supabase
+            .from('client_stripe_customers')
+            .select('stripe_customer_id')
+            .eq('client_id', clientId)
+            .eq('stripe_account', 'ad_spend')
+            .order('created_at', { ascending: true })
+            .limit(1);
+          stripeCustomerId = customerRows?.[0]?.stripe_customer_id ?? null;
+        }
+
+        if (!stripeCustomerId) {
           console.log(`${client.name}: no Stripe customer linked for ad_spend, triggering safe mode`);
           results.push({ client: client.name, action: 'safe_mode', reason: 'no_stripe_customer' });
           await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
           continue;
         }
-
-        const { data: paymentMethod } = await supabase
-          .from('client_payment_methods')
-          .select('stripe_payment_method_id')
-          .eq('client_id', clientId)
-          .eq('stripe_account', 'ad_spend')
-          .eq('is_default', true)
-          .maybeSingle();
 
         if (!paymentMethod) {
           console.log(`${client.name}: no payment method on file, triggering safe mode`);
@@ -383,7 +389,7 @@ Deno.serve(async (req) => {
         console.log(`${client.name}: charging $${chargeAmount} via Stripe...`);
         const pi = await chargePaymentIntent(
           STRIPE_AD_SPEND_KEY(),
-          stripeCustomer.stripe_customer_id,
+          stripeCustomerId,
           paymentMethod.stripe_payment_method_id,
           Math.round(chargeAmount * 100),
           clientId,

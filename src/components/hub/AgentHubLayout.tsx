@@ -47,6 +47,7 @@ import { ChatBubble } from '@/components/portal/chat/ChatBubble';
 import { ClientPreviewBanner } from '@/components/hub/ClientPreviewBanner';
 import { MaintenanceBanner } from '@/components/hub/MaintenanceBanner';
 import { CampaignUpdateBanner } from '@/components/hub/CampaignUpdateBanner';
+import { PlatformUpdateBanner } from '@/components/hub/PlatformUpdateBanner';
 import { useUnreadCount } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
 
@@ -462,6 +463,7 @@ export default function AgentHubLayout() {
       >
         <MaintenanceBanner />
         <CampaignUpdateBanner />
+        <PlatformUpdateBanner />
         <ClientPreviewBanner />
         <Outlet />
       </main>

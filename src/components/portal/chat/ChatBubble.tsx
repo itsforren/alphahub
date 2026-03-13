@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
-import { MessageCircle, X, Minus, Maximize2 } from 'lucide-react';
+import { MessageCircle, X, Minus, Maximize2, Lightbulb } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClientConversation, useUnreadCount } from '@/hooks/useChat';
 import { useClient } from '@/hooks/useClientData';
 import { ChatPanel } from './ChatPanel';
+import { FeatureRequestModal } from '@/components/hub/FeatureRequestModal';
 
 export function ChatBubble() {
   const [isOpen, setIsOpen] = useState(() => {
     const saved = localStorage.getItem('chat-bubble-open');
     return saved === 'true';
   });
+  const [featureModalOpen, setFeatureModalOpen] = useState(false);
   const navigate = useNavigate();
   const { role } = useAuth();
   const { data: client } = useClient();
@@ -58,6 +60,13 @@ export function ChatBubble() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setFeatureModalOpen(true)}
+                  className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
+                  title="Request a Feature"
+                >
+                  <Lightbulb className="w-4 h-4 text-amber-300" />
+                </button>
                 <button
                   onClick={handleExpand}
                   className="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors"
@@ -127,6 +136,8 @@ export function ChatBubble() {
           )}
         </AnimatePresence>
       </motion.button>
+
+      <FeatureRequestModal open={featureModalOpen} onOpenChange={setFeatureModalOpen} />
     </>
   );
 }

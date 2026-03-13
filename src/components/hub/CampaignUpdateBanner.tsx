@@ -3,6 +3,7 @@ import { Rocket } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useClient } from '@/hooks/useClientData';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,7 @@ import {
 
 const POPUP_EXPIRES_AT = '2026-03-18T23:59:59Z';
 const DISMISS_KEY = 'campaign-update-popup-dismissed-mar2026';
+const TRACKING_KEY = 'campaign_update_popup_seen';
 
 const ONBOARDING_STATUSES = ['pending', 'in_progress'];
 
@@ -20,18 +22,49 @@ export function CampaignUpdateBanner() {
   const { data: client } = useClient();
 
   useEffect(() => {
+    if (!client) return;
     const now = new Date();
     const expires = new Date(POPUP_EXPIRES_AT);
-    const dismissed = localStorage.getItem(DISMISS_KEY);
 
     // Don't show to onboarding clients
-    if (client && ONBOARDING_STATUSES.includes(client.onboarding_status ?? '')) return;
+    if (ONBOARDING_STATUSES.includes(client.onboarding_status ?? '')) return;
 
-    if (now < expires && !dismissed) {
+    // Check for DB-driven force-show flag (overrides localStorage)
+    const stageMessages = (client as any).stage_messages_sent as Record<string, string> | null;
+    const forceShow = stageMessages?.force_show_campaign_update === 'true';
+
+    const dismissed = localStorage.getItem(DISMISS_KEY);
+
+    if (forceShow || (now < expires && !dismissed)) {
       const timer = setTimeout(() => setOpen(true), 600);
       return () => clearTimeout(timer);
     }
   }, [client]);
+
+  // Track that the popup was shown
+  useEffect(() => {
+    if (!open || !client?.id) return;
+
+    // Log view to server
+    const trackView = async () => {
+      try {
+        const stageMessages = (client as any).stage_messages_sent as Record<string, string> | null ?? {};
+        await supabase
+          .from('clients')
+          .update({
+            stage_messages_sent: {
+              ...stageMessages,
+              [TRACKING_KEY]: new Date().toISOString(),
+              force_show_campaign_update: undefined,
+            },
+          })
+          .eq('id', client.id);
+      } catch (e) {
+        console.error('Failed to track popup view:', e);
+      }
+    };
+    trackView();
+  }, [open, client?.id]);
 
   const handleClose = () => {
     setOpen(false);

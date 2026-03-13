@@ -186,47 +186,55 @@ Deno.serve(async (req) => {
 
     console.log(`create-stripe-invoice: starting for record=${billing_record_id}, type=${record.billing_type}, account=${stripeAccount}, amount=$${record.amount}`);
 
-    // Get or create Stripe customer
-    let stripeCustomerId: string;
-    const { data: existingCustomer } = await supabase
-      .from('client_stripe_customers')
-      .select('stripe_customer_id')
-      .eq('client_id', record.client_id)
-      .eq('stripe_account', stripeAccount)
-      .maybeSingle();
-
-    if (existingCustomer) {
-      stripeCustomerId = existingCustomer.stripe_customer_id;
-    } else {
-      const customer = await stripePost('/customers', stripeKey, {
-        email: clientInfo.email,
-        name: clientInfo.name,
-        'metadata[alpha_client_id]': record.client_id,
-        'metadata[stripe_account]': stripeAccount,
-      });
-      stripeCustomerId = customer.id;
-
-      await supabase
-        .from('client_stripe_customers')
-        .insert({
-          client_id: record.client_id,
-          stripe_account: stripeAccount,
-          stripe_customer_id: stripeCustomerId,
-        });
-    }
-
-    console.log(`create-stripe-invoice: customer=${stripeCustomerId}`);
-
     // Check if client has a default payment method for this account
     const { data: defaultPm } = await supabase
       .from('client_payment_methods')
-      .select('stripe_payment_method_id')
+      .select('stripe_payment_method_id, stripe_customer_id')
       .eq('client_id', record.client_id)
       .eq('stripe_account', stripeAccount)
       .eq('is_default', true)
       .maybeSingle();
 
     console.log(`create-stripe-invoice: defaultPm=${defaultPm?.stripe_payment_method_id ?? 'none (will send invoice link)'}`);
+
+    // Get or create Stripe customer — prefer customer from payment method (authoritative)
+    let stripeCustomerId: string;
+
+    if (defaultPm?.stripe_customer_id) {
+      stripeCustomerId = defaultPm.stripe_customer_id;
+    } else {
+      const { data: existingCustomers } = await supabase
+        .from('client_stripe_customers')
+        .select('stripe_customer_id')
+        .eq('client_id', record.client_id)
+        .eq('stripe_account', stripeAccount)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      const existingCustomer = existingCustomers?.[0] ?? null;
+
+      if (existingCustomer) {
+        stripeCustomerId = existingCustomer.stripe_customer_id;
+      } else {
+        const customer = await stripePost('/customers', stripeKey, {
+          email: clientInfo.email,
+          name: clientInfo.name,
+          'metadata[alpha_client_id]': record.client_id,
+          'metadata[stripe_account]': stripeAccount,
+        });
+        stripeCustomerId = customer.id;
+
+        await supabase
+          .from('client_stripe_customers')
+          .insert({
+            client_id: record.client_id,
+            stripe_account: stripeAccount,
+            stripe_customer_id: stripeCustomerId,
+          });
+      }
+    }
+
+    console.log(`create-stripe-invoice: customer=${stripeCustomerId}`);
 
     // Calculate amount in cents
     const amountCents = Math.round(record.amount * 100);

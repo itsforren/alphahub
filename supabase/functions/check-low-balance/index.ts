@@ -24,8 +24,8 @@ async function postAdsManagerWebhook(payload: unknown): Promise<void> {
   }
 }
 
-// Default threshold if not set per-client
-const DEFAULT_LOW_BALANCE_THRESHOLD = 150;
+// Safe mode threshold — campaigns keep running until balance drops below this
+const SAFE_MODE_BALANCE_THRESHOLD = 100;
 // Safe Mode budget ladder - try lowest first, fallback if rejected
 const SAFE_MODE_BUDGETS = [0.01, 0.10, 1.00];
 
@@ -217,8 +217,8 @@ serve(async (req) => {
         continue;
       }
 
-      // Use per-client threshold or default
-      const lowBalanceThreshold = wallet?.low_balance_threshold ?? DEFAULT_LOW_BALANCE_THRESHOLD;
+      // Safe mode triggers at $100 — separate from recharge threshold ($150)
+      const lowBalanceThreshold = SAFE_MODE_BALANCE_THRESHOLD;
 
       // Fetch performance percentage setting
       const { data: perfSetting } = await supabase
