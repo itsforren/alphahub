@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { format, subDays, startOfWeek } from 'date-fns';
@@ -28,6 +29,7 @@ import {
   Wallet,
   ArrowDownToLine,
   RefreshCw,
+  Link2,
 } from 'lucide-react';
 
 type FilterMode = 'all' | 'problems' | 'warnings' | 'clean';
@@ -428,6 +430,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const [startDate, setStartDate] = useState(() => format(subDays(new Date(), 60), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [linkingId, setLinkingId] = useState<string | null>(null);
+  const [linkingPi, setLinkingPi] = useState<string | null>(null); // billing record being linked to a PI
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
   const walletBalance = useComputedWalletBalance(clientId);
 
@@ -471,6 +474,27 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const gadsUrl = googleCustomerId
     ? `https://ads.google.com/aw/campaigns?ocid=${googleCustomerId}`
     : null;
+
+  // Stripe charges not yet linked to any billing record (available for linking)
+  const unlinkableStripeCharges = filteredStripeCharges.filter(c => c.status === 'succeeded' && !c.refunded && !billingPiIds.has(c.id));
+
+  // Link a billing record to a Stripe payment intent
+  const handleLinkPI = async (billingRecordId: string, stripePI: string) => {
+    setLinkingPi(billingRecordId);
+    try {
+      const { error } = await supabase
+        .from('billing_records')
+        .update({ stripe_payment_intent_id: stripePI })
+        .eq('id', billingRecordId);
+      if (error) throw error;
+      billingRecords.refetch();
+      stripeCharges.refetch();
+    } catch (err: any) {
+      console.error('Link PI failed:', err);
+    } finally {
+      setLinkingPi(null);
+    }
+  };
 
   // Link a discovered Stripe customer
   const handleLinkCustomer = async (custId: string) => {
@@ -677,8 +701,36 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                               )}
                               <ExternalLink className="w-2.5 h-2.5 text-muted-foreground" />
                             </a>
+                          ) : linkingPi === rec.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground inline" />
+                          ) : unlinkableStripeCharges.length > 0 ? (
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <button className="inline-flex items-center gap-0.5 text-red-400 hover:text-blue-400 transition-colors" title="Click to link a Stripe charge">
+                                  <Link2 className="w-3.5 h-3.5" />
+                                </button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-72 p-0" align="end">
+                                <div className="px-3 py-2 border-b border-border/50 bg-muted/40">
+                                  <span className="text-xs font-semibold text-foreground">Link to Stripe Charge</span>
+                                </div>
+                                <div className="max-h-48 overflow-y-auto">
+                                  {unlinkableStripeCharges.map(charge => (
+                                    <button
+                                      key={charge.id}
+                                      className="w-full px-3 py-2 text-left text-xs hover:bg-muted/50 flex items-center justify-between gap-2 border-b border-border/20 last:border-0"
+                                      onClick={() => handleLinkPI(rec.id, charge.id)}
+                                    >
+                                      <span className="text-foreground">{fmtDate(charge.created)}</span>
+                                      <span className="text-foreground font-medium tabular-nums">{fmt(charge.amount)}</span>
+                                      <span className="text-muted-foreground truncate text-[10px] max-w-[80px]" title={charge.id}>{charge.id.slice(-8)}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </PopoverContent>
+                            </Popover>
                           ) : (
-                            <CircleX className="w-3.5 h-3.5 text-red-400 inline" title="No Stripe payment intent" />
+                            <CircleX className="w-3.5 h-3.5 text-red-400 inline" title="No Stripe payment intent — no unlinked charges available" />
                           )}
                         </td>
                       </tr>
