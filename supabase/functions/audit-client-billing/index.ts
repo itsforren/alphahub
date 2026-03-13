@@ -68,9 +68,8 @@ async function fetchPaymentIntents(
   stripeKey: string,
   customerId: string,
   since: number,
-): Promise<Array<{ id: string; amount: number; status: string; created: string; customer: string; description: string | null; metadata: Record<string, string> }>> {
-  const results: typeof returnType = [];
-  type returnType = Array<{ id: string; amount: number; status: string; created: string; customer: string; description: string | null; metadata: Record<string, string> }>;
+): Promise<Array<{ id: string; amount: number; status: string; created: string; customer: string; description: string | null; metadata: Record<string, string>; refunded: boolean; amount_refunded: number }>> {
+  const results: Array<{ id: string; amount: number; status: string; created: string; customer: string; description: string | null; metadata: Record<string, string>; refunded: boolean; amount_refunded: number }> = [];
 
   let hasMore = true;
   let startingAfter: string | null = null;
@@ -81,6 +80,7 @@ async function fetchPaymentIntents(
     url.searchParams.set('customer', customerId);
     url.searchParams.set('limit', '100');
     url.searchParams.set('created[gte]', String(since));
+    url.searchParams.set('expand[]', 'data.latest_charge');
     if (startingAfter) url.searchParams.set('starting_after', startingAfter);
 
     const res = await fetch(url.toString(), {
@@ -96,6 +96,9 @@ async function fetchPaymentIntents(
     hasMore = data.has_more || false;
 
     for (const pi of data.data || []) {
+      const charge = pi.latest_charge;
+      const refunded = charge?.refunded === true;
+      const amountRefunded = (charge?.amount_refunded || 0) / 100;
       results.push({
         id: pi.id,
         amount: (pi.amount || 0) / 100,
@@ -104,6 +107,8 @@ async function fetchPaymentIntents(
         customer: customerId,
         description: pi.description || null,
         metadata: pi.metadata || {},
+        refunded,
+        amount_refunded: amountRefunded,
       });
       if (hasMore) startingAfter = pi.id;
     }

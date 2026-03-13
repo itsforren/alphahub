@@ -131,7 +131,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
       return data as {
-        stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string }>;
+        stripeCharges: Array<{ id: string; amount: number; status: string; created: string; customer: string; refunded?: boolean; amount_refunded?: number }>;
         customerIds: string[];
         discoveredCustomers?: Array<{ id: string; email: string | null; name: string | null; created: string }>;
       };
@@ -699,8 +699,8 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               Stripe Ad Spend Account
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">
-              {fmt(filteredStripeCharges.filter(c => c.status === 'succeeded').reduce((s, c) => s + c.amount, 0))}
-              <span className="text-muted-foreground font-normal ml-1">({filteredStripeCharges.filter(c => c.status === 'succeeded').length})</span>
+              {fmt(filteredStripeCharges.filter(c => c.status === 'succeeded' && !c.refunded).reduce((s, c) => s + c.amount, 0))}
+              <span className="text-muted-foreground font-normal ml-1">({filteredStripeCharges.filter(c => c.status === 'succeeded' && !c.refunded).length})</span>
             </span>
           </div>
           <div className="flex-1">
@@ -730,31 +730,36 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
                 <tbody>
                   {filteredStripeCharges.map(charge => {
                     const inAlpha = billingPiIds.has(charge.id);
+                    const isRefunded = !!charge.refunded;
                     const isFailed = charge.status !== 'succeeded';
+                    const isExcluded = isFailed || isRefunded;
                     return (
                       <tr
                         key={charge.id}
                         className={cn(
                           'border-b border-border/20 hover:bg-muted/30',
-                          isFailed ? 'bg-red-500/5 opacity-70' : !inAlpha && 'bg-yellow-500/5'
+                          isFailed ? 'bg-red-500/5 opacity-70' :
+                          isRefunded ? 'bg-orange-500/5 opacity-70' :
+                          !inAlpha && 'bg-yellow-500/5'
                         )}
                       >
                         <td className="px-3 py-1.5">
-                          <a href={`https://dashboard.stripe.com/payments/${charge.id}`} target="_blank" rel="noopener noreferrer" className={cn('hover:underline inline-flex items-center gap-1', isFailed ? 'text-red-400 hover:text-red-300' : 'text-foreground hover:text-blue-400')}>
+                          <a href={`https://dashboard.stripe.com/payments/${charge.id}`} target="_blank" rel="noopener noreferrer" className={cn('hover:underline inline-flex items-center gap-1', isExcluded ? 'text-muted-foreground hover:text-foreground' : 'text-foreground hover:text-blue-400')}>
                             {fmtDate(charge.created)}
                             <ExternalLink className="w-2.5 h-2.5 opacity-50" />
                           </a>
                         </td>
-                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', isFailed ? 'text-red-400 line-through' : 'text-foreground')}>{fmt(charge.amount)}</td>
+                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', isFailed ? 'text-red-400 line-through' : isRefunded ? 'text-orange-400 line-through' : 'text-foreground')}>{fmt(charge.amount)}</td>
                         <td className="px-3 py-1.5 text-center">
                           <Badge
                             variant="outline"
                             className={cn('text-[10px] px-1.5',
+                              isRefunded ? 'bg-orange-500/10 text-orange-400 border-orange-500/30' :
                               charge.status === 'succeeded' ? 'bg-green-500/10 text-green-400 border-green-500/30'
                               : 'bg-red-500/10 text-red-400 border-red-500/30'
                             )}
                           >
-                            {charge.status === 'succeeded' ? 'paid' : 'failed'}
+                            {isRefunded ? 'refunded' : charge.status === 'succeeded' ? 'paid' : 'failed'}
                           </Badge>
                         </td>
                         <td className="px-3 py-1.5 text-center">
