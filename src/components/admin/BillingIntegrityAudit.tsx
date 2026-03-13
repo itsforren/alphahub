@@ -100,6 +100,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       return data || [];
     },
     enabled: !!clientId,
+    staleTime: 0,
   });
 
   const billingRecords = useQuery({
@@ -117,6 +118,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       return data || [];
     },
     enabled: !!clientId,
+    staleTime: 0,
   });
 
   const walletTransactions = useQuery({
@@ -134,6 +136,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       return data || [];
     },
     enabled: !!clientId,
+    staleTime: 0,
   });
 
   const stripeCharges = useQuery({
@@ -151,6 +154,7 @@ function useClientAuditDetail(clientId: string | null, startDate: string, endDat
       };
     },
     enabled: !!clientId,
+    staleTime: 0,
   });
 
   // Google Ads customer ID for linking to ads dashboard
@@ -486,14 +490,16 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const adjustmentTotal = walletData.filter(tx => tx.transaction_type === 'adjustment').reduce((s, tx) => s + Number(tx.amount || 0), 0);
   const netWalletCredits = depositTotal + adjustmentTotal;
 
-  const isAnyLoading = adSpend.isLoading || billingRecords.isLoading || walletTransactions.isLoading || stripeCharges.isLoading;
+  const isAnyLoading = adSpend.isFetching || billingRecords.isFetching || walletTransactions.isFetching || stripeCharges.isFetching;
 
-  // Refresh all audit data
-  const handleRefresh = () => {
-    adSpend.refetch();
-    billingRecords.refetch();
-    walletTransactions.refetch();
-    stripeCharges.refetch();
+  // Refresh all audit data — force network fetch
+  const handleRefresh = async () => {
+    await Promise.all([
+      adSpend.refetch({ cancelRefetch: true }),
+      billingRecords.refetch({ cancelRefetch: true }),
+      walletTransactions.refetch({ cancelRefetch: true }),
+      stripeCharges.refetch({ cancelRefetch: true }),
+    ]);
   };
 
   // Google Ads link helper
