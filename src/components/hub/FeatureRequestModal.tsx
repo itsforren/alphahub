@@ -43,6 +43,7 @@ export function FeatureRequestModal({ open, onOpenChange }: FeatureRequestModalP
           title: title.trim(),
           description: description.trim() || null,
           category: category || null,
+          status: 'requested',
         });
 
       if (error) throw error;
