@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useBillingIntegrity, BillingIntegrityRow } from '@/hooks/useBillingDashboard';
+import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -428,6 +429,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
   const [endDate, setEndDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [linkingId, setLinkingId] = useState<string | null>(null);
   const { adSpend, billingRecords, walletTransactions, stripeCharges, googleCustomerId } = useClientAuditDetail(clientId, startDate, endDate);
+  const walletBalance = useComputedWalletBalance(clientId);
 
   const adSpendData = adSpend.data || [];
   const allBillingData = billingRecords.data || [];
@@ -565,12 +567,12 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
         </div>
       )}
 
-      {/* 3-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-h-[500px] overflow-y-auto">
+      {/* 4-column layout — equal height */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 max-h-[500px] overflow-y-auto items-stretch">
 
         {/* Column 1: Google Ad Spend */}
-        <div className="rounded-lg border border-border/50 overflow-hidden">
-          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+        <div className="rounded-lg border border-border/50 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between shrink-0">
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
               Google Ad Spend
@@ -582,7 +584,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
             </span>
             <span className="text-xs font-bold text-foreground tabular-nums">{fmt(totalAdSpend)}</span>
           </div>
-          <div>
+          <div className="flex-1">
             {adSpend.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
             ) : weeklySpend.length === 0 ? (
@@ -611,8 +613,8 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
         </div>
 
         {/* Column 2: Alpha Hub Charges (billing records + wallet deposits) */}
-        <div className="rounded-lg border border-border/50 overflow-hidden">
-          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+        <div className="rounded-lg border border-border/50 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between shrink-0">
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <Wallet className="w-3.5 h-3.5 text-violet-400" />
               Alpha Hub Charges
@@ -622,7 +624,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <span className="text-muted-foreground font-normal ml-1">({billingData.length})</span>
             </span>
           </div>
-          <div>
+          <div className="flex-1">
             {billingRecords.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
             ) : billingData.length === 0 ? (
@@ -690,8 +692,8 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
         </div>
 
         {/* Column 3: Stripe Ad Spend Account */}
-        <div className="rounded-lg border border-border/50 overflow-hidden">
-          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+        <div className="rounded-lg border border-border/50 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between shrink-0">
             <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
               <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
               Stripe Ad Spend Account
@@ -701,7 +703,7 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
               <span className="text-muted-foreground font-normal ml-1">({filteredStripeCharges.length})</span>
             </span>
           </div>
-          <div>
+          <div className="flex-1">
             {stripeCharges.isLoading ? (
               <div className="p-4 flex items-center justify-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -772,22 +774,30 @@ function AuditDetail({ clientId, clientName }: { clientId: string; clientName: s
         </div>
 
         {/* Column 4: Wallet Credits */}
-        <div className="rounded-lg border border-border/50 overflow-hidden">
-          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-              <ArrowDownToLine className="w-3.5 h-3.5 text-cyan-400" />
-              Wallet Credits
-            </span>
-            <span className="text-xs font-bold text-foreground tabular-nums">
-              {fmt(netWalletCredits)}
-              {adjustmentTotal !== 0 && (
-                <span className="text-blue-400 font-normal ml-1 text-[10px]">
-                  (net)
-                </span>
-              )}
-            </span>
+        <div className="rounded-lg border border-border/50 overflow-hidden flex flex-col">
+          <div className="px-3 py-2 bg-muted/40 border-b border-border/50 shrink-0">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <ArrowDownToLine className="w-3.5 h-3.5 text-cyan-400" />
+                Wallet Credits
+              </span>
+              <span className="text-xs font-bold text-foreground tabular-nums">
+                {fmt(netWalletCredits)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-[10px] text-muted-foreground">Current Balance</span>
+              <span className={cn(
+                'text-[10px] font-semibold tabular-nums',
+                walletBalance.isLoading ? 'text-muted-foreground' :
+                walletBalance.remainingBalance < 0 ? 'text-red-400' :
+                walletBalance.remainingBalance < 150 ? 'text-yellow-400' : 'text-green-400'
+              )}>
+                {walletBalance.isLoading ? '...' : fmt(walletBalance.remainingBalance)}
+              </span>
+            </div>
           </div>
-          <div>
+          <div className="flex-1">
             {walletTransactions.isLoading ? (
               <div className="p-4 flex items-center justify-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
             ) : walletData.length === 0 ? (
