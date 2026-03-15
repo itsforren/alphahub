@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target, ShieldCheck } from 'lucide-react';
+import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,10 +91,9 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const [isSavingDate, setIsSavingDate] = useState(false);
 
   const isLoading = walletLoading || computedLoading;
-  const isAdminExempt = wallet?.billing_mode === 'admin_exempt';
   const lowThreshold = wallet?.low_balance_threshold ?? 150;
-  const isLowBalance = !isAdminExempt && remainingBalance <= lowThreshold;
-  const isNegative = !isAdminExempt && remainingBalance < 0;
+  const isLowBalance = remainingBalance <= lowThreshold;
+  const isNegative = remainingBalance < 0;
 
   const handleSaveSettings = async () => {
     try {
@@ -103,7 +102,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         low_balance_threshold: parseFloat(threshold) || 150,
         auto_charge_amount: autoCharge ? parseFloat(autoCharge) : null,
         monthly_ad_spend_cap: monthlyCapInput ? parseFloat(monthlyCapInput) : null,
-        ...(billingModeInput && { billing_mode: billingModeInput as 'manual' | 'auto_stripe' | 'admin_exempt' }),
+        ...(billingModeInput && { billing_mode: billingModeInput as 'manual' | 'auto_stripe' }),
       });
 
       if (editTrackingDate && editTrackingDate !== trackingStartDate) {
@@ -336,25 +335,18 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
             {/* Right: Threshold + Recharge + Settings */}
             <div className="flex items-center gap-3 shrink-0">
-              {isAdminExempt ? (
-                <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span className="text-sm font-medium text-emerald-400">Admin Account</span>
+              <div className="hidden sm:flex items-center gap-3">
+                <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
+                  <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
+                  <div className="text-xs text-muted-foreground">Threshold</div>
                 </div>
-              ) : (
-                <div className="hidden sm:flex items-center gap-3">
+                {rechargeAmount > 0 && (
                   <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
-                    <div className="text-lg font-semibold text-foreground">${lowThreshold}</div>
-                    <div className="text-xs text-muted-foreground">Threshold</div>
+                    <div className="text-lg font-semibold text-foreground">${rechargeAmount.toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">Recharge</div>
                   </div>
-                  {rechargeAmount > 0 && (
-                    <div className="text-center px-4 py-2 bg-muted/50 rounded-lg">
-                      <div className="text-lg font-semibold text-foreground">${rechargeAmount.toLocaleString()}</div>
-                      <div className="text-xs text-muted-foreground">Recharge</div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
               {isAdmin && (
                 <Button
                   variant="ghost"
@@ -434,11 +426,10 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                 <SelectContent>
                   <SelectItem value="manual">Manual</SelectItem>
                   <SelectItem value="auto_stripe">Auto Stripe</SelectItem>
-                  <SelectItem value="admin_exempt">Admin Exempt</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Admin Exempt bypasses wallet safe mode — campaigns keep running regardless of balance.
+                Auto Stripe automatically charges the card on file when balance is low.
               </p>
             </div>
             <div className="space-y-2">

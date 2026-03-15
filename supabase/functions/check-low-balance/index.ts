@@ -24,8 +24,8 @@ async function postAdsManagerWebhook(payload: unknown): Promise<void> {
   }
 }
 
-// Safe mode threshold — campaigns keep running until balance drops below this
-const SAFE_MODE_BALANCE_THRESHOLD = 100;
+// Default threshold if not set per-client
+const DEFAULT_LOW_BALANCE_THRESHOLD = 150;
 // Safe Mode budget ladder - try lowest first, fallback if rejected
 const SAFE_MODE_BUDGETS = [0.01, 0.10, 1.00];
 
@@ -195,57 +195,27 @@ serve(async (req) => {
     for (const client of clientsToCheck) {
       // Per-campaign skip logic is handled below when building campaignsToProcess
 
-      // Get wallet deposits + adjustments total
-      const { data: deposits } = await supabase
-        .from('wallet_transactions')
-        .select('amount')
-        .eq('client_id', client.id)
-        .in('transaction_type', ['deposit', 'adjustment']);
-
-      const totalDeposits = deposits?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
-
-      // Get wallet tracking start date and low balance threshold
+      // Get wallet config (threshold only -- no admin_exempt bypass, all clients enforced)
       const { data: wallet } = await supabase
         .from('client_wallets')
-        .select('tracking_start_date, low_balance_threshold, billing_mode')
+        .select('low_balance_threshold')
         .eq('client_id', client.id)
         .maybeSingle();
 
-      // Admin exempt accounts bypass wallet-based safe mode
-      if (wallet?.billing_mode === 'admin_exempt') {
-        console.log(`Client ${client.name}: admin_exempt — skipping wallet safe mode check`);
+      // Use per-client threshold or default
+      const lowBalanceThreshold = wallet?.low_balance_threshold ?? DEFAULT_LOW_BALANCE_THRESHOLD;
+
+      // Use compute_wallet_balance() RPC as single source of truth
+      const { data: balanceResult, error: balanceError } = await supabase.rpc('compute_wallet_balance', {
+        p_client_id: client.id,
+      });
+
+      if (balanceError) {
+        console.error(`Failed to compute balance for ${client.name}:`, balanceError);
         continue;
       }
 
-      // Safe mode triggers at $100 — separate from recharge threshold ($150)
-      const lowBalanceThreshold = SAFE_MODE_BALANCE_THRESHOLD;
-
-      // Fetch performance percentage setting
-      const { data: perfSetting } = await supabase
-        .from('onboarding_settings')
-        .select('setting_value')
-        .eq('setting_key', 'performance_percentage')
-        .maybeSingle();
-      
-      // Default to 0% if not configured - never hardcode a non-zero default
-      const rawPerf = perfSetting?.setting_value ? parseFloat(perfSetting.setting_value) : NaN;
-      const performancePercentage = Number.isFinite(rawPerf) ? rawPerf : 0;
-
-      // Get tracked ad spend from tracking start date
-      let trackedSpend = 0;
-      if (wallet?.tracking_start_date) {
-        const { data: spendData } = await supabase
-          .from('ad_spend_daily')
-          .select('cost')
-          .eq('client_id', client.id)
-          .gte('spend_date', wallet.tracking_start_date);
-        
-        trackedSpend = spendData?.reduce((sum, day) => sum + Number(day.cost || 0), 0) ?? 0;
-      }
-
-      // Apply performance fee to get displayed spend
-      const displayedSpend = trackedSpend * (1 + performancePercentage / 100);
-      const remainingBalance = totalDeposits - displayedSpend;
+      const remainingBalance = balanceResult?.remaining_balance ?? 0;
       console.log(`Client ${client.name}: Balance = $${remainingBalance.toFixed(2)}`);
 
       // Check if balance is at or below per-client threshold
