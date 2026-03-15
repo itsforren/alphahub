@@ -65,7 +65,7 @@ export function useComputedWalletBalance(clientId?: string) {
     queryKey: ['tracked-ad-spend', clientId, walletQuery.data?.tracking_start_date],
     queryFn: async () => {
       if (!clientId || !walletQuery.data?.tracking_start_date) return 0;
-      
+
       const { data, error } = await supabase
         .from('ad_spend_daily')
         .select('cost')
@@ -73,17 +73,33 @@ export function useComputedWalletBalance(clientId?: string) {
         .gte('spend_date', walletQuery.data.tracking_start_date);
 
       if (error) throw error;
-      
+
       return data?.reduce((sum, day) => sum + Number(day.cost || 0), 0) ?? 0;
     },
     enabled: !!clientId && !!walletQuery.data?.tracking_start_date,
+  });
+
+  // Canonical balance from compute_wallet_balance() RPC — single source of truth
+  const balanceQuery = useQuery({
+    queryKey: ['computed-wallet-balance-rpc', clientId],
+    queryFn: async () => {
+      if (!clientId) return 0;
+
+      const { data, error } = await supabase.rpc('compute_wallet_balance', {
+        p_client_id: clientId,
+      });
+
+      if (error) throw error;
+      return Number(data) ?? 0;
+    },
+    enabled: !!clientId,
   });
 
   const totalDeposits = depositsQuery.data ?? 0;
   const trackedSpend = spendQuery.data ?? 0;
   const pct = performancePercentage ?? 0;
   const displayedSpend = applyPerformancePercentage(trackedSpend, pct);
-  const remainingBalance = totalDeposits - displayedSpend;
+  const remainingBalance = balanceQuery.data ?? 0;
   const trackingStartDate = walletQuery.data?.tracking_start_date ?? null;
   // Use per-client threshold or default
   const lowBalanceThreshold = walletQuery.data?.low_balance_threshold ?? DEFAULT_LOW_BALANCE_THRESHOLD;
@@ -102,6 +118,7 @@ export function useComputedWalletBalance(clientId?: string) {
       !walletQuery.isLoading &&
       !depositsQuery.isLoading &&
       !spendQuery.isLoading &&
+      !balanceQuery.isLoading &&
       !percentageLoading &&
       totalDeposits > 0 // Only trigger if there's actually been deposits (tracking is active)
     ) {
@@ -120,12 +137,13 @@ export function useComputedWalletBalance(clientId?: string) {
         }
       });
     }
-  }, [clientId, remainingBalance, lowBalanceThreshold, totalDeposits, walletQuery.isLoading, depositsQuery.isLoading, spendQuery.isLoading, percentageLoading]);
+  }, [clientId, remainingBalance, lowBalanceThreshold, totalDeposits, walletQuery.isLoading, depositsQuery.isLoading, spendQuery.isLoading, balanceQuery.isLoading, percentageLoading]);
 
   const refetch = () => {
     walletQuery.refetch();
     depositsQuery.refetch();
     spendQuery.refetch();
+    balanceQuery.refetch();
   };
 
   return {
@@ -135,7 +153,7 @@ export function useComputedWalletBalance(clientId?: string) {
     remainingBalance,
     trackingStartDate,
     performancePercentage,
-    isLoading: walletQuery.isLoading || depositsQuery.isLoading || spendQuery.isLoading || percentageLoading,
+    isLoading: walletQuery.isLoading || depositsQuery.isLoading || spendQuery.isLoading || balanceQuery.isLoading || percentageLoading,
     refetch,
   };
 }
