@@ -137,72 +137,40 @@ export function useCreateOrUpdateWallet() {
   });
 }
 
-export function useAddWalletDeposit() {
+/**
+ * Creates a wallet adjustment (positive or negative) via the add-wallet-credit edge function.
+ * This hook ONLY creates 'adjustment' type transactions — never 'deposit'.
+ * Deposits must come through Stripe via process_successful_charge().
+ */
+export function useAddWalletAdjustment() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (input: {
-      client_id: string;
+      clientId: string;
       amount: number;
+      billingRecordId?: string;
       description?: string;
-      billing_record_id?: string;
     }) => {
-      // Get or create wallet
-      let wallet: ClientWallet;
-      const { data: existing } = await supabase
-        .from('client_wallets')
-        .select('*')
-        .eq('client_id', input.client_id)
-        .maybeSingle();
-
-      if (existing) {
-        wallet = existing as ClientWallet;
-      } else {
-        const { data: newWallet, error: createError } = await supabase
-          .from('client_wallets')
-          .insert({ client_id: input.client_id, ad_spend_balance: 0 })
-          .select()
-          .single();
-        
-        if (createError) throw createError;
-        wallet = newWallet as ClientWallet;
-      }
-
-      const newBalance = Number(wallet.ad_spend_balance) + input.amount;
-
-      // Update wallet balance
-      const { error: updateError } = await supabase
-        .from('client_wallets')
-        .update({ 
-          ad_spend_balance: newBalance,
-          last_calculated_at: new Date().toISOString()
-        })
-        .eq('id', wallet.id);
-
-      if (updateError) throw updateError;
-
-      // Record transaction
-      const transactionType = input.amount >= 0 ? 'deposit' : 'adjustment';
-      const { data: transaction, error: txError } = await supabase
-        .from('wallet_transactions')
-        .insert({
-          wallet_id: wallet.id,
-          client_id: input.client_id,
-          transaction_type: transactionType,
+      const { data, error } = await supabase.functions.invoke('add-wallet-credit', {
+        body: {
+          client_id: input.clientId,
           amount: input.amount,
-          balance_after: newBalance,
-          description: input.description || (input.amount >= 0 ? 'Ad spend deposit' : 'Manual adjustment'),
-          billing_record_id: input.billing_record_id,
-        })
-        .select()
-        .single();
+          billing_record_id: input.billingRecordId,
+          description: input.description || 'Admin adjustment',
+        },
+      });
 
-      if (txError) throw txError;
-      return transaction as WalletTransaction;
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.already_exists) return { ...data, alreadyExists: true };
+
+      return data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['client-wallet', variables.client_id] });
-      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', variables.client_id] });
+      queryClient.invalidateQueries({ queryKey: ['client-wallet', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-deposits', variables.clientId] });
     },
   });
 }

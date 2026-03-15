@@ -145,62 +145,6 @@ export function useBillingRecords(clientId?: string, showArchived = false) {
   });
 }
 
-export function useAddToWallet() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (record: BillingRecord) => {
-      if (record.status !== 'paid' || record.billing_type !== 'ad_spend') {
-        throw new Error('Only paid ad_spend records can be added to wallet');
-      }
-
-      const trackingDate = record.billing_period_start || record.paid_at?.split('T')[0] || new Date().toISOString().split('T')[0];
-
-      // Get or create wallet
-      let { data: wallet } = await supabase
-        .from('client_wallets')
-        .select('id, tracking_start_date')
-        .eq('client_id', record.client_id)
-        .maybeSingle();
-
-      if (!wallet) {
-        const { data: newWallet, error } = await supabase
-          .from('client_wallets')
-          .insert({ client_id: record.client_id, tracking_start_date: trackingDate })
-          .select('id, tracking_start_date')
-          .single();
-        if (error) throw error;
-        wallet = newWallet;
-      } else if (!wallet.tracking_start_date || trackingDate < wallet.tracking_start_date) {
-        await supabase
-          .from('client_wallets')
-          .update({ tracking_start_date: trackingDate })
-          .eq('id', wallet.id);
-      }
-
-      const { error: txError } = await supabase
-        .from('wallet_transactions')
-        .insert({
-          wallet_id: wallet.id,
-          client_id: record.client_id,
-          transaction_type: 'deposit',
-          amount: record.amount,
-          balance_after: 0,
-          description: `Ad spend deposit - Invoice ${record.id.slice(0, 8)}`,
-          billing_record_id: record.id,
-        });
-
-      if (txError) throw txError;
-      return record;
-    },
-    onSuccess: (record) => {
-      queryClient.invalidateQueries({ queryKey: ['billing-records', record.client_id] });
-      queryClient.invalidateQueries({ queryKey: ['client-wallet', record.client_id] });
-      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', record.client_id] });
-    },
-  });
-}
-
 export function useCreateBillingRecord() {
   const queryClient = useQueryClient();
 
@@ -279,70 +223,10 @@ export function useCreateBillingRecord() {
           .eq('id', data.id);
       }
 
-      // If ad_spend billing is created as paid, add wallet deposit
-      if (data.billing_type === 'ad_spend' && insertData.status === 'paid') {
-        // Use billing_period_start as the tracking start date (start of 12 AM on that date)
-        const trackingDate = data.billing_period_start || new Date().toISOString().split('T')[0];
-        
-        // Check if wallet exists
-        const { data: existingWallet } = await supabase
-          .from('client_wallets')
-          .select('id, tracking_start_date')
-          .eq('client_id', data.client_id)
-          .maybeSingle();
+      // NOTE: Wallet deposits are no longer created inline when billing records are created.
+      // All deposits must come through Stripe via process_successful_charge() webhook handler.
+      // Admin can use useAddWalletAdjustment for corrections only.
 
-        if (existingWallet) {
-          // Update tracking_start_date only if not already set or if new date is earlier
-          if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
-            await supabase
-              .from('client_wallets')
-              .update({ tracking_start_date: trackingDate })
-              .eq('id', existingWallet.id);
-          }
-          
-          // Add wallet transaction for the deposit (net amount after credits)
-          const netDepositAmount = data.amount - totalCreditUsed;
-          await supabase
-            .from('wallet_transactions')
-            .insert({
-              wallet_id: existingWallet.id,
-              client_id: data.client_id,
-              transaction_type: 'deposit',
-              amount: netDepositAmount,
-              balance_after: 0,
-              description: `Ad spend deposit - Invoice ${data.id.slice(0, 8)}${totalCreditUsed > 0 ? ` (credit applied: $${totalCreditUsed})` : ''}`,
-              billing_record_id: data.id,
-            });
-        } else {
-          // Create new wallet with tracking_start_date
-          const { data: newWallet } = await supabase
-            .from('client_wallets')
-            .insert({
-              client_id: data.client_id,
-              ad_spend_balance: 0,
-              tracking_start_date: trackingDate,
-            })
-            .select()
-            .single();
-
-          if (newWallet) {
-            // Net amount after credits
-            const netDepositAmount = data.amount - totalCreditUsed;
-            await supabase
-              .from('wallet_transactions')
-              .insert({
-                wallet_id: newWallet.id,
-                client_id: data.client_id,
-                transaction_type: 'deposit',
-                amount: netDepositAmount,
-                balance_after: netDepositAmount,
-                description: `Ad spend deposit - Invoice ${data.id.slice(0, 8)}${totalCreditUsed > 0 ? ` (credit applied: $${totalCreditUsed})` : ''}`,
-                billing_record_id: data.id,
-              });
-          }
-        }
-      }
-      
       return data as BillingRecord;
     },
     onSuccess: (data) => {
@@ -446,70 +330,10 @@ export function useUpdateBillingRecord() {
         }
       }
       
-      // If ad_spend billing is marked as paid, update/create wallet and set tracking_start_date
-      if (data.billing_type === 'ad_spend' && isBeingMarkedPaid) {
-        // Use billing_period_start as the tracking start date (start of 12 AM on that date)
-        const trackingDate = data.billing_period_start || new Date().toISOString().split('T')[0];
-        
-        // Check if wallet exists
-        const { data: existingWallet } = await supabase
-          .from('client_wallets')
-          .select('id, tracking_start_date')
-          .eq('client_id', data.client_id)
-          .maybeSingle();
+      // NOTE: Wallet deposits are no longer created inline when marking records as paid.
+      // All deposits must come through Stripe via process_successful_charge() webhook handler.
+      // Admin can use useAddWalletAdjustment for corrections only.
 
-        if (existingWallet) {
-          // Update tracking_start_date only if not already set or if new date is earlier
-          if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
-            await supabase
-              .from('client_wallets')
-              .update({ tracking_start_date: trackingDate })
-              .eq('id', existingWallet.id);
-          }
-          
-          // Add wallet transaction for the deposit (FULL amount - credits reduce payment, not wallet balance)
-          const creditUsedForDeposit = data.credit_amount_used ?? 0;
-          await supabase
-            .from('wallet_transactions')
-            .insert({
-              wallet_id: existingWallet.id,
-              client_id: data.client_id,
-              transaction_type: 'deposit',
-              amount: data.amount, // Full amount goes to wallet
-              balance_after: 0, // Computed field, not used anymore
-              description: `Ad spend deposit - Invoice ${data.id.slice(0, 8)}${creditUsedForDeposit > 0 ? ` (payment reduced by $${creditUsedForDeposit} credit)` : ''}`,
-              billing_record_id: data.id,
-            });
-        } else {
-          // Create new wallet with tracking_start_date
-          const { data: newWallet } = await supabase
-            .from('client_wallets')
-            .insert({
-              client_id: data.client_id,
-              ad_spend_balance: 0,
-              tracking_start_date: trackingDate,
-            })
-            .select()
-            .single();
-
-          if (newWallet) {
-            // Add wallet transaction for the deposit (FULL amount - credits reduce payment, not wallet balance)
-            const creditUsedForDeposit = data.credit_amount_used ?? 0;
-            await supabase
-              .from('wallet_transactions')
-              .insert({
-                wallet_id: newWallet.id,
-                client_id: data.client_id,
-                transaction_type: 'deposit',
-                amount: data.amount, // Full amount goes to wallet
-                balance_after: data.amount,
-                description: `Ad spend deposit - Invoice ${data.id.slice(0, 8)}${creditUsedForDeposit > 0 ? ` (payment reduced by $${creditUsedForDeposit} credit)` : ''}`,
-                billing_record_id: data.id,
-              });
-          }
-        }
-      }
-      
       // Generate next recurring charge if this is a recurring record being marked as paid
       // Check if child record already exists to prevent duplicates
       if (isBeingMarkedPaid && data.is_recurring_parent && data.recurrence_type !== 'one_time') {
