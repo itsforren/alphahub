@@ -7,86 +7,6 @@ const corsHeaders = {
 
 type StripeAccount = 'ad_spend' | 'management';
 
-// ── Helper: Restore campaign budget after safe mode ──
-async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string, supabaseUrl: string, supabaseServiceKey: string) {
-  try {
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id')
-      .eq('client_id', clientId)
-      .maybeSingle();
-
-    if (!campaign || !campaign.safe_mode) return;
-
-    // Determine restore budget
-    let restoreBudget = campaign.pre_safe_mode_budget;
-    if (!restoreBudget) {
-      const { data: client } = await supabase
-        .from('clients')
-        .select('ad_spend_budget')
-        .eq('id', clientId)
-        .single();
-      restoreBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
-    }
-
-    if (!restoreBudget || restoreBudget <= 0.01) {
-      console.log(`No valid restore budget for client ${clientId}, skipping safe mode exit`);
-      return;
-    }
-
-    // Call update-google-ads-budget
-    const budgetRes = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ clientId, newDailyBudget: restoreBudget }),
-    });
-    const budgetResult = await budgetRes.json();
-
-    if (!budgetRes.ok) {
-      console.error(`Failed to restore budget for client ${clientId}:`, budgetResult);
-      return;
-    }
-
-    // Clear safe mode flags
-    await supabase
-      .from('campaigns')
-      .update({
-        safe_mode: false,
-        safe_mode_reason: null,
-        safe_mode_triggered_at: null,
-        safe_mode_budget_used: null,
-        pre_safe_mode_budget: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('client_id', clientId);
-
-    // Restore target_daily_spend on clients
-    await supabase
-      .from('clients')
-      .update({ target_daily_spend: restoreBudget, updated_at: new Date().toISOString() })
-      .eq('id', clientId);
-
-    // Audit log
-    await supabase.from('campaign_audit_log').insert([{
-      client_id: clientId,
-      campaign_id: campaign.id,
-      action: 'SAFE_MODE_EXITED',
-      actor: 'system',
-      reason_codes: ['WALLET_REFILLED'],
-      old_value: { safe_mode: true, budget: 0.01 },
-      new_value: { safe_mode: false, budget: restoreBudget },
-      notes: `Campaign budget restored to $${restoreBudget}/day after successful ad spend payment`,
-    }]);
-
-    console.log(`✅ Campaign budget restored to $${restoreBudget}/day for client ${clientId}`);
-  } catch (err) {
-    console.error(`Error restoring campaign budget for client ${clientId}:`, err);
-  }
-}
-
 function getStripeKey(account: StripeAccount): string {
   const key = account === 'management'
     ? Deno.env.get('STRIPE_MANAGEMENT_SECRET_KEY')
@@ -95,12 +15,13 @@ function getStripeKey(account: StripeAccount): string {
   return key;
 }
 
-async function stripePost(path: string, key: string, body: Record<string, string>) {
+async function stripePost(path: string, key: string, body: Record<string, string>, extraHeaders?: Record<string, string>) {
   const res = await fetch(`https://api.stripe.com/v1${path}`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${key}`,
       'Content-Type': 'application/x-www-form-urlencoded',
+      ...extraHeaders,
     },
     body: new URLSearchParams(body).toString(),
   });
@@ -247,8 +168,18 @@ Deno.serve(async (req) => {
 
     if (defaultPm) {
       if (stripeAccount === 'ad_spend') {
-        // ── AD SPEND: Direct PaymentIntent (reliable for one-time charges) ──
+        // ── AD SPEND: Direct PaymentIntent with charging status flow ──
         console.log(`create-stripe-invoice: using PaymentIntent for ad_spend charge`);
+
+        // Update billing record status to 'charging' before creating PI
+        await supabase
+          .from('billing_records')
+          .update({
+            status: 'charging',
+            source: 'stripe',
+          })
+          .eq('id', billing_record_id);
+
         const paymentIntent = await stripePost('/payment_intents', stripeKey, {
           customer: stripeCustomerId,
           payment_method: defaultPm.stripe_payment_method_id,
@@ -259,65 +190,25 @@ Deno.serve(async (req) => {
           description,
           'metadata[billing_record_id]': billing_record_id,
           'metadata[billing_type]': record.billing_type,
+          'metadata[client_id]': record.client_id,
+        }, {
+          'Idempotency-Key': `invoice-${billing_record_id}`,
         });
 
         console.log(`PaymentIntent created: ${paymentIntent.id}, status: ${paymentIntent.status}`);
 
         if (paymentIntent.status === 'succeeded') {
+          // Update with PI ID only -- webhook handles paid + deposit via process_successful_charge()
           autoCharged = true;
           await supabase
             .from('billing_records')
             .update({
-              status: 'paid',
-              paid_at: new Date().toISOString(),
               stripe_payment_intent_id: paymentIntent.id,
               stripe_account: stripeAccount,
             })
             .eq('id', billing_record_id);
 
-          console.log(`Ad spend PaymentIntent succeeded: ${paymentIntent.id}`);
-
-          // ── Inline wallet deposit for ad spend ──
-          const { data: existingWallet } = await supabase
-            .from('client_wallets')
-            .select('id, tracking_start_date')
-            .eq('client_id', record.client_id)
-            .maybeSingle();
-
-          if (existingWallet) {
-            const trackingDate = record.billing_period_start || today;
-            if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
-              await supabase
-                .from('client_wallets')
-                .update({ tracking_start_date: trackingDate })
-                .eq('id', existingWallet.id);
-            }
-
-            const { data: existingDeposit } = await supabase
-              .from('wallet_transactions')
-              .select('id')
-              .eq('billing_record_id', billing_record_id)
-              .eq('transaction_type', 'deposit')
-              .maybeSingle();
-
-            if (!existingDeposit) {
-              await supabase
-                .from('wallet_transactions')
-                .insert({
-                  wallet_id: existingWallet.id,
-                  client_id: record.client_id,
-                  transaction_type: 'deposit',
-                  amount: record.amount,
-                  balance_after: 0,
-                  description: `Ad spend deposit - PaymentIntent ${paymentIntent.id.slice(0, 12)}`,
-                  billing_record_id: billing_record_id,
-                });
-              console.log(`Wallet deposit created inline for PaymentIntent ${paymentIntent.id}`);
-            }
-          }
-
-          // ── Auto-resume campaign if in safe mode ──
-          await restoreCampaignBudgetIfSafeMode(supabase, record.client_id, supabaseUrl, supabaseServiceKey);
+          console.log(`Ad spend PaymentIntent succeeded: ${paymentIntent.id}, awaiting webhook for paid+deposit`);
 
           return new Response(JSON.stringify({
             success: true,
@@ -350,7 +241,19 @@ Deno.serve(async (req) => {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
         } else {
-          throw new Error(`PaymentIntent in unexpected status: ${paymentIntent.status}`);
+          // PI failed -- mark as overdue
+          const errorMessage = paymentIntent.last_payment_error?.message || `Status: ${paymentIntent.status}`;
+          await supabase
+            .from('billing_records')
+            .update({
+              stripe_payment_intent_id: paymentIntent.id,
+              stripe_account: stripeAccount,
+              status: 'overdue',
+              last_charge_error: errorMessage,
+            })
+            .eq('id', billing_record_id);
+
+          throw new Error(`PaymentIntent failed: ${errorMessage}`);
         }
       } else {
         // ── MANAGEMENT: Invoice flow (auto-charge) ──
@@ -417,7 +320,7 @@ Deno.serve(async (req) => {
       invoice = await stripePost(`/invoices/${invoice.id}/finalize`, stripeKey, {});
     }
 
-    // Update billing record with Stripe details
+    // Update billing record with Stripe details (management fee / send invoice paths)
     const updateData: Record<string, any> = {
       stripe_invoice_id: invoice.id,
       stripe_account: stripeAccount,
