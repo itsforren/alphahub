@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord, useAddToWallet, useArchiveBillingRecord, useRestoreBillingRecord } from '@/hooks/useBillingRecords';
+import { BillingRecord, BillingStatus, useUpdateBillingRecord, useDeleteBillingRecord, useArchiveBillingRecord, useRestoreBillingRecord } from '@/hooks/useBillingRecords';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { BillingTypeBadge } from './BillingTypeBadge';
 import { BillingStatusBadge } from './BillingStatusBadge';
 import { BillingDetailPopup } from './BillingDetailPopup';
-import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, Wallet, AlertTriangle, CheckCircle2, Archive, RotateCcw, SquareArrowOutUpRight } from 'lucide-react';
+import { ExternalLink, Pencil, Trash2, MoreHorizontal, RefreshCw, Repeat, Eye, AlertTriangle, CheckCircle2, Archive, RotateCcw, SquareArrowOutUpRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -31,8 +31,6 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
   const deleteMutation = useDeleteBillingRecord();
   const archiveMutation = useArchiveBillingRecord();
   const restoreMutation = useRestoreBillingRecord();
-  const addToWalletMutation = useAddToWallet();
-
   const filteredRecords = records.filter(record => {
     if (filterType !== 'all' && record.billing_type !== filterType) return false;
     if (filterStatus !== 'all' && record.status !== filterStatus) return false;
@@ -50,15 +48,6 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
       }
     } catch (error) {
       toast.error('Failed to update status');
-    }
-  };
-
-  const handleAddToWallet = async (record: BillingRecord) => {
-    try {
-      await addToWalletMutation.mutateAsync(record);
-      toast.success(`$${Number(record.amount).toLocaleString()} added to wallet`);
-    } catch (error: any) {
-      toast.error(`Failed to add to wallet: ${error?.message || String(error)}`);
     }
   };
 
@@ -165,6 +154,11 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                   <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
                     <AlertTriangle className="w-3 h-3" /> Duplicate?
                   </span>
+                )}
+                {record.source === 'v1_manual' && (
+                  <Badge className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+                    Legacy
+                  </Badge>
                 )}
               </div>
               {isAdmin ? (
@@ -325,21 +319,27 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                   </div>
                 </TableCell>
 
-                {/* Source: Stripe, Auto, or Manual */}
+                {/* Source: Stripe, Auto, Manual, or Legacy (v1_manual) */}
                 <TableCell>
-                  {record.stripe_invoice_id || record.stripe_payment_intent_id ? (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">
-                      Stripe
-                    </Badge>
-                  ) : record.notes?.includes('Auto-recharge') || record.notes?.includes('auto-recharge') ? (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-violet-500/40 text-violet-400">
-                      Auto
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">
-                      Manual
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {record.source === 'v1_manual' ? (
+                      <Badge className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+                        Legacy
+                      </Badge>
+                    ) : record.stripe_invoice_id || record.stripe_payment_intent_id ? (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">
+                        Stripe
+                      </Badge>
+                    ) : record.notes?.includes('Auto-recharge') || record.notes?.includes('auto-recharge') ? (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-violet-500/40 text-violet-400">
+                        Auto
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 text-muted-foreground">
+                        Manual
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
 
                 {/* Type + recurrence */}
@@ -417,34 +417,31 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
 
                 {/* Wallet deposit status */}
                 <TableCell>
-                  {record.billing_type === 'ad_spend' && record.status === 'paid' ? (
-                    record.has_wallet_deposit ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="inline-flex items-center gap-1 text-emerald-400 text-xs">
-                              <CheckCircle2 className="w-3.5 h-3.5" /> In Wallet
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent><p>Deposit recorded in wallet</p></TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : isAdmin ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1 border-blue-500/40 text-blue-400 hover:bg-blue-500/10"
-                        disabled={addToWalletMutation.isPending}
-                        onClick={() => handleAddToWallet(record)}
-                      >
-                        <Wallet className="w-3 h-3" /> Add
-                      </Button>
+                  <div className="flex items-center gap-1.5">
+                    {record.billing_type === 'ad_spend' && record.status === 'paid' ? (
+                      record.has_wallet_deposit ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex items-center gap-1 text-emerald-400 text-xs">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> In Wallet
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent><p>Deposit recorded in wallet</p></TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <span className="text-amber-400 text-xs">Not in wallet</span>
+                      )
                     ) : (
-                      <span className="text-amber-400 text-xs">Not in wallet</span>
-                    )
-                  ) : (
-                    <span className="text-muted-foreground text-xs">—</span>
-                  )}
+                      <span className="text-muted-foreground text-xs">{'\u2014'}</span>
+                    )}
+                    {record.source === 'v1_manual' && (
+                      <Badge className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
+                        Legacy
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
 
                 {/* Ref ID */}

@@ -31,6 +31,7 @@ export interface BillingRecord {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
+  source: 'stripe' | 'v1_manual' | 'auto_recharge' | null;
   // Computed client-side
   has_wallet_deposit?: boolean;
   is_duplicate?: boolean;
