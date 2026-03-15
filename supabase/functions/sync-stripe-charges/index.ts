@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-billing-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -18,6 +18,23 @@ function getStripeKey(stripeAccount: string): string {
     return Deno.env.get('STRIPE_MANAGEMENT_SECRET_KEY') || '';
   }
   return Deno.env.get('STRIPE_AD_SPEND_SECRET_KEY') || '';
+}
+
+async function sendSlackAlert(message: string) {
+  const webhookUrl = Deno.env.get('SLACK_BILLING_WEBHOOK_URL') || Deno.env.get('SLACK_CHAT_WEBHOOK_URL');
+  if (!webhookUrl) {
+    console.log('No Slack webhook configured, skipping alert');
+    return;
+  }
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: message }),
+    });
+  } catch (err) {
+    console.error('Slack alert failed:', err);
+  }
 }
 
 function mapInvoiceToAlphaHub(invoice: any): { status: string; paidAt: string | null; lastError: string | null } {
@@ -55,17 +72,16 @@ function mapPaymentIntentToAlphaHub(pi: any): { status: string; paidAt: string |
   return { status: 'pending', paidAt: null, lastError: null };
 }
 
-// Creates a wallet deposit for a paid ad_spend billing record (idempotent).
-// Returns true if a new deposit was created, false if it already existed or failed.
-async function ensureWalletDeposit(
+// Flags a missing wallet deposit for admin review instead of auto-creating it.
+// Per CONTEXT.md: "reconciliation flags the charge for admin review -- does NOT auto-create."
+// Returns true if a new flag was created, false if already flagged/deposited.
+async function flagMissingDeposit(
   supabase: any,
   billingRecordId: string,
   clientId: string,
   amount: number,
-  paidAt: string
 ): Promise<boolean> {
-  // Idempotency check — skip if deposit already exists for this billing record
-  // Use .limit(1) instead of .maybeSingle() to avoid errors when duplicates exist
+  // Idempotency check -- skip if deposit already exists for this billing record
   const { data: existingTxRows } = await supabase
     .from('wallet_transactions')
     .select('id')
@@ -73,59 +89,48 @@ async function ensureWalletDeposit(
     .eq('transaction_type', 'deposit')
     .limit(1);
 
-  if (existingTxRows && existingTxRows.length > 0) return false; // Already deposited, nothing to do
+  if (existingTxRows && existingTxRows.length > 0) return false; // Already deposited
 
-  // Get or create the client wallet
-  let { data: wallet } = await supabase
-    .from('client_wallets')
-    .select('id, tracking_start_date')
-    .eq('client_id', clientId)
-    .maybeSingle();
+  // Check if a system_alert already exists for this billing_record_id (avoid duplicate alerts)
+  const { data: existingAlert } = await supabase
+    .from('system_alerts')
+    .select('id')
+    .eq('alert_type', 'missing_deposit')
+    .eq('metadata->>billing_record_id', billingRecordId)
+    .limit(1);
 
-  const paidDate = paidAt.split('T')[0];
+  if (existingAlert && existingAlert.length > 0) return false; // Already flagged
 
-  if (!wallet) {
-    const { data: newWallet, error: walletErr } = await supabase
-      .from('client_wallets')
-      .insert({
-        client_id: clientId,
-        tracking_start_date: paidDate,
-      })
-      .select('id, tracking_start_date')
-      .single();
-
-    if (walletErr) {
-      console.error(`Failed to create wallet for client ${clientId}:`, walletErr);
-      return false;
-    }
-    wallet = newWallet;
-  } else if (!wallet.tracking_start_date) {
-    // Wallet exists but tracking never started — set it now
-    await supabase
-      .from('client_wallets')
-      .update({ tracking_start_date: paidDate })
-      .eq('id', wallet.id);
-  }
-
-  if (!wallet?.id) return false;
-
-  // Create the deposit entry
-  const { error: txErr } = await supabase
-    .from('wallet_transactions')
+  // Insert into stripe_processed_events for dedup consistency
+  const { error: dedupError } = await supabase
+    .from('stripe_processed_events')
     .insert({
-      wallet_id: wallet.id,
-      client_id: clientId,
-      transaction_type: 'deposit',
-      amount,
-      balance_after: 0,
-      description: `Ad spend deposit (Stripe sync) — ${paidDate}`,
-      billing_record_id: billingRecordId,
+      event_id: `sync_${billingRecordId}`,
+      event_type: 'sync.missing_deposit',
+      stripe_account: 'ad_spend',
+      processed_at: new Date().toISOString(),
     });
 
-  if (txErr) {
-    console.error(`Failed to create wallet deposit for billing record ${billingRecordId}:`, txErr);
-    return false;
-  }
+  if (dedupError) return false; // Already processed (PK conflict)
+
+  // Create a system_alert for admin review instead of creating a deposit
+  await supabase.from('system_alerts').insert({
+    alert_type: 'missing_deposit',
+    severity: 'warning',
+    title: `Missing wallet deposit: $${amount}`,
+    message: `Paid ad_spend billing record ${billingRecordId} has no wallet deposit. Stripe charge verified as succeeded. Flagged for admin review -- use verify-wallet-charges to approve.`,
+    client_id: clientId,
+    metadata: {
+      billing_record_id: billingRecordId,
+      amount,
+      source: 'sync-stripe-charges',
+    },
+  });
+
+  // Slack notification
+  await sendSlackAlert(`:warning: *Missing Deposit Flagged*\nClient: ${clientId}\nAmount: $${amount}\nBilling Record: ${billingRecordId}\nAction: Review in verify-wallet-charges dashboard`);
+
+  console.log(`Flagged missing deposit: billing_record ${billingRecordId}, client ${clientId}, $${amount}`);
   return true;
 }
 
@@ -146,12 +151,12 @@ async function findStripeCustomerByEmail(stripeKey: string, email: string): Prom
   }
 }
 
-// ── Per-client full sync: pull all Stripe invoices and reconcile ──
+// -- Per-client full sync: pull all Stripe invoices and reconcile --
 async function syncClient(supabase: any, clientId: string) {
   const changes: any[] = [];
   let created = 0;
   let updated = 0;
-  let deposited = 0;
+  let flagged = 0;
 
   // 1. Fetch client info (name + email for Stripe lookup)
   const { data: client } = await supabase
@@ -194,7 +199,7 @@ async function syncClient(supabase: any, clientId: string) {
   }
 
   if (allCustomers.length === 0) {
-    return { synced: 0, created: 0, updated: 0, deposited: 0, changes: [], message: 'No Stripe customer found' };
+    return { synced: 0, created: 0, updated: 0, flagged: 0, changes: [], message: 'No Stripe customer found' };
   }
 
   // 3b. Auto-discover subscriptions for each linked Stripe customer
@@ -265,7 +270,7 @@ async function syncClient(supabase: any, clientId: string) {
         for (const sched of schedData.data || []) {
           if (sched.status !== 'not_started' && sched.status !== 'active') continue;
           if (sched.subscription) {
-            // Schedule already has an active subscription — handled above
+            // Schedule already has an active subscription -- handled above
             continue;
           }
           // Future-dated schedule without active sub yet
@@ -319,7 +324,7 @@ async function syncClient(supabase: any, clientId: string) {
       }
 
       for (const invoice of invoiceData.data || []) {
-        // Skip drafts — not real charges
+        // Skip drafts -- not real charges
         if (invoice.status === 'draft') continue;
 
         const { status: newStatus, paidAt, lastError } = mapInvoiceToAlphaHub(invoice);
@@ -354,7 +359,7 @@ async function syncClient(supabase: any, clientId: string) {
         let existing = existingRows?.[0] || null;
 
         // 4b. Fuzzy match: if no Stripe-linked record found, check for manual records
-        // matching client_id + billing_type + amount + due_date within ±3 days
+        // matching client_id + billing_type + amount + due_date within +/-3 days
         if (!existing) {
           const windowStart = new Date(new Date(invoiceDate).getTime() - 3 * 86400000).toISOString().split('T')[0];
           const windowEnd = new Date(new Date(invoiceDate).getTime() + 3 * 86400000).toISOString().split('T')[0];
@@ -413,10 +418,10 @@ async function syncClient(supabase: any, clientId: string) {
             changes.push({ id: existing.id, stripeInvoiceId: invoice.id, from: existing.status, to: newStatus });
           }
         } else {
-          // 5. No matching record — create one from Stripe data
+          // 5. No matching record -- create one from Stripe data
           const description = invoice.description
             || invoice.lines?.data?.[0]?.description
-            || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} — ${invoiceDate}`;
+            || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} -- ${invoiceDate}`;
 
           const newRecord: any = {
             client_id: clientId,
@@ -454,11 +459,11 @@ async function syncClient(supabase: any, clientId: string) {
           }
         }
 
-        // 6. For paid ad_spend records, ensure wallet deposit exists
-        if (newStatus === 'paid' && billingType === 'ad_spend' && paidAt && amount > 0) {
+        // 6. For paid ad_spend records, flag missing deposits for admin review
+        if (newStatus === 'paid' && billingType === 'ad_spend' && amount > 0) {
           const depositAmount = existing?.amount ?? amount;
-          const wasDeposited = await ensureWalletDeposit(supabase, recordId!, clientId, depositAmount, paidAt);
-          if (wasDeposited) deposited++;
+          const wasFlagged = await flagMissingDeposit(supabase, recordId!, clientId, depositAmount);
+          if (wasFlagged) flagged++;
         }
       }
     }
@@ -504,7 +509,7 @@ async function syncClient(supabase: any, clientId: string) {
 
         if (existingByPiRows && existingByPiRows.length > 0) continue; // Already tracked
 
-        // Fuzzy match: check for records matching client_id + billing_type + amount + due_date within ±3 days
+        // Fuzzy match: check for records matching client_id + billing_type + amount + due_date within +/-3 days
         const chargeCreatedDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : null;
         if (chargeCreatedDate) {
           const windowStart = new Date(new Date(chargeCreatedDate).getTime() - 3 * 86400000).toISOString().split('T')[0];
@@ -531,14 +536,14 @@ async function syncClient(supabase: any, clientId: string) {
                 .eq('id', fuzzyMatch.id);
             }
 
-            console.log(`Skipping charge ${charge.id} — fuzzy-matched to record ${fuzzyMatch.id}, back-filled PI`);
+            console.log(`Skipping charge ${charge.id} -- fuzzy-matched to record ${fuzzyMatch.id}, back-filled PI`);
             continue;
           }
         }
 
         const chargeDate = charge.created ? new Date(charge.created * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
         const paidAt = charge.created ? new Date(charge.created * 1000).toISOString() : new Date().toISOString();
-        const description = charge.description || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} — direct charge ${chargeDate}`;
+        const description = charge.description || `${billingType === 'management' ? 'Management fee' : 'Ad spend'} -- direct charge ${chargeDate}`;
 
         const { data: insertedRecord, error: insertErr } = await supabase
           .from('billing_records')
@@ -564,10 +569,10 @@ async function syncClient(supabase: any, clientId: string) {
           created++;
           changes.push({ stripeChargeId: charge.id, action: 'created_from_charge', status: 'paid', amount, billingType });
 
-          // For ad_spend, also create wallet deposit
+          // For ad_spend, flag missing deposit for admin review
           if (billingType === 'ad_spend') {
-            const wasDeposited = await ensureWalletDeposit(supabase, insertedRecord.id, clientId, amount, paidAt);
-            if (wasDeposited) deposited++;
+            const wasFlagged = await flagMissingDeposit(supabase, insertedRecord.id, clientId, amount);
+            if (wasFlagged) flagged++;
           }
         }
       }
@@ -580,12 +585,12 @@ async function syncClient(supabase: any, clientId: string) {
     synced: allCustomers.length,
     created,
     updated,
-    deposited,
+    flagged,
     changes,
   };
 }
 
-// ── Global reconciliation: fix statuses on existing records that have Stripe IDs ──
+// -- Global reconciliation: fix statuses on existing records that have Stripe IDs --
 async function syncGlobal(supabase: any) {
   const { data: records, error: fetchError } = await supabase
     .from('billing_records')
@@ -595,11 +600,11 @@ async function syncGlobal(supabase: any) {
     .or('stripe_invoice_id.not.is.null,stripe_payment_intent_id.not.is.null');
 
   if (fetchError) throw fetchError;
-  if (!records || records.length === 0) return { synced: 0, updated: 0, deposited: 0, changes: [] };
+  if (!records || records.length === 0) return { synced: 0, updated: 0, flagged: 0, changes: [] };
 
   const changes: any[] = [];
   let updated = 0;
-  let deposited = 0;
+  let flagged = 0;
 
   await Promise.all(records.map(async (record: any) => {
     const account = record.stripe_account || record.billing_type;
@@ -653,16 +658,16 @@ async function syncGlobal(supabase: any) {
           to: newStatus,
         });
 
-        // Ensure wallet deposit for newly-paid ad_spend records
-        if (newStatus === 'paid' && record.billing_type === 'ad_spend' && paidAt && record.amount > 0) {
-          await ensureWalletDeposit(supabase, record.id, record.client_id, record.amount, paidAt);
-          deposited++;
+        // Flag missing deposit for newly-paid ad_spend records
+        if (newStatus === 'paid' && record.billing_type === 'ad_spend' && record.amount > 0) {
+          const wasFlagged = await flagMissingDeposit(supabase, record.id, record.client_id, record.amount);
+          if (wasFlagged) flagged++;
         }
       }
     }
   }));
 
-  return { synced: records.length, updated, deposited, changes };
+  return { synced: records.length, updated, flagged, changes };
 }
 
 Deno.serve(async (req) => {
@@ -670,12 +675,24 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, serviceKey);
+  // WALL-13: Require shared secret or service role JWT for all requests
+  const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
+  const providedSecret = req.headers.get('x-billing-secret');
 
-  // No auth check — internal admin function called from within the AlphaHub admin UI
+  const authHeader = req.headers.get('Authorization');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const isServiceRole = authHeader === `Bearer ${serviceKey}`;
+  const hasValidSecret = billingSecret && providedSecret === billingSecret;
+
+  if (!isServiceRole && !hasValidSecret) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
     let body: any = {};
