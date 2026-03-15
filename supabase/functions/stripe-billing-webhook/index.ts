@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
 };
 
-// ── Helper: Restore ALL campaign budgets after safe mode ──
+// -- Helper: Restore ALL campaign budgets after safe mode --
 async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -93,86 +93,10 @@ async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) 
         .from('clients')
         .update({ target_daily_spend: totalRestoredBudget, updated_at: new Date().toISOString() })
         .eq('id', clientId);
-      console.log(`✅ ${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
+      console.log(`${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
     }
   } catch (err) {
     console.error(`Error restoring campaign budgets for client ${clientId}:`, err);
-  }
-}
-
-// ── Helper: Ensure wallet deposit exists for ad_spend billing records ──
-async function ensureWalletDeposit(
-  supabase: any,
-  clientId: string,
-  billingRecordId: string,
-  amount: number,
-  trackingDate: string,
-  invoiceId: string
-) {
-  try {
-    const { data: existingWallet } = await supabase
-      .from('client_wallets')
-      .select('id, tracking_start_date')
-      .eq('client_id', clientId)
-      .maybeSingle();
-
-    let walletId: string;
-
-    if (existingWallet) {
-      walletId = existingWallet.id;
-      if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
-        await supabase
-          .from('client_wallets')
-          .update({ tracking_start_date: trackingDate })
-          .eq('id', existingWallet.id);
-      }
-    } else {
-      const { data: newWallet } = await supabase
-        .from('client_wallets')
-        .insert({
-          client_id: clientId,
-          ad_spend_balance: 0,
-          tracking_start_date: trackingDate,
-        })
-        .select()
-        .single();
-
-      if (!newWallet) {
-        console.error(`Failed to create wallet for client ${clientId}`);
-        return;
-      }
-      walletId = newWallet.id;
-    }
-
-    // Dedup: only insert if no deposit exists for this billing record
-    const { data: existingDeposit } = await supabase
-      .from('wallet_transactions')
-      .select('id')
-      .eq('billing_record_id', billingRecordId)
-      .eq('transaction_type', 'deposit')
-      .maybeSingle();
-
-    if (!existingDeposit) {
-      await supabase
-        .from('wallet_transactions')
-        .insert({
-          wallet_id: walletId,
-          client_id: clientId,
-          transaction_type: 'deposit',
-          amount,
-          balance_after: 0,
-          description: `Ad spend deposit - Invoice ${invoiceId?.slice(0, 12) || billingRecordId.slice(0, 8)}`,
-          billing_record_id: billingRecordId,
-        });
-      console.log(`Wallet deposit created for billing record ${billingRecordId}`);
-    } else {
-      console.log(`Wallet deposit already exists for billing record ${billingRecordId}`);
-    }
-
-    // Restore campaign budget if client was in safe mode
-    await restoreCampaignBudgetIfSafeMode(supabase, clientId);
-  } catch (err) {
-    console.error(`Error ensuring wallet deposit for client ${clientId}:`, err);
   }
 }
 
@@ -256,59 +180,98 @@ Deno.serve(async (req) => {
     const obj = event.data?.object;
     if (!obj) return jsonResponse({ received: true });
 
-    // ─── INVOICE.PAID ───
+    // -- WEBHOOK DEDUP via stripe_processed_events --
+    const { error: dedupError } = await supabase
+      .from('stripe_processed_events')
+      .insert({
+        event_id: event.id,
+        event_type: event.type,
+        stripe_account: verifiedAccount,
+        metadata: { object_id: obj.id },
+      });
+
+    if (dedupError) {
+      console.log(`Event ${event.id} already processed, skipping`);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'skipped', reason: 'duplicate' }));
+      return jsonResponse({ received: true, duplicate: true });
+    }
+
+    // --- INVOICE.PAID ---
     if (event.type === 'invoice.paid') {
-      return await handleInvoicePaid(supabase, obj, verifiedAccount);
+      const result = await handleInvoicePaid(supabase, obj, verifiedAccount, event);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── INVOICE.PAYMENT_FAILED ───
+    // --- INVOICE.PAYMENT_FAILED ---
     if (event.type === 'invoice.payment_failed') {
-      return await handlePaymentFailed(supabase, obj);
+      const result = await handlePaymentFailed(supabase, obj);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── INVOICE.PAYMENT_ACTION_REQUIRED ───
+    // --- INVOICE.PAYMENT_ACTION_REQUIRED ---
     if (event.type === 'invoice.payment_action_required') {
-      return await handleActionRequired(supabase, obj);
+      const result = await handleActionRequired(supabase, obj);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── CUSTOMER.SUBSCRIPTION.UPDATED ───
+    // --- CUSTOMER.SUBSCRIPTION.UPDATED ---
     if (event.type === 'customer.subscription.updated') {
-      return await handleSubscriptionUpdated(supabase, obj);
+      const result = await handleSubscriptionUpdated(supabase, obj);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── CUSTOMER.SUBSCRIPTION.DELETED ───
+    // --- CUSTOMER.SUBSCRIPTION.DELETED ---
     if (event.type === 'customer.subscription.deleted') {
-      return await handleSubscriptionDeleted(supabase, obj);
+      const result = await handleSubscriptionDeleted(supabase, obj);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── INVOICE.UPCOMING ───
+    // --- INVOICE.UPCOMING ---
     if (event.type === 'invoice.upcoming') {
-      return await handleInvoiceUpcoming(supabase, obj);
+      const result = await handleInvoiceUpcoming(supabase, obj);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
-    // ─── PAYMENT_INTENT.SUCCEEDED (safety net for ad spend) ───
+    // --- PAYMENT_INTENT.SUCCEEDED (safety net for ad spend) ---
     if (event.type === 'payment_intent.succeeded') {
-      return await handlePaymentIntentSucceeded(supabase, obj, verifiedAccount);
+      const result = await handlePaymentIntentSucceeded(supabase, obj, verifiedAccount, event);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
     }
 
+    // --- CHARGE.REFUNDED ---
+    if (event.type === 'charge.refunded') {
+      const result = await handleChargeRefunded(supabase, obj, verifiedAccount);
+      console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'processed' }));
+      return result;
+    }
+
+    console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'skipped', reason: 'unhandled_event_type' }));
     return jsonResponse({ received: true });
 
   } catch (error) {
     console.error('stripe-billing-webhook error:', error);
+    console.log(JSON.stringify({ outcome: 'error', error: String(error) }));
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // INVOICE.PAID
-// ═══════════════════════════════════════════════════════════════
-async function handleInvoicePaid(supabase: any, invoice: any, stripeAccount: string) {
+// ===============================================================
+async function handleInvoicePaid(supabase: any, invoice: any, stripeAccount: string, event: any) {
   const stripeInvoiceId = invoice.id;
   const subscriptionId = invoice.subscription || null;
 
   // If this invoice came from a subscription, handle via subscription path
   if (subscriptionId) {
-    return await handleSubscriptionInvoicePaid(supabase, invoice, stripeAccount, subscriptionId);
+    return await handleSubscriptionInvoicePaid(supabase, invoice, stripeAccount, subscriptionId, event);
   }
 
   // Otherwise, handle as a one-off invoice (ad spend, manual, etc.)
@@ -330,7 +293,7 @@ async function handleInvoicePaid(supabase: any, invoice: any, stripeAccount: str
         console.log('No billing record found for invoice:', stripeInvoiceId);
         return jsonResponse({ received: true, no_record: true });
       }
-      return await processOneOffInvoicePaid(supabase, metaRecord, invoice, stripeAccount);
+      return await processOneOffInvoicePaid(supabase, metaRecord, invoice, stripeAccount, event);
     }
     console.log('No billing record found for invoice:', stripeInvoiceId);
     return jsonResponse({ received: true, no_record: true });
@@ -341,13 +304,15 @@ async function handleInvoicePaid(supabase: any, invoice: any, stripeAccount: str
     return jsonResponse({ received: true, already_paid: true });
   }
 
-  return await processOneOffInvoicePaid(supabase, record, invoice, stripeAccount);
+  return await processOneOffInvoicePaid(supabase, record, invoice, stripeAccount, event);
 }
 
-// Handle subscription invoice.paid — find pending record or create new one
+// Handle subscription invoice.paid -- find pending record or create new one
 async function handleSubscriptionInvoicePaid(
-  supabase: any, invoice: any, stripeAccount: string, subscriptionId: string
+  supabase: any, invoice: any, stripeAccount: string, subscriptionId: string, event: any
 ) {
+  const paidAt = new Date(event.created * 1000).toISOString();
+
   // Look up local subscription record
   const { data: localSub } = await supabase
     .from('client_stripe_subscriptions')
@@ -372,25 +337,40 @@ async function handleSubscriptionInvoicePaid(
   // Check if we already have a billing record for this exact invoice (dedup)
   const { data: existingByInvoice } = await supabase
     .from('billing_records')
-    .select('id, status')
+    .select('id, status, billing_type')
     .eq('stripe_invoice_id', invoice.id)
     .maybeSingle();
 
   if (existingByInvoice) {
-    if (existingByInvoice.status !== 'paid') {
+    // Use process_successful_charge RPC for ad_spend subscriptions
+    if (localSub.billing_type === 'ad_spend') {
+      const { data: result, error: rpcError } = await supabase.rpc('process_successful_charge', {
+        p_billing_record_id: existingByInvoice.id,
+        p_stripe_pi_id: invoice.payment_intent || invoice.charge || '',
+        p_paid_at: paidAt,
+      });
+
+      if (rpcError) {
+        console.error('process_successful_charge failed:', rpcError);
+        return jsonResponse({ error: rpcError.message }, 500);
+      }
+
+      if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
+        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+      }
+
+      console.log('Subscription invoice processed via RPC:', existingByInvoice.id, result);
+    } else if (existingByInvoice.status !== 'paid') {
+      // Non-ad_spend (management): just mark paid
       await supabase
         .from('billing_records')
         .update({
           status: 'paid',
-          paid_at: new Date().toISOString(),
+          paid_at: paidAt,
           stripe_payment_intent_id: invoice.payment_intent || null,
+          source: 'stripe',
         })
         .eq('id', existingByInvoice.id);
-    }
-
-    // Ensure wallet deposit exists for ad_spend subscriptions (even on dedup path)
-    if (localSub.billing_type === 'ad_spend') {
-      await ensureWalletDeposit(supabase, localSub.client_id, existingByInvoice.id, localSub.amount, periodStart, invoice.id);
     }
 
     console.log('Subscription invoice already tracked:', existingByInvoice.id);
@@ -403,63 +383,146 @@ async function handleSubscriptionInvoicePaid(
     .select('*')
     .eq('stripe_subscription_id', subscriptionId)
     .eq('billing_period_start', periodStart)
-    .in('status', ['pending', 'overdue'])
+    .in('status', ['pending', 'overdue', 'charging'])
     .maybeSingle();
 
   let recordId: string;
 
   if (pendingRecord) {
-    // Update existing pending record to paid
-    const { error: updateError } = await supabase
-      .from('billing_records')
-      .update({
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-        stripe_invoice_id: invoice.id,
-        stripe_payment_intent_id: invoice.payment_intent || null,
-        stripe_account: stripeAccount,
-        billing_period_end: periodEnd || pendingRecord.billing_period_end,
-      })
-      .eq('id', pendingRecord.id);
+    if (localSub.billing_type === 'ad_spend') {
+      // Use RPC for ad_spend -- atomically mark paid + create deposit
+      const { data: result, error: rpcError } = await supabase.rpc('process_successful_charge', {
+        p_billing_record_id: pendingRecord.id,
+        p_stripe_pi_id: invoice.payment_intent || invoice.charge || '',
+        p_paid_at: paidAt,
+      });
 
-    if (updateError) {
-      console.error('Failed to update pending record to paid:', updateError);
-      return jsonResponse({ received: true, error: updateError.message });
+      if (rpcError) {
+        console.error('process_successful_charge failed:', rpcError);
+        return jsonResponse({ error: rpcError.message }, 500);
+      }
+
+      // Also stamp the invoice ID and period end on the record
+      await supabase
+        .from('billing_records')
+        .update({
+          stripe_invoice_id: invoice.id,
+          stripe_account: stripeAccount,
+          billing_period_end: periodEnd || pendingRecord.billing_period_end,
+          source: 'stripe',
+        })
+        .eq('id', pendingRecord.id);
+
+      if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
+        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+      }
+
+      recordId = pendingRecord.id;
+      console.log(`Pending record ${recordId} processed via RPC for period ${periodStart} - ${periodEnd}`);
+    } else {
+      // Non-ad_spend: update existing pending record to paid
+      const { error: updateError } = await supabase
+        .from('billing_records')
+        .update({
+          status: 'paid',
+          paid_at: paidAt,
+          stripe_invoice_id: invoice.id,
+          stripe_payment_intent_id: invoice.payment_intent || null,
+          stripe_account: stripeAccount,
+          billing_period_end: periodEnd || pendingRecord.billing_period_end,
+          source: 'stripe',
+        })
+        .eq('id', pendingRecord.id);
+
+      if (updateError) {
+        console.error('Failed to update pending record to paid:', updateError);
+        return jsonResponse({ received: true, error: updateError.message });
+      }
+
+      recordId = pendingRecord.id;
+      console.log(`Pending record ${recordId} updated to paid for period ${periodStart} - ${periodEnd}`);
     }
-
-    recordId = pendingRecord.id;
-    console.log(`Pending record ${recordId} updated to paid for period ${periodStart} - ${periodEnd}`);
   } else {
-    // Fallback: create new record as paid (no pending record existed)
-    const { data: newRecord, error: insertError } = await supabase
-      .from('billing_records')
-      .insert({
-        client_id: localSub.client_id,
-        billing_type: localSub.billing_type || 'management',
-        amount: localSub.amount,
-        status: 'paid',
-        paid_at: new Date().toISOString(),
-        billing_period_start: periodStart,
-        billing_period_end: periodEnd,
-        due_date: periodStart,
-        recurrence_type: localSub.recurrence_type,
-        is_recurring_parent: true,
-        notes: localSub.billing_type === 'ad_spend' ? 'Ad spend - subscription' : 'Management fee - subscription',
-        stripe_invoice_id: invoice.id,
-        stripe_payment_intent_id: invoice.payment_intent || null,
-        stripe_subscription_id: subscriptionId,
-        stripe_account: stripeAccount,
-      })
-      .select('id')
-      .single();
+    if (localSub.billing_type === 'ad_spend') {
+      // Create new record with charging status, then use RPC
+      const { data: newRecord, error: insertError } = await supabase
+        .from('billing_records')
+        .insert({
+          client_id: localSub.client_id,
+          billing_type: localSub.billing_type,
+          amount: localSub.amount,
+          status: 'charging',
+          billing_period_start: periodStart,
+          billing_period_end: periodEnd,
+          due_date: periodStart,
+          recurrence_type: localSub.recurrence_type,
+          is_recurring_parent: true,
+          notes: 'Ad spend - subscription',
+          stripe_invoice_id: invoice.id,
+          stripe_payment_intent_id: invoice.payment_intent || null,
+          stripe_subscription_id: subscriptionId,
+          stripe_account: stripeAccount,
+          source: 'stripe',
+        })
+        .select('id')
+        .single();
 
-    if (insertError) {
-      console.error('Failed to create billing record for subscription invoice:', insertError);
-      return jsonResponse({ received: true, error: insertError.message });
+      if (insertError) {
+        console.error('Failed to create billing record for subscription invoice:', insertError);
+        return jsonResponse({ received: true, error: insertError.message });
+      }
+
+      // Now atomically mark paid + create deposit via RPC
+      const { data: result, error: rpcError } = await supabase.rpc('process_successful_charge', {
+        p_billing_record_id: newRecord.id,
+        p_stripe_pi_id: invoice.payment_intent || invoice.charge || '',
+        p_paid_at: paidAt,
+      });
+
+      if (rpcError) {
+        console.error('process_successful_charge failed:', rpcError);
+        return jsonResponse({ error: rpcError.message }, 500);
+      }
+
+      if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
+        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+      }
+
+      recordId = newRecord.id;
+      console.log(`Subscription billing record created and processed via RPC: ${recordId} for period ${periodStart} - ${periodEnd}`);
+    } else {
+      // Non-ad_spend: create new record as paid (management fees don't need wallet deposits)
+      const { data: newRecord, error: insertError } = await supabase
+        .from('billing_records')
+        .insert({
+          client_id: localSub.client_id,
+          billing_type: localSub.billing_type || 'management',
+          amount: localSub.amount,
+          status: 'paid',
+          paid_at: paidAt,
+          billing_period_start: periodStart,
+          billing_period_end: periodEnd,
+          due_date: periodStart,
+          recurrence_type: localSub.recurrence_type,
+          is_recurring_parent: true,
+          notes: 'Management fee - subscription',
+          stripe_invoice_id: invoice.id,
+          stripe_payment_intent_id: invoice.payment_intent || null,
+          stripe_subscription_id: subscriptionId,
+          stripe_account: stripeAccount,
+          source: 'stripe',
+        })
+        .select('id')
+        .single();
+
+      if (insertError) {
+        console.error('Failed to create billing record for subscription invoice:', insertError);
+        return jsonResponse({ received: true, error: insertError.message });
+      }
+
+      recordId = newRecord.id;
+      console.log(`Subscription billing record created: ${recordId} for period ${periodStart} - ${periodEnd}`);
     }
-
-    recordId = newRecord.id;
-    console.log(`Subscription billing record created: ${recordId} for period ${periodStart} - ${periodEnd}`);
   }
 
   // Process referral commission for management fees
@@ -487,11 +550,6 @@ async function handleSubscriptionInvoicePaid(
     }
   }
 
-  // Wallet deposit for ad_spend subscriptions
-  if (localSub.billing_type === 'ad_spend') {
-    await ensureWalletDeposit(supabase, localSub.client_id, recordId, localSub.amount, periodStart, invoice.id);
-  }
-
   // Resolve any active collections
   await supabase
     .from('billing_collections')
@@ -509,96 +567,56 @@ async function handleSubscriptionInvoicePaid(
 
 // Process one-off invoice paid (ad spend, manual invoices)
 async function processOneOffInvoicePaid(
-  supabase: any, record: any, invoice: any, stripeAccount: string
+  supabase: any, record: any, invoice: any, stripeAccount: string, event: any
 ) {
-  const now = new Date().toISOString();
+  const paidAt = new Date(event.created * 1000).toISOString();
 
-  // 1. Mark billing record as PAID
-  await supabase
-    .from('billing_records')
-    .update({
-      status: 'paid',
-      paid_at: now,
-      stripe_payment_intent_id: invoice.payment_intent || null,
-      stripe_account: stripeAccount,
-    })
-    .eq('id', record.id);
-
-  console.log(`Billing record ${record.id} marked as paid`);
-
-  // 2. Wallet deposit (ad_spend only)
+  // 1. For ad_spend: use process_successful_charge RPC (atomic paid + deposit)
   if (record.billing_type === 'ad_spend') {
-    const trackingDate = record.billing_period_start || new Date().toISOString().split('T')[0];
+    const { data: result, error: rpcError } = await supabase.rpc('process_successful_charge', {
+      p_billing_record_id: record.id,
+      p_stripe_pi_id: invoice.payment_intent || invoice.charge || '',
+      p_paid_at: paidAt,
+    });
 
-    const { data: existingWallet } = await supabase
-      .from('client_wallets')
-      .select('id, tracking_start_date')
-      .eq('client_id', record.client_id)
-      .maybeSingle();
-
-    if (existingWallet) {
-      if (!existingWallet.tracking_start_date || trackingDate < existingWallet.tracking_start_date) {
-        await supabase
-          .from('client_wallets')
-          .update({ tracking_start_date: trackingDate })
-          .eq('id', existingWallet.id);
-      }
-
-      const { data: existingDeposit } = await supabase
-        .from('wallet_transactions')
-        .select('id')
-        .eq('billing_record_id', record.id)
-        .eq('transaction_type', 'deposit')
-        .maybeSingle();
-
-      if (!existingDeposit) {
-        const creditUsed = record.credit_amount_used ?? 0;
-        await supabase
-          .from('wallet_transactions')
-          .insert({
-            wallet_id: existingWallet.id,
-            client_id: record.client_id,
-            transaction_type: 'deposit',
-            amount: record.amount,
-            balance_after: 0,
-            description: `Ad spend deposit - Invoice ${record.id.slice(0, 8)}${creditUsed > 0 ? ` (payment reduced by $${creditUsed} credit)` : ''}`,
-            billing_record_id: record.id,
-          });
-        console.log(`Wallet deposit created for record ${record.id}`);
-      }
-    } else {
-      const { data: newWallet } = await supabase
-        .from('client_wallets')
-        .insert({
-          client_id: record.client_id,
-          ad_spend_balance: 0,
-          tracking_start_date: trackingDate,
-        })
-        .select()
-        .single();
-
-      if (newWallet) {
-        const creditUsed = record.credit_amount_used ?? 0;
-        await supabase
-          .from('wallet_transactions')
-          .insert({
-            wallet_id: newWallet.id,
-            client_id: record.client_id,
-            transaction_type: 'deposit',
-            amount: record.amount,
-            balance_after: record.amount,
-            description: `Ad spend deposit - Invoice ${record.id.slice(0, 8)}${creditUsed > 0 ? ` (payment reduced by $${creditUsed} credit)` : ''}`,
-            billing_record_id: record.id,
-          });
-        console.log(`New wallet created + deposit for record ${record.id}`);
-      }
+    if (rpcError) {
+      console.error('process_successful_charge failed:', rpcError);
+      return jsonResponse({ error: rpcError.message }, 500);
     }
 
-    // Safety net: restore campaign budget if client was in safe mode
-    await restoreCampaignBudgetIfSafeMode(supabase, record.client_id);
+    // Stamp additional Stripe metadata on the record
+    await supabase
+      .from('billing_records')
+      .update({
+        stripe_payment_intent_id: invoice.payment_intent || null,
+        stripe_account: stripeAccount,
+        source: 'stripe',
+      })
+      .eq('id', record.id);
+
+    console.log(`Billing record ${record.id} processed via RPC:`, result);
+
+    // Restore campaigns from safe mode only when actually marked paid
+    if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
+      await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+    }
+  } else {
+    // Non-ad_spend (management): mark as paid directly
+    await supabase
+      .from('billing_records')
+      .update({
+        status: 'paid',
+        paid_at: paidAt,
+        stripe_payment_intent_id: invoice.payment_intent || null,
+        stripe_account: stripeAccount,
+        source: 'stripe',
+      })
+      .eq('id', record.id);
+
+    console.log(`Billing record ${record.id} marked as paid`);
   }
 
-  // 3. Generate next recurring charge (one-off invoices only, NOT subscriptions)
+  // 2. Generate next recurring charge (one-off invoices only, NOT subscriptions)
   if (record.is_recurring_parent && record.recurrence_type !== 'one_time' && !record.stripe_subscription_id) {
     const { data: existingChild } = await supabase
       .from('billing_records')
@@ -663,7 +681,7 @@ async function processOneOffInvoicePaid(
     }
   }
 
-  // 4. Process referral commission (management only, non-subscription)
+  // 3. Process referral commission (management only, non-subscription)
   if (record.billing_type === 'management' && !record.stripe_subscription_id) {
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -688,7 +706,7 @@ async function processOneOffInvoicePaid(
     }
   }
 
-  // 5. Resolve active collections
+  // 4. Resolve active collections
   await supabase
     .from('billing_collections')
     .update({ status: 'resolved' })
@@ -707,9 +725,9 @@ async function processOneOffInvoicePaid(
   });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // INVOICE.PAYMENT_FAILED
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 async function handlePaymentFailed(supabase: any, invoice: any) {
   const stripeInvoiceId = invoice.id;
 
@@ -741,7 +759,7 @@ async function handlePaymentFailed(supabase: any, invoice: any) {
         .from('billing_records')
         .select('id, client_id, amount, charge_attempts')
         .eq('stripe_subscription_id', invoice.subscription)
-        .in('status', ['pending', 'overdue'])
+        .in('status', ['pending', 'overdue', 'charging'])
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -804,9 +822,9 @@ async function handlePaymentFailed(supabase: any, invoice: any) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // INVOICE.PAYMENT_ACTION_REQUIRED
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 async function handleActionRequired(supabase: any, invoice: any) {
   const stripeInvoiceId = invoice.id;
 
@@ -823,7 +841,7 @@ async function handleActionRequired(supabase: any, invoice: any) {
       .from('billing_records')
       .select('id, client_id')
       .eq('stripe_subscription_id', invoice.subscription)
-      .in('status', ['pending', 'overdue'])
+      .in('status', ['pending', 'overdue', 'charging'])
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -850,9 +868,9 @@ async function handleActionRequired(supabase: any, invoice: any) {
   return jsonResponse({ success: true, billing_record_id: record.id, action: 'action_required' });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // CUSTOMER.SUBSCRIPTION.UPDATED
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 async function handleSubscriptionUpdated(supabase: any, subscription: any) {
   const periodStart = new Date(subscription.current_period_start * 1000);
   const periodEnd = new Date(subscription.current_period_end * 1000);
@@ -926,9 +944,9 @@ async function handleSubscriptionUpdated(supabase: any, subscription: any) {
   return jsonResponse({ success: true, subscription_id: subscription.id, action: 'subscription_updated' });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // CUSTOMER.SUBSCRIPTION.DELETED
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 async function handleSubscriptionDeleted(supabase: any, subscription: any) {
   const { error } = await supabase
     .from('client_stripe_subscriptions')
@@ -949,9 +967,9 @@ async function handleSubscriptionDeleted(supabase: any, subscription: any) {
   return jsonResponse({ success: true, subscription_id: subscription.id, action: 'subscription_deleted' });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // INVOICE.UPCOMING (safety net for pending records)
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 async function handleInvoiceUpcoming(supabase: any, invoice: any) {
   const subscriptionId = invoice.subscription;
   if (!subscriptionId) {
@@ -1022,94 +1040,165 @@ async function handleInvoiceUpcoming(supabase: any, invoice: any) {
   return jsonResponse({ success: true, billing_record_id: newRecord.id, action: 'upcoming_pending_created' });
 }
 
-// ═══════════════════════════════════════════════════════════════
+// ===============================================================
 // PAYMENT_INTENT.SUCCEEDED (safety net for ad spend PaymentIntents)
-// ═══════════════════════════════════════════════════════════════
-async function handlePaymentIntentSucceeded(supabase: any, pi: any, stripeAccount: string) {
-  const billingRecordId = pi.metadata?.billing_record_id;
+// ===============================================================
+async function handlePaymentIntentSucceeded(supabase: any, pi: any, stripeAccount: string, event: any) {
+  const paidAt = new Date(event.created * 1000).toISOString();
+
+  // Try metadata first, then fall back to looking up by stripe_payment_intent_id
+  let billingRecordId = pi.metadata?.billing_record_id;
+
   if (!billingRecordId) {
-    console.log('PaymentIntent has no billing_record_id metadata, skipping');
-    return jsonResponse({ received: true, no_metadata: true });
+    // Fallback: look up by stripe_payment_intent_id
+    const { data: record } = await supabase
+      .from('billing_records')
+      .select('id')
+      .eq('stripe_payment_intent_id', pi.id)
+      .maybeSingle();
+
+    if (record) {
+      billingRecordId = record.id;
+    } else {
+      console.log('PaymentIntent has no billing_record_id metadata and no matching record, skipping');
+      return jsonResponse({ received: true, no_metadata: true });
+    }
   }
 
-  const { data: record } = await supabase
-    .from('billing_records')
-    .select('*')
-    .eq('id', billingRecordId)
-    .maybeSingle();
+  // Use process_successful_charge RPC (atomic paid + deposit)
+  const { data: result, error: rpcError } = await supabase.rpc('process_successful_charge', {
+    p_billing_record_id: billingRecordId,
+    p_stripe_pi_id: pi.id,
+    p_paid_at: paidAt,
+  });
 
-  if (!record) {
-    console.log('No billing record found for PaymentIntent metadata:', billingRecordId);
-    return jsonResponse({ received: true, no_record: true });
+  if (rpcError) {
+    console.error('process_successful_charge failed:', rpcError);
+    return jsonResponse({ error: rpcError.message }, 500);
   }
 
-  if (record.status === 'paid') {
-    console.log('Billing record already paid (inline handler succeeded):', record.id);
-    return jsonResponse({ received: true, already_processed: true });
-  }
-
-  // Mark as paid
-  const now = new Date().toISOString();
+  // Stamp stripe_account and source on the record
   await supabase
     .from('billing_records')
     .update({
-      status: 'paid',
-      paid_at: now,
-      stripe_payment_intent_id: pi.id,
       stripe_account: stripeAccount,
+      source: 'stripe',
     })
-    .eq('id', record.id);
+    .eq('id', billingRecordId);
 
-  console.log(`PaymentIntent webhook: billing record ${record.id} marked as paid`);
+  console.log(`PaymentIntent webhook: process_successful_charge result:`, result);
 
-  // Wallet deposit for ad spend
-  if (record.billing_type === 'ad_spend') {
-    const trackingDate = record.billing_period_start || now.split('T')[0];
-    const { data: wallet } = await supabase
-      .from('client_wallets')
-      .select('id, tracking_start_date')
-      .eq('client_id', record.client_id)
-      .maybeSingle();
-
-    if (wallet) {
-      if (!wallet.tracking_start_date || trackingDate < wallet.tracking_start_date) {
-        await supabase
-          .from('client_wallets')
-          .update({ tracking_start_date: trackingDate })
-          .eq('id', wallet.id);
-      }
-
-      const { data: existingDeposit } = await supabase
-        .from('wallet_transactions')
-        .select('id')
-        .eq('billing_record_id', record.id)
-        .eq('transaction_type', 'deposit')
-        .maybeSingle();
-
-      if (!existingDeposit) {
-        await supabase
-          .from('wallet_transactions')
-          .insert({
-            wallet_id: wallet.id,
-            client_id: record.client_id,
-            transaction_type: 'deposit',
-            amount: record.amount,
-            balance_after: 0,
-            description: `Ad spend deposit - PI webhook ${pi.id.slice(0, 12)}`,
-            billing_record_id: record.id,
-          });
-        console.log(`Wallet deposit created via webhook for PI ${pi.id}`);
-      }
-    }
-
-    // ── Auto-resume campaign if in safe mode ──
-    await restoreCampaignBudgetIfSafeMode(supabase, record.client_id);
+  // Restore campaigns from safe mode (only if actually marked paid and ad_spend)
+  if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
+    await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
   }
 
   return jsonResponse({
     success: true,
+    billing_record_id: billingRecordId,
+    action: result.action,
+    ...result,
+  });
+}
+
+// ===============================================================
+// CHARGE.REFUNDED
+// ===============================================================
+async function handleChargeRefunded(supabase: any, charge: any, stripeAccount: string) {
+  const refundAmountCents = charge.amount_refunded;
+  const refundAmountDollars = refundAmountCents / 100;
+
+  const { data: record } = await supabase
+    .from('billing_records')
+    .select('id, client_id, billing_type, amount')
+    .eq('stripe_payment_intent_id', charge.payment_intent)
+    .maybeSingle();
+
+  if (!record) {
+    console.log('No billing record found for refunded charge:', charge.id);
+    return jsonResponse({ received: true, no_record: true });
+  }
+
+  if (record.billing_type !== 'ad_spend') {
+    console.log('Refund for non-ad_spend record, skipping wallet deduction');
+    return jsonResponse({ received: true, not_ad_spend: true });
+  }
+
+  const { data: wallet } = await supabase
+    .from('client_wallets')
+    .select('id')
+    .eq('client_id', record.client_id)
+    .maybeSingle();
+
+  if (!wallet) {
+    console.error('No wallet found for refund deduction, client:', record.client_id);
+    return jsonResponse({ received: true, no_wallet: true });
+  }
+
+  const { error: txnError } = await supabase.from('wallet_transactions').insert({
+    wallet_id: wallet.id,
+    client_id: record.client_id,
+    transaction_type: 'adjustment',
+    amount: -(refundAmountDollars),
+    balance_after: 0,
+    description: `Refund - charge ${charge.id.substring(0, 20)}`,
     billing_record_id: record.id,
-    action: 'payment_intent_succeeded',
+  });
+
+  if (txnError) {
+    console.error('Failed to create refund adjustment:', txnError);
+    return jsonResponse({ error: 'Failed to create refund adjustment' }, 500);
+  }
+
+  const { data: balanceResult } = await supabase.rpc('compute_wallet_balance', {
+    p_client_id: record.client_id,
+  });
+
+  if (balanceResult?.remaining_balance < 0) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    await fetch(`${supabaseUrl}/functions/v1/check-low-balance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'x-billing-secret': Deno.env.get('BILLING_EDGE_SECRET') || '',
+      },
+      body: JSON.stringify({ clientId: record.client_id }),
+    });
+  }
+
+  await supabase.from('system_alerts').insert({
+    alert_type: 'refund',
+    severity: 'high',
+    title: `Refund: $${refundAmountDollars.toFixed(2)} - ${charge.id.substring(0, 20)}`,
+    message: `Charge ${charge.id} refunded $${refundAmountDollars.toFixed(2)}. Wallet balance adjusted.${balanceResult?.remaining_balance < 0 ? ' Balance is now NEGATIVE - safe mode triggered.' : ''}`,
+    client_id: record.client_id,
+    metadata: {
+      charge_id: charge.id,
+      refund_amount: refundAmountDollars,
+      billing_record_id: record.id,
+      stripe_account: stripeAccount,
+      balance_after: balanceResult?.remaining_balance,
+    },
+  });
+
+  const slackUrl = Deno.env.get('SLACK_BILLING_WEBHOOK_URL');
+  if (slackUrl) {
+    await fetch(slackUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `:warning: Refund: $${refundAmountDollars.toFixed(2)} on charge ${charge.id.substring(0, 20)}. Client: ${record.client_id}${balanceResult?.remaining_balance < 0 ? ' | :red_circle: NEGATIVE BALANCE - Safe mode triggered' : ''}`,
+      }),
+    });
+  }
+
+  return jsonResponse({
+    success: true,
+    action: 'refund_processed',
+    amount: refundAmountDollars,
+    balance_after: balanceResult?.remaining_balance,
   });
 }
 
