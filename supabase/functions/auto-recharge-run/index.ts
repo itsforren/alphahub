@@ -8,168 +8,6 @@ const corsHeaders = {
 const MIN_CHARGE_AMOUNT = 50; // Don't charge less than $50
 const STRIPE_AD_SPEND_KEY = () => Deno.env.get('STRIPE_AD_SPEND_SECRET_KEY') || '';
 
-// ── Charge Stripe via PaymentIntent (off-session, auto-confirm) ──
-async function chargePaymentIntent(
-  stripeKey: string,
-  stripeCustomerId: string,
-  paymentMethodId: string,
-  amountCents: number,
-  clientId: string,
-): Promise<any> {
-  const body = new URLSearchParams({
-    amount: String(amountCents),
-    currency: 'usd',
-    customer: stripeCustomerId,
-    payment_method: paymentMethodId,
-    confirm: 'true',
-    off_session: 'true',
-    'metadata[client_id]': clientId,
-    'metadata[charge_type]': 'auto_recharge',
-  });
-
-  const res = await fetch('https://api.stripe.com/v1/payment_intents', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${stripeKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
-
-  return await res.json();
-}
-
-// ── Idempotent wallet deposit ──
-async function ensureWalletDeposit(
-  supabase: any,
-  clientId: string,
-  billingRecordId: string,
-  amount: number,
-  trackingDate: string,
-  piId: string,
-): Promise<void> {
-  const { data: existingDeposit } = await supabase
-    .from('wallet_transactions')
-    .select('id')
-    .eq('billing_record_id', billingRecordId)
-    .maybeSingle();
-
-  if (existingDeposit) return;
-
-  let { data: wallet } = await supabase
-    .from('client_wallets')
-    .select('id, tracking_start_date')
-    .eq('client_id', clientId)
-    .maybeSingle();
-
-  if (!wallet) {
-    const { data: newWallet, error } = await supabase
-      .from('client_wallets')
-      .insert({ client_id: clientId, tracking_start_date: trackingDate })
-      .select('id, tracking_start_date')
-      .single();
-    if (error) { console.error('Failed to create wallet:', error); return; }
-    wallet = newWallet;
-  } else if (!wallet.tracking_start_date || trackingDate < wallet.tracking_start_date) {
-    await supabase
-      .from('client_wallets')
-      .update({ tracking_start_date: trackingDate })
-      .eq('id', wallet.id);
-  }
-
-  if (!wallet?.id) return;
-
-  await supabase.from('wallet_transactions').insert({
-    wallet_id: wallet.id,
-    client_id: clientId,
-    transaction_type: 'deposit',
-    amount,
-    balance_after: 0,
-    description: `Auto-recharge deposit — ${piId.slice(0, 16)}`,
-    billing_record_id: billingRecordId,
-  });
-}
-
-// ── Restore ALL campaign budgets if client is in safe mode ──
-async function restoreCampaignIfSafeMode(supabase: any, supabaseUrl: string, supabaseServiceKey: string, clientId: string): Promise<void> {
-  try {
-    // Get ALL campaigns in safe mode for this client
-    const { data: campaigns } = await supabase
-      .from('campaigns')
-      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id, current_daily_budget')
-      .eq('client_id', clientId)
-      .eq('safe_mode', true);
-
-    if (!campaigns || campaigns.length === 0) return;
-
-    // Fallback budget from client's ad_spend_budget
-    const { data: client } = await supabase.from('clients').select('ad_spend_budget').eq('id', clientId).single();
-    const fallbackDailyBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
-
-    let totalRestoredBudget = 0;
-    let restoredCount = 0;
-
-    for (const campaign of campaigns) {
-      let restoreBudget = campaign.pre_safe_mode_budget;
-      if (!restoreBudget || restoreBudget <= 0.01) {
-        restoreBudget = fallbackDailyBudget;
-      }
-      if (!restoreBudget || restoreBudget <= 0.01) {
-        console.log(`No valid restore budget for campaign ${campaign.id}, skipping`);
-        continue;
-      }
-
-      console.log(`Restoring campaign ${campaign.google_campaign_id} to $${restoreBudget}/day...`);
-
-      const res = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${supabaseServiceKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget, changeSource: 'safe_mode_exit', changeReason: 'Wallet refilled via auto-recharge' }),
-      });
-
-      if (!res.ok) {
-        console.error(`Failed to restore budget for campaign ${campaign.id}`);
-        continue;
-      }
-
-      await supabase.from('campaigns').update({
-        safe_mode: false,
-        safe_mode_reason: null,
-        safe_mode_triggered_at: null,
-        safe_mode_budget_used: null,
-        pre_safe_mode_budget: null,
-        current_daily_budget: restoreBudget,
-        last_budget_change_at: new Date().toISOString(),
-        last_budget_change_by: 'SAFE_MODE_EXIT',
-        updated_at: new Date().toISOString(),
-      }).eq('id', campaign.id);
-
-      await supabase.from('campaign_audit_log').insert([{
-        client_id: clientId,
-        campaign_id: campaign.id,
-        action: 'SAFE_MODE_EXITED',
-        actor: 'system',
-        reason_codes: ['WALLET_REFILLED'],
-        old_value: { safe_mode: true, budget: campaign.current_daily_budget },
-        new_value: { safe_mode: false, budget: restoreBudget },
-        notes: `Campaign ${campaign.google_campaign_id} restored to $${restoreBudget}/day after auto-recharge`,
-      }]);
-
-      totalRestoredBudget += restoreBudget;
-      restoredCount++;
-    }
-
-    if (restoredCount > 0) {
-      await supabase.from('clients')
-        .update({ target_daily_spend: totalRestoredBudget, updated_at: new Date().toISOString() })
-        .eq('id', clientId);
-      console.log(`✅ ${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
-    }
-  } catch (err) {
-    console.error('Error restoring campaigns for client', clientId, err);
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -196,15 +34,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, processed: 0 });
     }
 
-    const { data: perfSetting } = await supabase
-      .from('onboarding_settings')
-      .select('setting_value')
-      .eq('setting_key', 'performance_percentage')
-      .maybeSingle();
-
-    const rawPerf = perfSetting?.setting_value ? parseFloat(perfSetting.setting_value) : NaN;
-    const performancePercentage = Number.isFinite(rawPerf) ? rawPerf : 0;
-
     const results: any[] = [];
     const now = new Date();
     const today = now.toISOString().split('T')[0];
@@ -230,30 +59,26 @@ Deno.serve(async (req) => {
       }
 
       try {
-        // ── Compute wallet balance (deposits + adjustments) ──
-        const { data: deposits } = await supabase
-          .from('wallet_transactions')
-          .select('amount')
-          .eq('client_id', clientId)
-          .in('transaction_type', ['deposit', 'adjustment']);
-
-        const totalDeposits = deposits?.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0) ?? 0;
-
-        let trackedSpend = 0;
-        if (wallet.tracking_start_date) {
-          const { data: spendData } = await supabase
-            .from('ad_spend_daily')
-            .select('cost')
-            .eq('client_id', clientId)
-            .gte('spend_date', wallet.tracking_start_date);
-          trackedSpend = spendData?.reduce((sum: number, day: any) => sum + Number(day.cost || 0), 0) ?? 0;
+        // ── Advisory lock: skip if another process is handling this client ──
+        const { data: lockResult } = await supabase.rpc('try_advisory_lock_client', { p_client_id: clientId });
+        if (lockResult === false) {
+          console.log(`${client.name}: locked by another process, skipping`);
+          results.push({ client: client.name, action: 'skipped', reason: 'locked_by_another_process' });
+          continue;
         }
 
-        const displayedSpend = trackedSpend * (1 + performancePercentage / 100);
-        const remainingBalance = totalDeposits - displayedSpend;
+        // ── Compute wallet balance via RPC (single source of truth) ──
+        const { data: balanceResult, error: balanceError } = await supabase.rpc('compute_wallet_balance', { p_client_id: clientId });
+        if (balanceError) {
+          console.error(`${client.name}: balance computation failed:`, balanceError);
+          results.push({ client: client.name, action: 'error', error: 'balance_computation_failed' });
+          continue;
+        }
+
+        const remainingBalance = balanceResult?.remaining_balance ?? 0;
         const threshold = wallet.low_balance_threshold ?? 150;
 
-        console.log(`${client.name}: balance=$${remainingBalance.toFixed(2)}, threshold=$${threshold}`);
+        console.log(`${client.name}: balance=$${Number(remainingBalance).toFixed(2)}, threshold=$${threshold}`);
 
         if (remainingBalance > threshold) {
           results.push({ client: client.name, action: 'ok', balance: remainingBalance });
@@ -307,14 +132,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Skip if there's already an unpaid (pending/overdue) ad_spend charge in the last 24 hours ──
+        // ── Skip if there's already an unpaid (pending/overdue/charging) ad_spend charge in the last 24 hours ──
         const dedup24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         const { data: existingUnpaid } = await supabase
           .from('billing_records')
           .select('id, status, created_at')
           .eq('client_id', clientId)
           .eq('billing_type', 'ad_spend')
-          .in('status', ['pending', 'overdue'])
+          .in('status', ['pending', 'overdue', 'charging'])
           .gte('created_at', dedup24h)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -349,34 +174,28 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Look up payment method and Stripe customer ──
-        const { data: paymentMethod } = await supabase
-          .from('client_payment_methods')
-          .select('stripe_payment_method_id, stripe_customer_id')
+        // ── Look up Stripe customer and payment method ──
+        const { data: stripeCustomer } = await supabase
+          .from('client_stripe_customers')
+          .select('stripe_customer_id')
           .eq('client_id', clientId)
           .eq('stripe_account', 'ad_spend')
-          .eq('is_default', true)
           .maybeSingle();
 
-        // Resolve Stripe customer: prefer PM's customer (authoritative), fall back to lookup
-        let stripeCustomerId: string | null = paymentMethod?.stripe_customer_id ?? null;
-        if (!stripeCustomerId) {
-          const { data: customerRows } = await supabase
-            .from('client_stripe_customers')
-            .select('stripe_customer_id')
-            .eq('client_id', clientId)
-            .eq('stripe_account', 'ad_spend')
-            .order('created_at', { ascending: true })
-            .limit(1);
-          stripeCustomerId = customerRows?.[0]?.stripe_customer_id ?? null;
-        }
-
-        if (!stripeCustomerId) {
+        if (!stripeCustomer) {
           console.log(`${client.name}: no Stripe customer linked for ad_spend, triggering safe mode`);
           results.push({ client: client.name, action: 'safe_mode', reason: 'no_stripe_customer' });
           await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
           continue;
         }
+
+        const { data: paymentMethod } = await supabase
+          .from('client_payment_methods')
+          .select('stripe_payment_method_id')
+          .eq('client_id', clientId)
+          .eq('stripe_account', 'ad_spend')
+          .eq('is_default', true)
+          .maybeSingle();
 
         if (!paymentMethod) {
           console.log(`${client.name}: no payment method on file, triggering safe mode`);
@@ -385,80 +204,86 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // ── Charge Stripe directly ──
-        console.log(`${client.name}: charging $${chargeAmount} via Stripe...`);
-        const pi = await chargePaymentIntent(
-          STRIPE_AD_SPEND_KEY(),
-          stripeCustomerId,
-          paymentMethod.stripe_payment_method_id,
-          Math.round(chargeAmount * 100),
-          clientId,
-        );
+        // ── Step 1: Create billing record with 'charging' status BEFORE calling Stripe ──
+        const { data: newRecord, error: insertError } = await supabase
+          .from('billing_records')
+          .insert({
+            client_id: clientId,
+            billing_type: 'ad_spend',
+            amount: chargeAmount,
+            due_date: today,
+            billing_period_start: today,
+            status: 'charging',
+            source: 'auto_recharge',
+            stripe_account: 'ad_spend',
+            recurrence_type: 'one_time',
+            is_recurring_parent: false,
+            notes: 'Auto-recharge',
+          })
+          .select('id')
+          .single();
+
+        if (insertError) throw insertError;
+
+        // Update last_auto_charge_at on charge initiation (not on PI success)
+        await supabase
+          .from('client_wallets')
+          .update({ last_auto_charge_at: now.toISOString() })
+          .eq('id', wallet.id);
+
+        console.log(`${client.name}: charging $${chargeAmount} via Stripe (billing_record=${newRecord.id})...`);
+
+        // ── Step 2: Create Stripe PaymentIntent with idempotency key ──
+        const piBody = new URLSearchParams({
+          amount: String(Math.round(chargeAmount * 100)),
+          currency: 'usd',
+          customer: stripeCustomer.stripe_customer_id,
+          payment_method: paymentMethod.stripe_payment_method_id,
+          confirm: 'true',
+          off_session: 'true',
+          'metadata[client_id]': clientId,
+          'metadata[charge_type]': 'auto_recharge',
+          'metadata[billing_record_id]': newRecord.id,
+        });
+
+        const res = await fetch('https://api.stripe.com/v1/payment_intents', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STRIPE_AD_SPEND_KEY()}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Idempotency-Key': `auto-recharge-${newRecord.id}`,
+          },
+          body: piBody.toString(),
+        });
+
+        const pi = await res.json();
 
         console.log(`${client.name}: PaymentIntent ${pi.id} status=${pi.status}`);
 
-        // ── Create billing record based on actual charge outcome ──
+        // ── Step 3: Update billing record with PI ID but do NOT mark paid ──
         if (pi.status === 'succeeded') {
-          const paidAt = new Date().toISOString();
-          const { data: newRecord, error: insertError } = await supabase
-            .from('billing_records')
-            .insert({
-              client_id: clientId,
-              billing_type: 'ad_spend',
-              amount: chargeAmount,
-              due_date: today,
-              billing_period_start: today,
-              status: 'paid',
-              paid_at: paidAt,
-              stripe_payment_intent_id: pi.id,
-              stripe_account: 'ad_spend',
-              recurrence_type: 'one_time',
-              is_recurring_parent: false,
-              notes: 'Auto-recharge',
-            })
-            .select('id')
-            .single();
-
-          if (insertError) throw insertError;
-
-          // Wallet deposit
-          await ensureWalletDeposit(supabase, clientId, newRecord.id, chargeAmount, today, pi.id);
-
-          // Restore campaign if in safe mode
-          await restoreCampaignIfSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
-
-          // Update last auto charge timestamp
+          // Update with PI ID only -- webhook handles paid + deposit via process_successful_charge()
           await supabase
-            .from('client_wallets')
-            .update({ last_auto_charge_at: now.toISOString() })
-            .eq('id', wallet.id);
+            .from('billing_records')
+            .update({
+              stripe_payment_intent_id: pi.id,
+            })
+            .eq('id', newRecord.id);
 
-          console.log(`${client.name}: ✅ auto-recharged $${chargeAmount}`);
-          results.push({ client: client.name, action: 'recharged', amount: chargeAmount, pi_id: pi.id });
+          console.log(`${client.name}: PI succeeded, awaiting webhook for paid+deposit (billing_record=${newRecord.id})`);
+          results.push({ client: client.name, action: 'charging', amount: chargeAmount, pi_id: pi.id, billing_record_id: newRecord.id });
 
         } else if (pi.status === 'requires_action') {
-          // 3D Secure or similar — create pending record with payment link
+          // 3D Secure or similar -- keep as 'charging', add payment link
           const paymentLink = pi.next_action?.redirect_to_url?.url || null;
-          const { data: newRecord } = await supabase
+          await supabase
             .from('billing_records')
-            .insert({
-              client_id: clientId,
-              billing_type: 'ad_spend',
-              amount: chargeAmount,
-              due_date: today,
-              billing_period_start: today,
-              status: 'pending',
+            .update({
               stripe_payment_intent_id: pi.id,
-              stripe_account: 'ad_spend',
               payment_link: paymentLink,
-              recurrence_type: 'one_time',
-              is_recurring_parent: false,
-              notes: 'Auto-recharge',
             })
-            .select('id')
-            .single();
+            .eq('id', newRecord.id);
 
-          // Trigger safe mode — manual action required
           await supabase
             .from('client_wallets')
             .update({ last_charge_failed_at: now.toISOString() })
@@ -466,29 +291,21 @@ Deno.serve(async (req) => {
 
           await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
 
-          console.log(`${client.name}: requires 3DS action, billing record created as pending`);
+          console.log(`${client.name}: requires 3DS action, billing record stays as charging`);
           results.push({ client: client.name, action: 'requires_action', amount: chargeAmount, payment_link: paymentLink });
 
         } else {
-          // Payment failed
-          const errorMessage = pi.last_payment_error?.message || pi.error?.message || `Payment failed (status: ${pi.status})`;
+          // Payment failed -- mark as overdue
+          const errorMessage = pi.last_payment_error?.message || pi.error?.message || `Status: ${pi.status}`;
 
           await supabase
             .from('billing_records')
-            .insert({
-              client_id: clientId,
-              billing_type: 'ad_spend',
-              amount: chargeAmount,
-              due_date: today,
-              billing_period_start: today,
-              status: 'overdue',
+            .update({
               stripe_payment_intent_id: pi.id || null,
-              stripe_account: 'ad_spend',
+              status: 'overdue',
               last_charge_error: errorMessage,
-              recurrence_type: 'one_time',
-              is_recurring_parent: false,
-              notes: 'Auto-recharge',
-            });
+            })
+            .eq('id', newRecord.id);
 
           await supabase
             .from('client_wallets')
@@ -497,7 +314,7 @@ Deno.serve(async (req) => {
 
           await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
 
-          console.log(`${client.name}: ❌ charge failed — ${errorMessage}`);
+          console.log(`${client.name}: charge failed -- ${errorMessage}`);
           results.push({ client: client.name, action: 'charge_failed', amount: chargeAmount, error: errorMessage });
         }
 
@@ -526,8 +343,9 @@ async function triggerSafeMode(
     await fetch(`${supabaseUrl}/functions/v1/check-low-balance`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseServiceKey}`,
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'x-billing-secret': Deno.env.get('BILLING_EDGE_SECRET') || '',
       },
       body: JSON.stringify({ clientId }),
     });
