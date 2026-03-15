@@ -71,7 +71,16 @@ export async function getComputedWalletBalance(sb: any, clientId: string, perfPc
   }
 
   const adjustedSpend = applyPerformancePercentage(rawSpend, pct);
-  const remainingBalance = totalDeposits - adjustedSpend;
+
+  // Canonical balance from compute_wallet_balance() RPC — single source of truth
+  const { data: rpcBalance, error: rpcError } = await sb.rpc('compute_wallet_balance', {
+    p_client_id: clientId,
+  });
+  if (rpcError) {
+    console.error('compute_wallet_balance RPC failed:', rpcError);
+  }
+  // Use RPC result for canonical balance; fall back to inline calc if RPC fails
+  const remainingBalance = rpcError ? (totalDeposits - adjustedSpend) : Number(rpcBalance);
   const rawBalance = totalDeposits - rawSpend;
 
   return { totalDeposits, rawSpend, adjustedSpend, remainingBalance, rawBalance, trackingStartDate, performancePercentage: pct };
@@ -144,6 +153,10 @@ export interface BulkBalance {
 
 /**
  * Bulk-compute wallet balances for ALL clients in 3 queries + 1 settings query.
+ * NOTE: Uses inline computation for performance (N RPC calls would be too expensive).
+ * For single-client canonical balance, use getComputedWalletBalance() which calls the RPC.
+ * If the formula diverges, this function must be updated to match compute_wallet_balance().
+ *
  * Applies performance percentage so balances match the frontend dashboard.
  * Returns a Map<clientId, BulkBalance>
  */
