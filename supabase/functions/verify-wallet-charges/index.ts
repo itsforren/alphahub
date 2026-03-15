@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-billing-secret',
 };
 
 function jsonResponse(data: unknown, status = 200) {
@@ -52,12 +52,27 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  // WALL-13: Require shared secret or service role JWT for all requests
+  const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
+  const providedSecret = req.headers.get('x-billing-secret');
+
+  const authHeader = req.headers.get('Authorization');
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const isServiceRole = authHeader === `Bearer ${supabaseServiceKey}`;
+  const hasValidSecret = billingSecret && providedSecret === billingSecret;
+
+  if (!isServiceRole && !hasValidSecret) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Check if this is an "approve deposit" action
+    // Parse body after auth check
     let body: any = {};
     try { body = await req.json(); } catch { /* no body */ }
 
@@ -67,7 +82,7 @@ Deno.serve(async (req) => {
 
     console.log('verify-wallet-charges starting...');
 
-    // Only look at charges from the last 48 hours — FORWARD-LOOKING ONLY
+    // Only look at charges from the last 48 hours -- FORWARD-LOOKING ONLY
     const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
     const { data: recentPaidRecords, error } = await supabase
@@ -206,57 +221,63 @@ Deno.serve(async (req) => {
   }
 });
 
-// Handle approve/dismiss deposit actions from the dashboard
+// Handle approve deposit action from the dashboard
+// Routes through process_successful_charge() RPC instead of direct INSERT
 async function handleApproveDeposit(supabase: any, body: any) {
-  const { billingRecordId, clientId, amount } = body;
+  const { billingRecordId } = body;
 
-  if (!billingRecordId || !clientId || !amount) {
-    return jsonResponse({ error: 'Missing billingRecordId, clientId, or amount' }, 400);
+  if (!billingRecordId) {
+    return jsonResponse({ error: 'Missing billingRecordId' }, 400);
   }
 
-  // Check if deposit already exists (idempotent)
+  // Validate billing record exists, is paid, has a Stripe PI, and is ad_spend
+  const { data: billingRecord } = await supabase
+    .from('billing_records')
+    .select('id, status, stripe_payment_intent_id, paid_at, amount, billing_type, stripe_account')
+    .eq('id', billingRecordId)
+    .maybeSingle();
+
+  if (!billingRecord) return jsonResponse({ error: 'Billing record not found' }, 404);
+  if (billingRecord.status !== 'paid') return jsonResponse({ error: 'Billing record is not paid' }, 400);
+  if (!billingRecord.stripe_payment_intent_id) return jsonResponse({ error: 'No Stripe PaymentIntent linked' }, 400);
+  if (billingRecord.billing_type !== 'ad_spend') return jsonResponse({ error: 'Only ad_spend records create deposits' }, 400);
+
+  // Check if deposit already exists (idempotent fast-path)
   const { data: existing } = await supabase
     .from('wallet_transactions')
     .select('id')
     .eq('billing_record_id', billingRecordId)
-    .maybeSingle();
+    .eq('transaction_type', 'deposit')
+    .limit(1);
 
-  if (existing) {
-    return jsonResponse({ success: true, message: 'Deposit already exists', depositId: existing.id });
+  if (existing && existing.length > 0) {
+    return jsonResponse({ success: true, message: 'Deposit already exists (idempotent)', depositId: existing[0].id });
   }
 
-  // Get or create wallet
-  let { data: wallet } = await supabase
-    .from('client_wallets')
-    .select('id')
-    .eq('client_id', clientId)
-    .maybeSingle();
+  // Re-verify the PaymentIntent succeeded in Stripe before approving
+  const stripeKey = getStripeKey(billingRecord.stripe_account || 'ad_spend');
+  if (!stripeKey) return jsonResponse({ error: 'Stripe key not configured for account' }, 500);
 
-  if (!wallet) {
-    const { data: newWallet, error } = await supabase
-      .from('client_wallets')
-      .insert({ client_id: clientId, tracking_start_date: new Date().toISOString().split('T')[0] })
-      .select('id')
-      .single();
-    if (error) return jsonResponse({ error: 'Failed to create wallet' }, 500);
-    wallet = newWallet;
+  const verification = await verifyStripePaymentIntent(stripeKey, billingRecord.stripe_payment_intent_id);
+  if (!verification.succeeded) {
+    return jsonResponse({ error: 'Stripe PaymentIntent has not succeeded' }, 400);
   }
 
-  // Create the deposit
-  const { data: deposit, error: depositError } = await supabase.from('wallet_transactions').insert({
-    wallet_id: wallet.id,
-    client_id: clientId,
-    transaction_type: 'deposit',
-    amount,
-    balance_after: 0,
-    description: `Manual deposit approval — billing record ${billingRecordId.slice(0, 8)}`,
-    billing_record_id: billingRecordId,
-  }).select('id').single();
+  // Route through process_successful_charge RPC (atomic paid + deposit)
+  const { error: rpcError } = await supabase.rpc('process_successful_charge', {
+    p_billing_record_id: billingRecordId,
+    p_stripe_pi_id: billingRecord.stripe_payment_intent_id,
+    p_paid_at: billingRecord.paid_at || new Date().toISOString(),
+  });
 
-  if (depositError) {
-    return jsonResponse({ error: 'Failed to create deposit: ' + depositError.message }, 500);
+  if (rpcError) {
+    // If it's a unique constraint violation, the deposit already exists (idempotent)
+    if (rpcError.message?.includes('duplicate') || rpcError.message?.includes('unique')) {
+      return jsonResponse({ success: true, message: 'Deposit already exists (idempotent)' });
+    }
+    return jsonResponse({ error: 'Failed to process deposit: ' + rpcError.message }, 500);
   }
 
-  console.log(`Approved deposit: $${amount} for client ${clientId} (billing record ${billingRecordId})`);
-  return jsonResponse({ success: true, depositId: deposit.id });
+  console.log(`Approved deposit via RPC: billing_record ${billingRecordId}, PI ${billingRecord.stripe_payment_intent_id}`);
+  return jsonResponse({ success: true, message: 'Deposit created via process_successful_charge' });
 }
