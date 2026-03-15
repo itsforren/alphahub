@@ -10,8 +10,23 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  // WALL-13: Require shared secret for service-to-service calls
+  const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
+  const providedSecret = req.headers.get('x-billing-secret');
+
+  const authHeader = req.headers.get('Authorization');
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const isServiceRole = authHeader === `Bearer ${supabaseServiceKey}`;
+  const hasValidSecret = billingSecret && providedSecret === billingSecret;
+
+  if (!isServiceRole && !hasValidSecret) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {

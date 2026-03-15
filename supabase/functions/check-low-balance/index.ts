@@ -141,11 +141,27 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // WALL-13: Require shared secret for service-to-service calls
+  const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
+  const providedSecret = req.headers.get('x-billing-secret');
+
+  const authHeader = req.headers.get('Authorization');
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const isServiceRole = authHeader === `Bearer ${supabaseServiceKey}`;
+  const hasValidSecret = billingSecret && providedSecret === billingSecret;
+
+  if (!isServiceRole && !hasValidSecret) {
+    return new Response(
+      JSON.stringify({ error: 'Unauthorized' }),
+      { status: 401, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const { clientId } = await req.json();
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseKey = supabaseServiceKey!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     let clientsToCheck: { id: string; name: string; google_campaign_id: string | null; target_daily_spend: number | null }[] = [];
