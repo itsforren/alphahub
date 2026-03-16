@@ -1,102 +1,59 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { restoreFromSnapshot, isInSafeMode } from '../_shared/safe-mode.ts';
+import { notify } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
 };
 
-// -- Helper: Restore ALL campaign budgets after safe mode --
-async function restoreCampaignBudgetIfSafeMode(supabase: any, clientId: string) {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
+// -- Helper: Attempt snapshot-based restoration + recharge_state reset after payment --
+// Called after process_successful_charge() marks a record as paid for ad_spend.
+// Checks balance > charge threshold before restoring (prevents yo-yo).
+// Idempotent: restoreFromSnapshot() uses atomic claim on unrestored snapshots.
+async function tryRestoreAndResetRechargeState(supabase: any, clientId: string) {
   try {
-    // Get ALL campaigns in safe mode for this client
-    const { data: campaigns } = await supabase
-      .from('campaigns')
-      .select('id, safe_mode, pre_safe_mode_budget, google_customer_id, google_campaign_id, current_daily_budget')
-      .eq('client_id', clientId)
-      .eq('safe_mode', true);
+    const inSafeMode = await isInSafeMode(supabase, clientId);
+    if (inSafeMode) {
+      // Verify balance is above charge threshold before restoring (prevents yo-yo)
+      const { data: wallet } = await supabase
+        .from('client_wallets')
+        .select('low_balance_threshold')
+        .eq('client_id', clientId)
+        .maybeSingle();
 
-    if (!campaigns || campaigns.length === 0) return;
-
-    // Fallback budget from client's ad_spend_budget
-    const { data: client } = await supabase
-      .from('clients')
-      .select('ad_spend_budget')
-      .eq('id', clientId)
-      .single();
-    const fallbackDailyBudget = client?.ad_spend_budget ? Number(client.ad_spend_budget) / 30 : null;
-
-    let totalRestoredBudget = 0;
-    let restoredCount = 0;
-
-    for (const campaign of campaigns) {
-      let restoreBudget = campaign.pre_safe_mode_budget;
-      if (!restoreBudget || restoreBudget <= 0.01) {
-        restoreBudget = fallbackDailyBudget;
-      }
-      if (!restoreBudget || restoreBudget <= 0.01) {
-        console.log(`No valid restore budget for campaign ${campaign.id}, skipping`);
-        continue;
-      }
-
-      console.log(`Restoring campaign ${campaign.google_campaign_id} to $${restoreBudget}/day...`);
-
-      const budgetRes = await fetch(`${supabaseUrl}/functions/v1/update-google-ads-budget`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ clientId, campaignRowId: campaign.id, newDailyBudget: restoreBudget, changeSource: 'safe_mode_exit', changeReason: 'Wallet refilled via Stripe payment' }),
+      const { data: balanceResult } = await supabase.rpc('compute_wallet_balance', {
+        p_client_id: clientId,
       });
+      const balance = balanceResult?.remaining_balance ?? 0;
+      const chargeThreshold = wallet?.low_balance_threshold ?? 150;
 
-      if (!budgetRes.ok) {
-        const budgetResult = await budgetRes.json();
-        console.error(`Failed to restore budget for campaign ${campaign.id}:`, budgetResult);
-        continue;
+      if (balance > chargeThreshold) {
+        // Balance above charge threshold -- safe to restore
+        const result = await restoreFromSnapshot(supabase, clientId, 'stripe-billing-webhook');
+        if (result.restored) {
+          await notify({
+            supabase, clientId,
+            severity: 'info',
+            title: 'Campaigns Restored',
+            message: `${result.campaignsRestored} campaigns restored from safe mode after payment`,
+            metadata: { campaigns_restored: result.campaignsRestored },
+          });
+        }
+      } else {
+        console.log(`Balance $${balance} still below charge threshold $${chargeThreshold}, not restoring yet`);
       }
-
-      await supabase
-        .from('campaigns')
-        .update({
-          safe_mode: false,
-          safe_mode_reason: null,
-          safe_mode_triggered_at: null,
-          safe_mode_budget_used: null,
-          pre_safe_mode_budget: null,
-          current_daily_budget: restoreBudget,
-          last_budget_change_at: new Date().toISOString(),
-          last_budget_change_by: 'SAFE_MODE_EXIT',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', campaign.id);
-
-      await supabase.from('campaign_audit_log').insert([{
-        client_id: clientId,
-        campaign_id: campaign.id,
-        action: 'SAFE_MODE_EXITED',
-        actor: 'system',
-        reason_codes: ['WALLET_REFILLED'],
-        old_value: { safe_mode: true, budget: campaign.current_daily_budget },
-        new_value: { safe_mode: false, budget: restoreBudget },
-        notes: `Campaign ${campaign.google_campaign_id} restored to $${restoreBudget}/day after successful payment`,
-      }]);
-
-      totalRestoredBudget += restoreBudget;
-      restoredCount++;
     }
 
-    if (restoredCount > 0) {
-      await supabase
-        .from('clients')
-        .update({ target_daily_spend: totalRestoredBudget, updated_at: new Date().toISOString() })
-        .eq('id', clientId);
-      console.log(`${restoredCount} campaign(s) restored (total $${totalRestoredBudget}/day) for client ${clientId}`);
-    }
+    // Reset recharge_state to idle
+    await supabase.from('recharge_state').update({
+      state: 'idle',
+      current_billing_record_id: null,
+      current_stripe_pi_id: null,
+      updated_at: new Date().toISOString(),
+    }).eq('client_id', clientId);
   } catch (err) {
-    console.error(`Error restoring campaign budgets for client ${clientId}:`, err);
+    console.error(`Error in tryRestoreAndResetRechargeState for client ${clientId}:`, err);
   }
 }
 
@@ -356,7 +313,7 @@ async function handleSubscriptionInvoicePaid(
       }
 
       if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
-        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+        await tryRestoreAndResetRechargeState(supabase, result.client_id);
       }
 
       console.log('Subscription invoice processed via RPC:', existingByInvoice.id, result);
@@ -414,7 +371,7 @@ async function handleSubscriptionInvoicePaid(
         .eq('id', pendingRecord.id);
 
       if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
-        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+        await tryRestoreAndResetRechargeState(supabase, result.client_id);
       }
 
       recordId = pendingRecord.id;
@@ -485,7 +442,7 @@ async function handleSubscriptionInvoicePaid(
       }
 
       if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
-        await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+        await tryRestoreAndResetRechargeState(supabase, result.client_id);
       }
 
       recordId = newRecord.id;
@@ -598,7 +555,7 @@ async function processOneOffInvoicePaid(
 
     // Restore campaigns from safe mode only when actually marked paid
     if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
-      await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+      await tryRestoreAndResetRechargeState(supabase, result.client_id);
     }
   } else {
     // Non-ad_spend (management): mark as paid directly
@@ -1090,7 +1047,7 @@ async function handlePaymentIntentSucceeded(supabase: any, pi: any, stripeAccoun
 
   // Restore campaigns from safe mode (only if actually marked paid and ad_spend)
   if (result.action === 'marked_paid' && result.billing_type === 'ad_spend') {
-    await restoreCampaignBudgetIfSafeMode(supabase, result.client_id);
+    await tryRestoreAndResetRechargeState(supabase, result.client_id);
   }
 
   return jsonResponse({
