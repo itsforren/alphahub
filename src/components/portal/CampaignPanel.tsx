@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw } from 'lucide-react';
+import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw, Shield } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { StateSelector } from '@/components/portal/StateSelector';
 import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useRechargeState } from '@/hooks/useRechargeState';
 
 interface Campaign {
   id: string;
@@ -46,6 +47,7 @@ export function CampaignPanel({
   onUpdateStates,
 }: CampaignPanelProps) {
   const queryClient = useQueryClient();
+  const { data: rechargeState } = useRechargeState(clientId);
   const [isBuilding, setIsBuilding] = useState(false);
   const [rebuildingCampaignId, setRebuildingCampaignId] = useState<string | null>(null);
   const [manualCampaignId, setManualCampaignId] = useState('');
@@ -219,6 +221,12 @@ export function CampaignPanel({
 
   return (
     <div className="space-y-3">
+      {rechargeState?.safe_mode_active && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700">
+          <Shield className="h-4 w-4" />
+          <span>Safe mode active — budgets locked at minimum. Resolve payment to restore.</span>
+        </div>
+      )}
       {campaigns.map((campaign) => (
         <Card key={campaign.id} className="border-border/50">
           <CardContent className="py-3 px-4">
