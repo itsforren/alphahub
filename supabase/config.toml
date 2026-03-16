@@ -341,3 +341,6 @@ verify_jwt = false
 
 [functions.analyze-billing]
 verify_jwt = false
+
+[functions.daily-health-digest]
+verify_jwt = false
