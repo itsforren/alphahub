@@ -114,22 +114,24 @@ async function flagMissingDeposit(
 
   if (dedupError) return false; // Already processed (PK conflict)
 
-  // Create a system_alert for admin review instead of creating a deposit
-  await supabase.from('system_alerts').insert({
-    alert_type: 'missing_deposit',
-    severity: 'warning',
-    title: `Missing wallet deposit: $${amount}`,
-    message: `Paid ad_spend billing record ${billingRecordId} has no wallet deposit. Stripe charge verified as succeeded. Flagged for admin review -- use verify-wallet-charges to approve.`,
-    client_id: clientId,
-    metadata: {
-      billing_record_id: billingRecordId,
-      amount,
-      source: 'sync-stripe-charges',
-    },
-  });
-
-  // Slack notification
-  await sendSlackAlert(`:warning: *Missing Deposit Flagged*\nClient: ${clientId}\nAmount: $${amount}\nBilling Record: ${billingRecordId}\nAction: Review in verify-wallet-charges dashboard`);
+  // Route through notify() for system_alerts persistence + Slack delivery + email/SMS for critical
+  try {
+    await notify({
+      supabase,
+      clientId,
+      severity: 'warning',
+      title: `Missing wallet deposit: $${amount}`,
+      message: `Paid ad_spend billing record ${billingRecordId} has no wallet deposit. Stripe charge verified as succeeded. Flagged for admin review -- use verify-wallet-charges to approve.`,
+      alertType: 'missing_deposit',
+      metadata: {
+        billing_record_id: billingRecordId,
+        amount,
+        source: 'sync-stripe-charges',
+      },
+    });
+  } catch (e) {
+    console.error('Failed to send missing deposit notification:', e);
+  }
 
   console.log(`Flagged missing deposit: billing_record ${billingRecordId}, client ${clientId}, $${amount}`);
   return true;

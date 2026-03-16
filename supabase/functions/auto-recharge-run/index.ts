@@ -45,14 +45,22 @@ Deno.serve(async (req) => {
     // ── Step 1: Clean up stale charging records (RECH-13) ──
     const { data: cleanupResult } = await supabase.rpc('stale_charging_cleanup');
     if (cleanupResult?.cleaned_up > 0) {
-      console.log(`Cleaned ${cleanupResult.cleaned_up} stale charging records`);
-      await notify({
-        supabase,
-        severity: 'info',
-        title: 'Stale Charging Cleanup',
-        message: `Cleaned ${cleanupResult.cleaned_up} stale charging records`,
-        metadata: cleanupResult,
-      });
+      const staleCount = cleanupResult.cleaned_up;
+      console.log(`Cleaned ${staleCount} stale charging records`);
+      // Escalate severity: warning for 1-2, critical for 3+ (indicates systemic webhook issue)
+      const staleSeverity = staleCount >= 3 ? 'critical' : 'warning';
+      try {
+        await notify({
+          supabase,
+          severity: staleSeverity,
+          title: 'Stale Charging Records Cleaned',
+          message: `${staleCount} billing record(s) stuck in 'charging' for 4+ hours were marked as overdue. This may indicate webhook delivery failures.`,
+          alertType: 'stale_charging',
+          metadata: cleanupResult,
+        });
+      } catch (e) {
+        console.error('Failed to send stale cleanup notification:', e);
+      }
     }
 
     // ── Step 2: Query all auto_stripe wallets with auto-billing enabled ──

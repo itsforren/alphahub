@@ -210,11 +210,41 @@ Deno.serve(async (req) => {
     }
 
     console.log(JSON.stringify({ event_id: event.id, event_type: event.type, stripe_account: verifiedAccount, outcome: 'skipped', reason: 'unhandled_event_type' }));
+
+    // Alert on unhandled event types for admin visibility
+    try {
+      await notify({
+        supabase,
+        severity: 'info',
+        title: 'Unhandled Webhook Event Type',
+        message: `Received Stripe event type '${event.type}' which is not handled. Event ID: ${event.id}`,
+        alertType: 'webhook',
+        metadata: { event_id: event.id, event_type: event.type, stripe_account: verifiedAccount },
+      });
+    } catch (e) {
+      console.error('Failed to send unhandled event notification:', e);
+    }
+
     return jsonResponse({ received: true });
 
   } catch (error) {
     console.error('stripe-billing-webhook error:', error);
     console.log(JSON.stringify({ outcome: 'error', error: String(error) }));
+
+    // Critical alert: webhook processing failure may mean missed deposits
+    try {
+      await notify({
+        supabase,
+        severity: 'critical',
+        title: 'Webhook Processing Error',
+        message: `Failed to process Stripe webhook event: ${String(error).slice(0, 300)}`,
+        alertType: 'webhook',
+        metadata: { error: String(error).slice(0, 500) },
+      });
+    } catch (e) {
+      console.error('Failed to send webhook error notification:', e);
+    }
+
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
