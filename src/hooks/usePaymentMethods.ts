@@ -120,6 +120,37 @@ export function useSavePaymentMethod() {
   });
 }
 
+export function useSetDefaultPaymentMethod() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      clientId,
+      stripeAccount,
+      paymentMethodDbId,
+    }: {
+      clientId: string;
+      stripeAccount: 'ad_spend' | 'management';
+      paymentMethodDbId: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke('set-default-payment-method', {
+        body: {
+          client_id: clientId,
+          stripe_account: stripeAccount,
+          payment_method_db_id: paymentMethodDbId,
+        },
+      });
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods', variables.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['default-payment-method', variables.clientId] });
+    },
+  });
+}
+
 export function useDeletePaymentMethod() {
   const queryClient = useQueryClient();
 

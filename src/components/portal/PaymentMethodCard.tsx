@@ -20,7 +20,7 @@ interface PaymentMethodCardProps {
   isAdmin?: boolean;
 }
 
-const CARD_ELEMENT_OPTIONS = {
+export const CARD_ELEMENT_OPTIONS = {
   style: {
     base: {
       fontSize: '14px',
@@ -32,7 +32,7 @@ const CARD_ELEMENT_OPTIONS = {
 };
 
 // Inner form that saves card to ONE Stripe account
-function CardCaptureFormInner({
+export function CardCaptureFormInner({
   clientId,
   stripeAccount,
   onSuccess,
