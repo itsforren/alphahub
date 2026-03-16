@@ -678,23 +678,42 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // WALL-13: Require shared secret or service role JWT for all requests
+  // WALL-13: Require shared secret, service role JWT, or admin user JWT
   const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
   const providedSecret = req.headers.get('x-billing-secret');
 
   const authHeader = req.headers.get('Authorization');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const isServiceRole = authHeader === `Bearer ${serviceKey}`;
   const hasValidSecret = billingSecret && providedSecret === billingSecret;
 
-  if (!isServiceRole && !hasValidSecret) {
+  // Also allow admin users calling from frontend (JWT with admin role)
+  let isAdmin = false;
+  if (!isServiceRole && !hasValidSecret && authHeader?.startsWith('Bearer ')) {
+    try {
+      const userClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (user) {
+        const { data: roles } = await createClient(supabaseUrl, serviceKey)
+          .from('user_roles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        isAdmin = roles?.role === 'admin';
+      }
+    } catch { /* not an admin */ }
+  }
+
+  if (!isServiceRole && !hasValidSecret && !isAdmin) {
     return new Response(
       JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }
     );
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
