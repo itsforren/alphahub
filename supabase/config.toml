@@ -335,3 +335,6 @@ verify_jwt = false
 
 [functions.add-wallet-credit]
 verify_jwt = false
+
+[functions.analyze-billing]
+verify_jwt = false
