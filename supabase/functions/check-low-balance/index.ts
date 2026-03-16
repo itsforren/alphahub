@@ -117,7 +117,7 @@ serve(async (req) => {
 
     console.log(`[check-low-balance] Checking ${clientsToCheck.length} clients for safe mode threshold`);
 
-    const results: { client: string; action: string; balance: number; threshold?: number }[] = [];
+    const results: { client: string; action: string; balance: number; pessimisticBalance?: number; threshold?: number }[] = [];
     let accessToken: string | null = null;
 
     for (const client of clientsToCheck) {
@@ -143,7 +143,21 @@ serve(async (req) => {
         }
 
         const balance = balanceResult?.remaining_balance ?? 0;
-        console.log(`[check-low-balance] Client ${client.name}: Balance = $${balance.toFixed(2)}, Safe Mode Threshold = $${safeModeThreshold}`);
+
+        // CAMP-06: Use pessimistic balance for safe mode threshold comparison
+        // Pessimistic balance = wallet minus worst-case remaining daily spend for today
+        const { data: pessimisticResult, error: pessimisticError } = await supabase.rpc('pessimistic_balance', {
+          p_client_id: client.id,
+        });
+
+        if (pessimisticError) {
+          console.warn(`[check-low-balance] pessimistic_balance RPC failed for ${client.name}, falling back to regular balance:`, pessimisticError);
+        }
+
+        // Fall back to regular balance if pessimistic function fails
+        const effectiveBalance = pessimisticError ? balance : (pessimisticResult ?? balance);
+
+        console.log(`[check-low-balance] Client ${client.name}: Balance = $${balance.toFixed(2)}, Pessimistic = $${Number(effectiveBalance).toFixed(2)}, Safe Mode Threshold = $${safeModeThreshold}`);
 
         // Check grace period (RECH-12): skip safe mode checks if recently restored
         const { data: rechargeState } = await supabase
@@ -155,9 +169,9 @@ serve(async (req) => {
         const inGracePeriod = rechargeState?.grace_period_until &&
           new Date(rechargeState.grace_period_until) > new Date();
 
-        // RECH-03: Safe mode at safe_mode_threshold (skip if in grace period)
-        if (balance <= safeModeThreshold && !inGracePeriod) {
-          console.log(`[check-low-balance] Client ${client.name}: Balance $${balance.toFixed(2)} <= threshold $${safeModeThreshold}, activating safe mode`);
+        // RECH-03 + CAMP-06: Safe mode at safe_mode_threshold using pessimistic balance (skip if in grace period)
+        if (effectiveBalance <= safeModeThreshold && !inGracePeriod) {
+          console.log(`[check-low-balance] Client ${client.name}: Pessimistic balance $${Number(effectiveBalance).toFixed(2)} <= threshold $${safeModeThreshold}, activating safe mode`);
 
           // Get access token only once (lazy init)
           if (!accessToken) {
@@ -174,23 +188,25 @@ serve(async (req) => {
             clientName: client.name,
             severity: 'critical',
             title: 'Safe Mode Activated',
-            message: `Balance $${balance.toFixed(2)} below safe mode threshold $${safeModeThreshold}. Campaigns set to $0.01.`,
-            metadata: { balance, threshold: safeModeThreshold },
+            message: `Balance $${balance.toFixed(2)} (pessimistic: $${Number(effectiveBalance).toFixed(2)}) below safe mode threshold $${safeModeThreshold}. Campaigns set to $0.01.`,
+            metadata: { balance, pessimistic_balance: effectiveBalance, threshold: safeModeThreshold },
           });
 
           results.push({
             client: client.name,
             action: 'safe_mode_activated',
             balance,
+            pessimisticBalance: effectiveBalance,
             threshold: safeModeThreshold,
           });
-        } else if (balance <= safeModeThreshold && inGracePeriod) {
+        } else if (effectiveBalance <= safeModeThreshold && inGracePeriod) {
           // Balance is low but we just restored -- skip to avoid yo-yo
           console.log(`[check-low-balance] Client ${client.name}: In grace period until ${rechargeState.grace_period_until}, skipping safe mode check`);
           results.push({
             client: client.name,
             action: 'safe_mode_skipped_grace_period',
             balance,
+            pessimisticBalance: effectiveBalance,
             threshold: safeModeThreshold,
           });
         } else {
@@ -199,6 +215,7 @@ serve(async (req) => {
             client: client.name,
             action: 'ok',
             balance,
+            pessimisticBalance: effectiveBalance,
             threshold: safeModeThreshold,
           });
         }

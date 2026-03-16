@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +37,8 @@ serve(async (req) => {
   }
 
   try {
-    const { customerId, campaignId } = await req.json();
+    // Accept additional optional params for audit trail and local status update
+    const { customerId, campaignId, clientId, campaignRowId, reason } = await req.json();
 
     if (!customerId || !campaignId) {
       throw new Error('customerId and campaignId are required');
@@ -80,6 +82,48 @@ serve(async (req) => {
 
     const result = await response.json();
     console.log('Campaign paused successfully:', result);
+
+    // CAMP-07: After successful Google Ads pause, update local DB and write audit log
+    // Failures here are logged but don't cause a 500 (campaign was already paused in Google Ads)
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      // Update local campaign status if campaignRowId provided
+      if (campaignRowId) {
+        const { error: updateError } = await supabase
+          .from('campaigns')
+          .update({
+            status: 'paused',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', campaignRowId);
+
+        if (updateError) {
+          console.error('Error updating local campaign status:', updateError);
+        }
+      }
+
+      // Write audit log entry
+      const { error: auditError } = await supabase.from('campaign_audit_log').insert({
+        client_id: clientId || null,
+        campaign_id: campaignRowId || null,
+        action: 'campaign_pause',
+        actor: reason?.startsWith('client_status_change') ? 'client_status_change' : 'admin',
+        old_value: { status: 'active' },
+        new_value: { status: 'paused' },
+        reason_codes: reason ? [reason] : ['manual_pause'],
+        notes: `Campaign ${cleanCampaignId} paused via Google Ads API.`,
+      });
+
+      if (auditError) {
+        console.error('Error writing pause audit log:', auditError);
+      }
+    } catch (postPauseError) {
+      // Log but don't fail -- the campaign was already paused in Google Ads
+      console.error('Error in post-pause DB operations:', postPauseError);
+    }
 
     return new Response(JSON.stringify({ success: true, campaignId: cleanCampaignId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
