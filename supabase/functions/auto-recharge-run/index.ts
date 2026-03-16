@@ -1,4 +1,26 @@
+/**
+ * auto-recharge-run: SOLE charge initiation function.
+ *
+ * Responsibilities:
+ * - Independently detects low balance (balance <= charge threshold)
+ * - Calls attempt_recharge() RPC for concurrency mutex + rate limiting
+ * - Creates Stripe PaymentIntents for clients that acquire the mutex
+ * - Updates recharge_state after each Stripe outcome
+ *
+ * Does NOT:
+ * - Activate safe mode (that's check-low-balance's job)
+ * - Import or use _shared/safe-mode.ts
+ * - Implement inline daily caps, cooldowns, or advisory locks
+ *   (all handled atomically by attempt_recharge() PG function)
+ *
+ * State machine: idle/failed -> charging -> succeeded/failed
+ * Concurrency: Row-level mutex in attempt_recharge() (no advisory locks)
+ * Rate limiting: 2/day + escalating cooldown (PG function)
+ * Monthly cap: Atomic check in PG function
+ */
+
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notify } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +42,20 @@ Deno.serve(async (req) => {
   try {
     console.log('auto-recharge-run starting...');
 
+    // ── Step 1: Clean up stale charging records (RECH-13) ──
+    const { data: cleanupResult } = await supabase.rpc('stale_charging_cleanup');
+    if (cleanupResult?.cleaned_up > 0) {
+      console.log(`Cleaned ${cleanupResult.cleaned_up} stale charging records`);
+      await notify({
+        supabase,
+        severity: 'info',
+        title: 'Stale Charging Cleanup',
+        message: `Cleaned ${cleanupResult.cleaned_up} stale charging records`,
+        metadata: cleanupResult,
+      });
+    }
+
+    // ── Step 2: Query all auto_stripe wallets with auto-billing enabled ──
     const { data: wallets, error: walletsError } = await supabase
       .from('client_wallets')
       .select('*')
@@ -35,13 +71,12 @@ Deno.serve(async (req) => {
     }
 
     const results: any[] = [];
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
 
     for (const wallet of wallets) {
       const clientId = wallet.client_id;
 
+      // ── Fetch client record ──
       const { data: client, error: clientError } = await supabase
         .from('clients')
         .select('id, name, email, status')
@@ -49,132 +84,92 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (clientError || !client) {
-        results.push({ client_id: clientId, action: 'skipped', reason: 'client not found' });
+        results.push({ client_id: clientId, action: 'skipped', reason: 'client_not_found' });
         continue;
       }
 
       if (client.status !== 'active') {
-        results.push({ client: client.name, action: 'skipped', reason: 'not active' });
+        results.push({ client: client.name, action: 'skipped', reason: 'not_active' });
         continue;
       }
 
       try {
-        // ── Advisory lock: skip if another process is handling this client ──
-        const { data: lockResult } = await supabase.rpc('try_advisory_lock_client', { p_client_id: clientId });
-        if (lockResult === false) {
-          console.log(`${client.name}: locked by another process, skipping`);
-          results.push({ client: client.name, action: 'skipped', reason: 'locked_by_another_process' });
-          continue;
-        }
+        // ── Step 3a: Compute wallet balance via RPC (single source of truth) ──
+        const { data: balanceResult, error: balanceError } = await supabase.rpc(
+          'compute_wallet_balance',
+          { p_client_id: clientId },
+        );
 
-        // ── Compute wallet balance via RPC (single source of truth) ──
-        const { data: balanceResult, error: balanceError } = await supabase.rpc('compute_wallet_balance', { p_client_id: clientId });
         if (balanceError) {
           console.error(`${client.name}: balance computation failed:`, balanceError);
           results.push({ client: client.name, action: 'error', error: 'balance_computation_failed' });
           continue;
         }
 
-        const remainingBalance = balanceResult?.remaining_balance ?? 0;
-        const threshold = wallet.low_balance_threshold ?? 150;
+        const balance = balanceResult?.remaining_balance ?? 0;
+        const chargeThreshold = wallet.low_balance_threshold ?? 150;
 
-        console.log(`${client.name}: balance=$${Number(remainingBalance).toFixed(2)}, threshold=$${threshold}`);
+        console.log(`${client.name}: balance=$${Number(balance).toFixed(2)}, threshold=$${chargeThreshold}`);
 
-        if (remainingBalance > threshold) {
-          results.push({ client: client.name, action: 'ok', balance: remainingBalance });
+        // ── Step 3b: Skip if balance is above charge threshold (RECH-01) ──
+        if (balance > chargeThreshold) {
+          results.push({ client: client.name, action: 'balance_ok', balance });
           continue;
         }
 
-        // ── Monthly cap ──
-        let chargeAmount = Number(wallet.auto_charge_amount);
+        // ── Step 3c: Validate charge amount ──
+        const chargeAmount = Number(wallet.auto_charge_amount);
+        if (chargeAmount < MIN_CHARGE_AMOUNT) {
+          console.log(`${client.name}: charge amount $${chargeAmount} below minimum $${MIN_CHARGE_AMOUNT}`);
+          results.push({ client: client.name, action: 'skipped', reason: 'charge_amount_below_minimum' });
+          continue;
+        }
 
-        if (wallet.monthly_ad_spend_cap) {
-          const { data: monthlyCharges } = await supabase
-            .from('billing_records')
-            .select('amount')
-            .eq('client_id', clientId)
-            .eq('billing_type', 'ad_spend')
-            .eq('status', 'paid')
-            .gte('paid_at', monthStart);
+        // ── Step 3d: Call attempt_recharge() RPC (RECH-06/07/08/09/10) ──
+        // This handles: state mutex, daily limit (2/day), escalating cooldown, monthly cap
+        const { data: rechargeResult, error: rechargeError } = await supabase.rpc(
+          'attempt_recharge',
+          {
+            p_client_id: clientId,
+            p_charge_amount: chargeAmount,
+            p_monthly_cap: wallet.monthly_ad_spend_cap,
+          },
+        );
 
-          const monthTotal = monthlyCharges?.reduce((sum: number, r: any) => sum + Number(r.amount), 0) ?? 0;
-          const remainingCap = Number(wallet.monthly_ad_spend_cap) - monthTotal;
+        if (rechargeError || !rechargeResult?.success) {
+          const reason = rechargeResult?.reason || rechargeError?.message || 'unknown';
+          console.log(`${client.name}: attempt_recharge rejected — ${reason}`);
+          results.push({ client: client.name, action: 'skipped', reason });
 
-          if (remainingCap <= 0) {
-            console.log(`${client.name}: monthly cap reached ($${wallet.monthly_ad_spend_cap})`);
-            results.push({ client: client.name, action: 'cap_reached', monthTotal });
-            await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
-            continue;
+          // Notify on daily limit hits
+          if (rechargeResult?.reason === 'daily_limit') {
+            await notify({
+              supabase,
+              clientId,
+              clientName: client.name,
+              severity: 'warning',
+              title: 'Daily Charge Limit Reached',
+              message: `Client ${client.name} hit daily charge limit (2/day). Balance: $${Number(balance).toFixed(2)}.`,
+            });
           }
 
-          chargeAmount = Math.min(chargeAmount, remainingCap);
-        }
+          // Notify on monthly cap exceeded
+          if (rechargeResult?.reason === 'monthly_cap_exceeded') {
+            await notify({
+              supabase,
+              clientId,
+              clientName: client.name,
+              severity: 'warning',
+              title: 'Monthly Cap Reached',
+              message: `Client ${client.name} hit monthly cap ($${rechargeResult.cap}). Month total: $${rechargeResult.month_total}.`,
+              metadata: { cap: rechargeResult.cap, month_total: rechargeResult.month_total },
+            });
+          }
 
-        if (chargeAmount < MIN_CHARGE_AMOUNT) {
-          console.log(`${client.name}: charge amount too small ($${chargeAmount}), triggering safe mode`);
-          results.push({ client: client.name, action: 'safe_mode', reason: 'charge_too_small' });
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
           continue;
         }
 
-        // ── Daily cap: max 2 charge attempts per client per day ──
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-        const { count: dailyChargeCount } = await supabase
-          .from('billing_records')
-          .select('*', { count: 'exact', head: true })
-          .eq('client_id', clientId)
-          .eq('billing_type', 'ad_spend')
-          .gte('created_at', todayStart);
-
-        if ((dailyChargeCount || 0) >= 2) {
-          console.log(`${client.name}: daily retry limit reached (${dailyChargeCount} charges today)`);
-          results.push({ client: client.name, action: 'skipped', reason: 'daily_limit_reached', chargestoday: dailyChargeCount });
-          continue;
-        }
-
-        // ── Skip if there's already an unpaid (pending/overdue/charging) ad_spend charge in the last 24 hours ──
-        const dedup24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: existingUnpaid } = await supabase
-          .from('billing_records')
-          .select('id, status, created_at')
-          .eq('client_id', clientId)
-          .eq('billing_type', 'ad_spend')
-          .in('status', ['pending', 'overdue', 'charging'])
-          .gte('created_at', dedup24h)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (existingUnpaid) {
-          console.log(`${client.name}: existing unpaid charge ${existingUnpaid.id} (${existingUnpaid.status}), skipping new charge`);
-          results.push({ client: client.name, action: 'skipped', reason: 'existing_unpaid_charge', record_id: existingUnpaid.id });
-          // Still trigger safe mode if not already in it
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
-          continue;
-        }
-
-        // ── Cooldown: skip if recharged (paid) within the last 2.5 hours ──
-        const cooldownMs = 2.5 * 60 * 60 * 1000; // 2.5 hours
-        const cooldownCutoff = new Date(now.getTime() - cooldownMs).toISOString();
-        const { data: recentCharge } = await supabase
-          .from('billing_records')
-          .select('id, status, paid_at, created_at')
-          .eq('client_id', clientId)
-          .eq('billing_type', 'ad_spend')
-          .in('status', ['paid'])
-          .or(`paid_at.gte.${cooldownCutoff},created_at.gte.${cooldownCutoff}`)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (recentCharge) {
-          const chargeTime = recentCharge.paid_at || recentCharge.created_at;
-          console.log(`${client.name}: recharged recently at ${chargeTime}, cooldown active`);
-          results.push({ client: client.name, action: 'skipped', reason: 'cooldown_active', last_charge: chargeTime });
-          continue;
-        }
-
-        // ── Look up Stripe customer and payment method ──
+        // ── Step 3e: Look up Stripe customer and payment method ──
         const { data: stripeCustomer } = await supabase
           .from('client_stripe_customers')
           .select('stripe_customer_id')
@@ -183,9 +178,15 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!stripeCustomer) {
-          console.log(`${client.name}: no Stripe customer linked for ad_spend, triggering safe mode`);
-          results.push({ client: client.name, action: 'safe_mode', reason: 'no_stripe_customer' });
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
+          console.log(`${client.name}: no Stripe customer linked for ad_spend`);
+          results.push({ client: client.name, action: 'skipped', reason: 'no_stripe_customer' });
+          // Reset state back to failed since we can't charge
+          await supabase.from('recharge_state').update({
+            state: 'failed',
+            last_failure_at: new Date().toISOString(),
+            last_failure_reason: 'no_stripe_customer',
+            updated_at: new Date().toISOString(),
+          }).eq('client_id', clientId);
           continue;
         }
 
@@ -198,13 +199,19 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (!paymentMethod) {
-          console.log(`${client.name}: no payment method on file, triggering safe mode`);
-          results.push({ client: client.name, action: 'safe_mode', reason: 'no_payment_method' });
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
+          console.log(`${client.name}: no default payment method on file`);
+          results.push({ client: client.name, action: 'skipped', reason: 'no_payment_method' });
+          // Reset state back to failed since we can't charge
+          await supabase.from('recharge_state').update({
+            state: 'failed',
+            last_failure_at: new Date().toISOString(),
+            last_failure_reason: 'no_payment_method',
+            updated_at: new Date().toISOString(),
+          }).eq('client_id', clientId);
           continue;
         }
 
-        // ── Step 1: Create billing record with 'charging' status BEFORE calling Stripe ──
+        // ── Step 3f: Create billing record with 'charging' status BEFORE Stripe call ──
         const { data: newRecord, error: insertError } = await supabase
           .from('billing_records')
           .insert({
@@ -225,97 +232,184 @@ Deno.serve(async (req) => {
 
         if (insertError) throw insertError;
 
-        // Update last_auto_charge_at on charge initiation (not on PI success)
-        await supabase
-          .from('client_wallets')
-          .update({ last_auto_charge_at: now.toISOString() })
-          .eq('id', wallet.id);
+        // Link billing record to recharge_state
+        await supabase.from('recharge_state').update({
+          current_billing_record_id: newRecord.id,
+          updated_at: new Date().toISOString(),
+        }).eq('client_id', clientId);
 
         console.log(`${client.name}: charging $${chargeAmount} via Stripe (billing_record=${newRecord.id})...`);
 
-        // ── Step 2: Create Stripe PaymentIntent with idempotency key ──
-        const piBody = new URLSearchParams({
-          amount: String(Math.round(chargeAmount * 100)),
-          currency: 'usd',
-          customer: stripeCustomer.stripe_customer_id,
-          payment_method: paymentMethod.stripe_payment_method_id,
-          confirm: 'true',
-          off_session: 'true',
-          'metadata[client_id]': clientId,
-          'metadata[charge_type]': 'auto_recharge',
-          'metadata[billing_record_id]': newRecord.id,
-        });
+        // ── Step 3g: Create Stripe PaymentIntent with idempotency key ──
+        try {
+          const piBody = new URLSearchParams({
+            amount: String(Math.round(chargeAmount * 100)),
+            currency: 'usd',
+            customer: stripeCustomer.stripe_customer_id,
+            payment_method: paymentMethod.stripe_payment_method_id,
+            confirm: 'true',
+            off_session: 'true',
+            'metadata[client_id]': clientId,
+            'metadata[source]': 'auto_recharge',
+            'metadata[billing_record_id]': newRecord.id,
+          });
 
-        const res = await fetch('https://api.stripe.com/v1/payment_intents', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${STRIPE_AD_SPEND_KEY()}`,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Idempotency-Key': `auto-recharge-${newRecord.id}`,
-          },
-          body: piBody.toString(),
-        });
+          const res = await fetch('https://api.stripe.com/v1/payment_intents', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${STRIPE_AD_SPEND_KEY()}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Idempotency-Key': rechargeResult.idempotency_key,
+            },
+            body: piBody.toString(),
+          });
 
-        const pi = await res.json();
+          const pi = await res.json();
+          console.log(`${client.name}: PaymentIntent ${pi.id} status=${pi.status}`);
 
-        console.log(`${client.name}: PaymentIntent ${pi.id} status=${pi.status}`);
-
-        // ── Step 3: Update billing record with PI ID but do NOT mark paid ──
-        if (pi.status === 'succeeded') {
-          // Update with PI ID only -- webhook handles paid + deposit via process_successful_charge()
-          await supabase
-            .from('billing_records')
-            .update({
+          if (pi.status === 'succeeded') {
+            // ── PI succeeded: update recharge_state, let webhook handle paid+deposit ──
+            await supabase.from('billing_records').update({
               stripe_payment_intent_id: pi.id,
-            })
-            .eq('id', newRecord.id);
+            }).eq('id', newRecord.id);
 
-          console.log(`${client.name}: PI succeeded, awaiting webhook for paid+deposit (billing_record=${newRecord.id})`);
-          results.push({ client: client.name, action: 'charging', amount: chargeAmount, pi_id: pi.id, billing_record_id: newRecord.id });
+            await supabase.from('recharge_state').update({
+              state: 'succeeded',
+              current_stripe_pi_id: pi.id,
+              last_success_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }).eq('client_id', clientId);
 
-        } else if (pi.status === 'requires_action') {
-          // 3D Secure or similar -- keep as 'charging', add payment link
-          const paymentLink = pi.next_action?.redirect_to_url?.url || null;
-          await supabase
-            .from('billing_records')
-            .update({
+            // Update last_auto_charge_at on wallet
+            await supabase.from('client_wallets').update({
+              last_auto_charge_at: new Date().toISOString(),
+            }).eq('client_id', clientId);
+
+            await notify({
+              supabase,
+              clientId,
+              clientName: client.name,
+              severity: 'info',
+              title: 'Auto-Recharge Succeeded',
+              message: `Charged $${chargeAmount.toFixed(2)} for ${client.name}. Awaiting webhook confirmation.`,
+              metadata: { amount: chargeAmount, pi_id: pi.id, billing_record_id: newRecord.id },
+            });
+
+            console.log(`${client.name}: PI succeeded, awaiting webhook for paid+deposit`);
+            results.push({
+              client: client.name,
+              action: 'charged',
+              amount: chargeAmount,
+              pi_id: pi.id,
+              billing_record_id: newRecord.id,
+            });
+
+          } else if (pi.status === 'requires_action') {
+            // ── 3D Secure required: mark failed, store payment link ──
+            const paymentLink = pi.next_action?.redirect_to_url?.url || null;
+
+            await supabase.from('billing_records').update({
               stripe_payment_intent_id: pi.id,
               payment_link: paymentLink,
-            })
-            .eq('id', newRecord.id);
+            }).eq('id', newRecord.id);
 
-          await supabase
-            .from('client_wallets')
-            .update({ last_charge_failed_at: now.toISOString() })
-            .eq('id', wallet.id);
+            await supabase.from('recharge_state').update({
+              state: 'failed',
+              last_failure_at: new Date().toISOString(),
+              last_failure_reason: 'requires_action_3ds',
+              attempt_number: rechargeResult.charge_attempts_today,
+              updated_at: new Date().toISOString(),
+            }).eq('client_id', clientId);
 
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
+            await notify({
+              supabase,
+              clientId,
+              clientName: client.name,
+              severity: 'warning',
+              title: '3DS Authentication Required',
+              message: `Auto-recharge for ${client.name} ($${chargeAmount.toFixed(2)}) requires 3DS verification.`,
+              metadata: { amount: chargeAmount, pi_id: pi.id, payment_link: paymentLink },
+            });
 
-          console.log(`${client.name}: requires 3DS action, billing record stays as charging`);
-          results.push({ client: client.name, action: 'requires_action', amount: chargeAmount, payment_link: paymentLink });
+            console.log(`${client.name}: requires 3DS action`);
+            results.push({
+              client: client.name,
+              action: 'requires_action',
+              amount: chargeAmount,
+              payment_link: paymentLink,
+            });
 
-        } else {
-          // Payment failed -- mark as overdue
-          const errorMessage = pi.last_payment_error?.message || pi.error?.message || `Status: ${pi.status}`;
+          } else {
+            // ── PI failed: mark billing record overdue, update recharge_state ──
+            const errorMessage = pi.last_payment_error?.message || pi.error?.message || `Status: ${pi.status}`;
 
-          await supabase
-            .from('billing_records')
-            .update({
+            await supabase.from('billing_records').update({
               stripe_payment_intent_id: pi.id || null,
               status: 'overdue',
               last_charge_error: errorMessage,
-            })
-            .eq('id', newRecord.id);
+            }).eq('id', newRecord.id);
 
-          await supabase
-            .from('client_wallets')
-            .update({ last_charge_failed_at: now.toISOString() })
-            .eq('id', wallet.id);
+            await supabase.from('recharge_state').update({
+              state: 'failed',
+              last_failure_at: new Date().toISOString(),
+              last_failure_reason: errorMessage.slice(0, 500),
+              attempt_number: rechargeResult.charge_attempts_today,
+              updated_at: new Date().toISOString(),
+            }).eq('client_id', clientId);
 
-          await triggerSafeMode(supabase, supabaseUrl, supabaseServiceKey, clientId);
+            // Escalation: critical alert after 2nd failure
+            const severity = rechargeResult.charge_attempts_today >= 2 ? 'critical' : 'warning';
+            await notify({
+              supabase,
+              clientId,
+              clientName: client.name,
+              severity,
+              title: severity === 'critical' ? 'Repeated Charge Failure' : 'Charge Failed',
+              message: `Attempt ${rechargeResult.charge_attempts_today}/2 failed for ${client.name}: ${errorMessage}`,
+              metadata: { amount: chargeAmount, stripe_error: errorMessage },
+            });
 
-          console.log(`${client.name}: charge failed -- ${errorMessage}`);
-          results.push({ client: client.name, action: 'charge_failed', amount: chargeAmount, error: errorMessage });
+            console.log(`${client.name}: charge failed — ${errorMessage}`);
+            results.push({
+              client: client.name,
+              action: 'charge_failed',
+              amount: chargeAmount,
+              error: errorMessage,
+            });
+          }
+
+        } catch (stripeError) {
+          // ── RECH-14: Stripe unreachable — fail gracefully, do NOT modify budgets ──
+          const errorMsg = (stripeError as Error).message;
+          console.error(`${client.name}: Stripe API unreachable:`, stripeError);
+
+          // Mark billing record as overdue
+          await supabase.from('billing_records').update({
+            status: 'overdue',
+            last_charge_error: 'stripe_unreachable: ' + errorMsg,
+          }).eq('id', newRecord.id);
+
+          await supabase.from('recharge_state').update({
+            state: 'failed',
+            last_failure_at: new Date().toISOString(),
+            last_failure_reason: 'stripe_unreachable: ' + errorMsg.slice(0, 450),
+            updated_at: new Date().toISOString(),
+          }).eq('client_id', clientId);
+
+          await notify({
+            supabase,
+            clientId,
+            clientName: client.name,
+            severity: 'critical',
+            title: 'Stripe API Unreachable',
+            message: `Cannot reach Stripe for ${client.name}. No budgets modified. Will retry next run.`,
+          });
+
+          results.push({
+            client: client.name,
+            action: 'stripe_unreachable',
+            error: errorMsg,
+          });
         }
 
       } catch (clientError) {
@@ -332,27 +426,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });
-
-async function triggerSafeMode(
-  supabase: any,
-  supabaseUrl: string,
-  supabaseServiceKey: string,
-  clientId: string,
-) {
-  try {
-    await fetch(`${supabaseUrl}/functions/v1/check-low-balance`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${supabaseServiceKey}`,
-        'x-billing-secret': Deno.env.get('BILLING_EDGE_SECRET') || '',
-      },
-      body: JSON.stringify({ clientId }),
-    });
-  } catch (e) {
-    console.error('Failed to trigger safe mode for client:', clientId, e);
-  }
-}
 
 function jsonResponse(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
