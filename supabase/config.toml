@@ -240,6 +240,9 @@ verify_jwt = false
 [functions.save-payment-method]
 verify_jwt = false
 
+[functions.set-default-payment-method]
+verify_jwt = false
+
 [functions.create-stripe-invoice]
 verify_jwt = false
 
