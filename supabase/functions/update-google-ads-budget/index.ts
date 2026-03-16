@@ -55,6 +55,23 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // CAMP-08: Safe mode lock -- reject budget edits when safe mode is active
+    const { data: rechargeState } = await supabase
+      .from('recharge_state')
+      .select('safe_mode_active')
+      .eq('client_id', clientId)
+      .maybeSingle();
+
+    if (rechargeState?.safe_mode_active) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Budget editing locked during safe mode. Resolve payment to unlock.',
+      }), {
+        status: 409,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     let customerId: string;
     let campaignId: string;
 
@@ -204,17 +221,21 @@ serve(async (req) => {
         console.error('Error updating campaign budget:', campaignUpdateError);
       }
 
-      // Log budget change to history
-      await supabase.from('campaign_budget_changes').insert({
-        campaign_id: campaignRowId,
+      // CAMP-03: Log budget change to campaign_audit_log (replaces ghost campaign_budget_changes table)
+      const { error: auditError } = await supabase.from('campaign_audit_log').insert({
         client_id: clientId,
-        google_campaign_id: oldCampaign?.google_campaign_id || campaignId,
-        old_budget: oldBudget,
-        new_budget: newDailyBudget,
-        change_source: changeSource || 'unknown',
-        change_reason: changeReason || null,
-        triggered_by: 'system',
+        campaign_id: campaignRowId,
+        action: 'budget_change',
+        actor: changeSource === 'safe_mode_exit' ? 'system' : 'admin',
+        old_value: { daily_budget: oldBudget },
+        new_value: { daily_budget: newDailyBudget },
+        reason_codes: changeSource ? [changeSource] : ['manual_edit'],
+        notes: changeReason || null,
       });
+
+      if (auditError) {
+        console.error('Error writing audit log (campaign path):', auditError);
+      }
 
       // Also update clients.target_daily_spend as sum of all campaign budgets
       const { data: allCampaigns } = await supabase
@@ -248,16 +269,21 @@ serve(async (req) => {
         console.error('Error updating local client:', updateError);
       }
 
-      // Log budget change to history (client-level, no campaign row)
-      await supabase.from('campaign_budget_changes').insert({
+      // CAMP-03: Log budget change to campaign_audit_log (client-level, no campaign row)
+      const { error: auditError } = await supabase.from('campaign_audit_log').insert({
         client_id: clientId,
-        google_campaign_id: oldClient?.google_campaign_id || null,
-        old_budget: oldClient?.target_daily_spend ?? null,
-        new_budget: newDailyBudget,
-        change_source: changeSource || 'unknown',
-        change_reason: changeReason || null,
-        triggered_by: 'system',
+        campaign_id: null,
+        action: 'budget_change',
+        actor: changeSource === 'safe_mode_exit' ? 'system' : 'admin',
+        old_value: { daily_budget: oldClient?.target_daily_spend ?? null },
+        new_value: { daily_budget: newDailyBudget },
+        reason_codes: changeSource ? [changeSource] : ['manual_edit'],
+        notes: changeReason || null,
       });
+
+      if (auditError) {
+        console.error('Error writing audit log (client path):', auditError);
+      }
     }
 
     return new Response(JSON.stringify({
