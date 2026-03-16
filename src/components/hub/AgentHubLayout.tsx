@@ -48,6 +48,7 @@ import { ClientPreviewBanner } from '@/components/hub/ClientPreviewBanner';
 import { MaintenanceBanner } from '@/components/hub/MaintenanceBanner';
 import { CampaignUpdateBanner } from '@/components/hub/CampaignUpdateBanner';
 import { PlatformUpdateBanner } from '@/components/hub/PlatformUpdateBanner';
+import { NotificationBell } from '@/components/admin/NotificationBell';
 import { useUnreadCount } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
 
@@ -334,6 +335,13 @@ export default function AgentHubLayout() {
           ))}
         </nav>
 
+        {/* Notification Bell (admin only) */}
+        {isAdmin && (
+          <div className={`px-3 py-2 border-t border-white/5 ${collapsed ? 'flex justify-center' : ''}`}>
+            <NotificationBell />
+          </div>
+        )}
+
         {/* User Menu */}
         <div className="p-3 border-t border-white/5">
           <DropdownMenu>
@@ -380,13 +388,16 @@ export default function AgentHubLayout() {
           <span className="text-lg font-light tracking-tight text-foreground">ALPHA</span>
           <span className="text-lg font-bold tracking-tight text-primary">HUB</span>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-        >
-          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </Button>
+        <div className="flex items-center gap-1">
+          {isAdmin && <NotificationBell />}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
+            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </Button>
+        </div>
       </div>
 
       {/* Mobile Sidebar Overlay */}
