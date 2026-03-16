@@ -53,6 +53,7 @@ import { MetricsDateSelector, DatePreset, getDateRangeFromPreset } from '@/compo
 import { AgreementSigningWidget } from '@/components/portal/AgreementSigningWidget';
 import { AgreementSignedWidget } from '@/components/portal/AgreementSignedWidget';
 import { OnboardingPaymentFlow } from '@/components/portal/OnboardingPaymentFlow';
+import { ClientBillingSection } from '@/components/portal/client/ClientBillingSection';
 import { useClientAgreement } from '@/hooks/useAgreement';
 import { OnboardingAutomationWidget } from '@/components/admin/OnboardingAutomationWidget';
 import ChurnReasonDropdown from '@/components/admin/ChurnReasonDropdown';
@@ -937,22 +938,28 @@ export default function PortalAdminClientDetail() {
 
           {/* Billing Tab */}
           <TabsContent value="billing" className="space-y-6">
-            {/* Onboarding Payment Flow */}
-            {client.id && (
-              <OnboardingPaymentFlow
-                clientId={client.id}
-                hasSignedAgreement={hasSignedAgreement}
-                clientEmail={client.email}
-                open={paymentWizardOpen}
-                onOpenChange={setPaymentWizardOpen}
-              />
+            {isClientView ? (
+              <ClientBillingSection clientId={client.id} />
+            ) : (
+              <>
+                {/* Onboarding Payment Flow */}
+                {client.id && (
+                  <OnboardingPaymentFlow
+                    clientId={client.id}
+                    hasSignedAgreement={hasSignedAgreement}
+                    clientEmail={client.email}
+                    open={paymentWizardOpen}
+                    onOpenChange={setPaymentWizardOpen}
+                  />
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <PaymentMethodCard clientId={client.id} isAdmin={true} />
+                  <AdSpendSetupCard clientId={client.id} />
+                </div>
+                <BillingWidget clientId={client.id} isAdmin={true} />
+                <CreditsWidget clientId={client.id} isAdmin={true} />
+              </>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <PaymentMethodCard clientId={client.id} isAdmin={!isClientView} />
-              {!isClientView && <AdSpendSetupCard clientId={client.id} />}
-            </div>
-            <BillingWidget clientId={client.id} isAdmin={!isClientView} />
-            <CreditsWidget clientId={client.id} isAdmin={!isClientView} />
           </TabsContent>
 
           {/* Support Tab */}
