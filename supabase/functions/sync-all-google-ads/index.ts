@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notify } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -102,6 +103,43 @@ serve(async (req) => {
 
     console.log(`Sync complete: ${successCount} success, ${failedCount} failed`);
 
+    // -- Failure tracking: reset on any success, increment on all-clients-failed --
+    const FUNCTION_NAME = 'sync-all-google-ads';
+    const allFailed = failedCount > 0 && successCount === 0;
+
+    if (allFailed) {
+      // Increment failure counter
+      const { data: failState } = await supabase
+        .from('sync_failure_log')
+        .select('consecutive_failures')
+        .eq('function_name', FUNCTION_NAME)
+        .single();
+
+      const newCount = (failState?.consecutive_failures ?? 0) + 1;
+      await supabase.from('sync_failure_log').update({
+        consecutive_failures: newCount,
+        last_failure_at: new Date().toISOString(),
+        last_error: results.filter(r => !r.success).map(r => r.error).join('; ').slice(0, 500),
+      }).eq('function_name', FUNCTION_NAME);
+
+      if (newCount >= 3) {
+        await notify({
+          supabase,
+          severity: 'critical',
+          title: 'Google Ads Sync Failing',
+          message: `${newCount} consecutive full failures (${newCount * 5}+ minutes stale). Last errors: ${results.filter(r => !r.success).map(r => `${r.clientName}: ${r.error}`).join(', ').slice(0, 300)}`,
+          alertType: 'sync_failure',
+          metadata: { function_name: FUNCTION_NAME, consecutive_failures: newCount },
+        });
+      }
+    } else {
+      // Reset failure counter on any success
+      await supabase.from('sync_failure_log').update({
+        consecutive_failures: 0,
+        last_success_at: new Date().toISOString(),
+      }).eq('function_name', FUNCTION_NAME);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -118,7 +156,31 @@ serve(async (req) => {
   } catch (error: unknown) {
     console.error('Error syncing all Google Ads:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+
+    // Track systemic failure
+    try {
+      const { data: failState } = await supabase
+        .from('sync_failure_log')
+        .select('consecutive_failures')
+        .eq('function_name', 'sync-all-google-ads')
+        .single();
+      const newCount = (failState?.consecutive_failures ?? 0) + 1;
+      await supabase.from('sync_failure_log').update({
+        consecutive_failures: newCount,
+        last_failure_at: new Date().toISOString(),
+        last_error: errorMessage.slice(0, 500),
+      }).eq('function_name', 'sync-all-google-ads');
+      if (newCount >= 3) {
+        await notify({
+          supabase,
+          severity: 'critical',
+          title: 'Google Ads Sync Failing',
+          message: `${newCount} consecutive failures. Error: ${errorMessage.slice(0, 300)}`,
+          alertType: 'sync_failure',
+        });
+      }
+    } catch { /* failure tracking itself should never break the response */ }
+
     return new Response(
       JSON.stringify({ error: 'Failed to sync all clients', details: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
