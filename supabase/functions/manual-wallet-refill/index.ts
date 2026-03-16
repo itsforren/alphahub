@@ -1,4 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { restoreFromSnapshot, isInSafeMode } from '../_shared/safe-mode.ts';
+import { notify } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -122,6 +124,41 @@ Deno.serve(async (req) => {
         .from('client_wallets')
         .update({ last_auto_charge_at: new Date().toISOString() })
         .eq('id', wallet.id);
+
+      // Manual refill should trigger budget restoration if in safe mode
+      // Note: The webhook will also try to restore, but manual-wallet-refill
+      // can initiate it proactively since we know the charge succeeded.
+      // restoreFromSnapshot() is idempotent -- if the snapshot is already
+      // restored (e.g. by webhook), it returns { restored: false }.
+      const inSafe = await isInSafeMode(supabase, client_id);
+      if (inSafe) {
+        // Check balance after deposit is processed
+        const { data: balanceResult } = await supabase.rpc('compute_wallet_balance', {
+          p_client_id: client_id,
+        });
+        const balance = balanceResult?.remaining_balance ?? 0;
+        const chargeThreshold = wallet.low_balance_threshold ?? 150;
+
+        if (balance > chargeThreshold) {
+          const result = await restoreFromSnapshot(supabase, client_id, 'manual-wallet-refill');
+          if (result.restored) {
+            await notify({
+              supabase, clientId: client_id,
+              severity: 'info',
+              title: 'Manual Refill: Campaigns Restored',
+              message: `${result.campaignsRestored} campaigns restored after manual refill`,
+            });
+          }
+        }
+      }
+
+      // Reset recharge_state to idle
+      await supabase.from('recharge_state').update({
+        state: 'idle',
+        current_billing_record_id: null,
+        current_stripe_pi_id: null,
+        updated_at: new Date().toISOString(),
+      }).eq('client_id', client_id);
 
       console.log(`manual-wallet-refill: charged $${chargeAmount} for client ${client_id}`);
       return jsonRes({ success: true, amount_charged: chargeAmount });

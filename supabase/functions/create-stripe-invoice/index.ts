@@ -41,6 +41,11 @@ async function stripeGet(path: string, key: string) {
 }
 
 Deno.serve(async (req) => {
+  // NOTE: Campaign restoration after payment is handled by stripe-billing-webhook
+  // via restoreFromSnapshot() from _shared/safe-mode.ts. This function only
+  // creates the billing record and initiates the Stripe charge.
+  // RECH-05: All inline restoration logic removed to prevent .maybeSingle() bug.
+
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
