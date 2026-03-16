@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useClientWallet } from '@/hooks/useClientWallet';
 import { useRechargeState } from '@/hooks/useRechargeState';
+import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle } from 'lucide-react';
@@ -28,6 +29,10 @@ export function ClientWalletCard({ clientId }: ClientWalletCardProps) {
     refetchInterval: 30_000,
   });
 
+  // Deposit/spend breakdown (no polling needed for these)
+  const { totalDeposits, displayedSpend, isLoading: breakdownLoading } =
+    useComputedWalletBalance(clientId);
+
   // Wallet settings for auto-recharge display
   const { data: wallet } = useClientWallet(clientId);
 
@@ -48,6 +53,12 @@ export function ClientWalletCard({ clientId }: ClientWalletCardProps) {
             <p className="text-4xl font-bold">{formatCurrency(balance)}</p>
           )}
           <p className="text-sm text-muted-foreground mt-1">Account Balance</p>
+          {!breakdownLoading && (
+            <div className="mt-3 flex justify-center gap-6 text-sm text-muted-foreground">
+              <span>Deposits: {formatCurrency(totalDeposits)}</span>
+              <span>Ad Spend: {formatCurrency(displayedSpend)}</span>
+            </div>
+          )}
         </div>
 
         {/* Safe mode warning - client-friendly language */}
