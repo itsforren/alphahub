@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
-import { useAuditBooks, useClientVerifications } from '@/hooks/useBillingVerification';
+import { useAuditBooks, useClientVerifications, useVerifyClient, useVerifyRecord, useAnalyzeBilling, useClientAIAnalysis } from '@/hooks/useBillingVerification';
+import type { AIAnalysisResult, AIFinding } from '@/hooks/useBillingVerification';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { format, subDays, startOfWeek } from 'date-fns';
 import {
@@ -28,6 +31,10 @@ import {
   FileCheck2,
   ChevronDown,
   ChevronRight,
+  Brain,
+  Info,
+  Flag,
+  Notebook,
 } from 'lucide-react';
 
 // ── Shared formatting helpers ──
@@ -283,6 +290,7 @@ function CrossReferenceChain({
 }: CrossReferenceChainProps) {
   const [signOffId, setSignOffId] = useState<string | null>(null);
   const [signOffNotes, setSignOffNotes] = useState('');
+  const verifyRecord = useVerifyRecord();
 
   // Get per-record verifications for this client
   const { data: verifications = [] } = useClientVerifications(clientId);
@@ -484,9 +492,15 @@ function CrossReferenceChain({
                               <Button
                                 size="sm"
                                 className="h-5 text-[9px] px-1.5 flex-1 bg-green-600 hover:bg-green-700 text-white"
-                                data-sign-off-confirm={rec.id}
+                                disabled={verifyRecord.isPending}
+                                onClick={() => {
+                                  verifyRecord.mutate(
+                                    { clientId, billingRecordId: rec.id, notes: signOffNotes || undefined },
+                                    { onSuccess: () => { setSignOffId(null); setSignOffNotes(''); } }
+                                  );
+                                }}
                               >
-                                Confirm
+                                {verifyRecord.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Confirm'}
                               </Button>
                             </div>
                           </div>
@@ -517,6 +531,436 @@ function CrossReferenceChain({
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Verification Stamp Form ──
+
+interface VerificationStampFormProps {
+  clientId: string;
+  v1Total: number;
+  v1VerifiedCount: number;
+}
+
+function VerificationStampForm({ clientId, v1Total, v1VerifiedCount }: VerificationStampFormProps) {
+  const [scope, setScope] = useState<'all_records' | 'new_only' | 'records_through_date'>('all_records');
+  const [scopeDate, setScopeDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
+  const [notes, setNotes] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const verifyClient = useVerifyClient();
+  const { data: verifications = [] } = useClientVerifications(clientId);
+
+  // Client-level verifications (not per-record)
+  const clientVerifications = verifications.filter(v => !v.billing_record_id);
+  const allLegacySigned = v1Total === 0 || v1VerifiedCount === v1Total;
+
+  const handleVerify = () => {
+    verifyClient.mutate(
+      {
+        clientId,
+        scope,
+        scopeDate: scope === 'records_through_date' ? scopeDate : null,
+        notes: notes || undefined,
+        legacyVerifiedCount: v1VerifiedCount,
+      },
+      {
+        onSuccess: () => {
+          setNotes('');
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="rounded-lg border border-border/50 overflow-hidden">
+      <div className="px-3 py-2 bg-muted/40 border-b border-border/50 flex items-center justify-between">
+        <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-green-400" />
+          Verify Client
+        </span>
+        {!allLegacySigned && (
+          <span className="text-[10px] text-amber-400">
+            Sign off all {v1Total - v1VerifiedCount} remaining legacy record{v1Total - v1VerifiedCount !== 1 ? 's' : ''} first
+          </span>
+        )}
+      </div>
+
+      <div className="p-3 space-y-3">
+        {/* v1_manual progress */}
+        {v1Total > 0 && (
+          <div className="flex items-center gap-2 text-xs">
+            {allLegacySigned ? (
+              <span className="text-green-400 flex items-center gap-1">
+                <CircleCheck className="w-3 h-3" />
+                All {v1Total} legacy records verified
+              </span>
+            ) : (
+              <span className="text-amber-400 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {v1VerifiedCount} of {v1Total} legacy records verified
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Scope selector */}
+        <div className="space-y-2">
+          <span className="text-xs text-muted-foreground font-medium">Verification scope</span>
+          <RadioGroup
+            value={scope}
+            onValueChange={(v) => setScope(v as typeof scope)}
+            className="space-y-1"
+          >
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="all_records" id="scope-all" />
+              <Label htmlFor="scope-all" className="text-xs text-foreground cursor-pointer">All records</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="new_only" id="scope-new" disabled={!allLegacySigned} />
+              <Label htmlFor="scope-new" className={cn('text-xs cursor-pointer', allLegacySigned ? 'text-foreground' : 'text-muted-foreground')}>New records only</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="records_through_date" id="scope-date" />
+              <Label htmlFor="scope-date" className="text-xs text-foreground cursor-pointer">Records through date</Label>
+              {scope === 'records_through_date' && (
+                <Input
+                  type="date"
+                  value={scopeDate}
+                  onChange={e => setScopeDate(e.target.value)}
+                  className="h-6 w-32 text-[10px] ml-2"
+                />
+              )}
+            </div>
+          </RadioGroup>
+        </div>
+
+        {/* Notes */}
+        <Textarea
+          placeholder="Verification notes..."
+          value={notes}
+          onChange={e => setNotes(e.target.value)}
+          className="h-16 text-xs resize-none"
+        />
+
+        {/* Submit */}
+        <Button
+          className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
+          size="sm"
+          disabled={!allLegacySigned || verifyClient.isPending}
+          onClick={handleVerify}
+        >
+          {verifyClient.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <ShieldCheck className="w-4 h-4" />
+          )}
+          Mark as Verified
+        </Button>
+
+        {/* Verification history */}
+        {clientVerifications.length > 0 && (
+          <div className="border-t border-border/30 pt-2">
+            <button
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setHistoryOpen(!historyOpen)}
+            >
+              {historyOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              Verification History ({clientVerifications.length})
+            </button>
+            {historyOpen && (
+              <div className="mt-2 space-y-2">
+                {clientVerifications.map(v => {
+                  const analysis = v.ai_analysis as Record<string, unknown> | null;
+                  const vScope = (analysis?.scope as string) ?? 'unknown';
+                  return (
+                    <div key={v.id} className="rounded bg-muted/30 px-2 py-1.5 text-[11px]">
+                      <div className="flex items-center justify-between">
+                        <span className="text-foreground font-medium">
+                          {v.verified_at ? fmtDate(v.verified_at) : 'Unknown date'}
+                        </span>
+                        <Badge variant="outline" className={cn('text-[9px] px-1',
+                          vScope === 'all_records' ? 'bg-green-500/10 text-green-400 border-green-500/30'
+                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30'
+                        )}>
+                          {vScope === 'all_records' ? 'All' : vScope === 'new_only' ? 'New only' : vScope === 'records_through_date' ? 'Through date' : vScope}
+                        </Badge>
+                      </div>
+                      {v.resolution_notes && (
+                        <p className="text-muted-foreground mt-0.5">{v.resolution_notes}</p>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">
+                        {v.verification_method === 'human' ? 'Manual' : v.verification_method === 'ai' ? 'AI' : 'Automated'} verification
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AI Analysis Section ──
+
+function AIAnalysisSection({ clientId }: { clientId: string }) {
+  const analyzeMutation = useAnalyzeBilling();
+  const { data: cached, isLoading: cacheLoading } = useClientAIAnalysis(clientId);
+  const [confirmAction, setConfirmAction] = useState<{ findingId: string; action: string } | null>(null);
+
+  const handleAnalyze = () => {
+    analyzeMutation.mutate(clientId);
+  };
+
+  const analysis: AIAnalysisResult | null = analyzeMutation.data ?? cached?.result ?? null;
+  const analyzedAt = cached?.analyzedAt ?? null;
+  const isAnalyzing = analyzeMutation.isPending;
+
+  const statusColors: Record<string, string> = {
+    clean: 'bg-green-500/10 text-green-400 border-green-500/30',
+    issues_found: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+    critical_issues: 'bg-red-500/10 text-red-400 border-red-500/30',
+    error: 'bg-muted/30 text-muted-foreground border-border/50',
+  };
+
+  const statusLabels: Record<string, string> = {
+    clean: 'Clean',
+    issues_found: 'Issues Found',
+    critical_issues: 'Critical Issues',
+    error: 'Error',
+  };
+
+  const severityIcon = (severity: AIFinding['severity']) => {
+    switch (severity) {
+      case 'critical': return <CircleX className="w-4 h-4 text-red-400 shrink-0" />;
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0" />;
+      case 'info': return <Info className="w-4 h-4 text-blue-400 shrink-0" />;
+    }
+  };
+
+  const actionButton = (finding: AIFinding) => {
+    const isConfirming = confirmAction?.findingId === finding.id;
+
+    if (isConfirming) {
+      return (
+        <span className="inline-flex items-center gap-1">
+          <span className="text-[10px] text-muted-foreground">Sure?</span>
+          <button
+            className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30"
+            onClick={() => setConfirmAction(null)}
+          >
+            Yes
+          </button>
+          <button
+            className="text-[10px] px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground hover:bg-muted/50"
+            onClick={() => setConfirmAction(null)}
+          >
+            Cancel
+          </button>
+        </span>
+      );
+    }
+
+    switch (finding.suggested_action) {
+      case 'flag_for_review':
+        return (
+          <button
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 hover:bg-orange-500/20 transition-colors"
+            onClick={() => setConfirmAction({ findingId: finding.id, action: 'flag_for_review' })}
+          >
+            <Flag className="w-3 h-3" /> Flag
+          </button>
+        );
+      case 'mark_verified':
+        return (
+          <button
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20 transition-colors"
+            onClick={() => setConfirmAction({ findingId: finding.id, action: 'mark_verified' })}
+          >
+            <CircleCheck className="w-3 h-3" /> Verify
+          </button>
+        );
+      case 'create_adjustment':
+        return (
+          <button
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+            onClick={() => setConfirmAction({ findingId: finding.id, action: 'create_adjustment' })}
+          >
+            <Wallet className="w-3 h-3" /> Adjust
+          </button>
+        );
+      case 'investigate_stripe':
+        return (
+          <a
+            href={`https://dashboard.stripe.com/search#query=${finding.affected_records[0] || ''}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" /> Stripe
+          </a>
+        );
+      case 'contact_client':
+        return (
+          <button
+            className="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-muted/30 text-muted-foreground border border-border/50 hover:bg-muted/50 transition-colors"
+            onClick={() => setConfirmAction({ findingId: finding.id, action: 'contact_client' })}
+          >
+            <Notebook className="w-3 h-3" /> Note
+          </button>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const categoryLabel = (cat: string) => {
+    const labels: Record<string, string> = {
+      phantom_payment: 'Phantom Payment',
+      missing_deposit: 'Missing Deposit',
+      amount_mismatch: 'Amount Mismatch',
+      duplicate_charge: 'Duplicate Charge',
+      refund_discrepancy: 'Refund Discrepancy',
+      stale_record: 'Stale Record',
+      legacy_unverified: 'Legacy Unverified',
+    };
+    return labels[cat] || cat;
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Header with Analyze / Re-analyze button */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain className="w-4 h-4 text-purple-400" />
+          <span className="text-sm font-semibold text-foreground">AI Analysis</span>
+          {analyzedAt && !isAnalyzing && (
+            <span className="text-[10px] text-muted-foreground">
+              Last analyzed: {(() => { try { return format(new Date(analyzedAt), 'MMM d, h:mm a'); } catch { return analyzedAt; } })()}
+            </span>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 text-xs gap-1.5"
+          onClick={handleAnalyze}
+          disabled={isAnalyzing}
+        >
+          {isAnalyzing ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Brain className="w-3.5 h-3.5" />
+          )}
+          {isAnalyzing ? 'Analyzing...' : analysis ? 'Re-analyze' : 'Analyze with AI'}
+        </Button>
+      </div>
+
+      {/* Loading state */}
+      {cacheLoading && !analysis && (
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-24" />
+          <Skeleton className="h-4 w-full" />
+        </div>
+      )}
+
+      {/* Error state */}
+      {analyzeMutation.isError && (
+        <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+          <span className="text-xs text-red-400">
+            Analysis failed: {(analyzeMutation.error as Error)?.message || 'Unknown error'}
+          </span>
+        </div>
+      )}
+
+      {/* Results display */}
+      {analysis && !isAnalyzing && (
+        <div className="space-y-3">
+          {/* Status badge */}
+          <div className="flex items-start gap-3">
+            <Badge
+              variant="outline"
+              className={cn('text-sm gap-1.5 px-3 py-1 font-semibold', statusColors[analysis.status] || statusColors.error)}
+            >
+              {analysis.status === 'clean' && <CircleCheck className="w-4 h-4" />}
+              {analysis.status === 'issues_found' && <AlertTriangle className="w-4 h-4" />}
+              {analysis.status === 'critical_issues' && <CircleX className="w-4 h-4" />}
+              {analysis.status === 'error' && <Info className="w-4 h-4" />}
+              {statusLabels[analysis.status] || 'Unknown'}
+            </Badge>
+          </div>
+
+          {/* Summary */}
+          {analysis.summary && (
+            <p className="text-sm text-muted-foreground">{analysis.summary}</p>
+          )}
+
+          {/* Findings */}
+          {analysis.findings.length > 0 && (
+            <div className="rounded-lg border border-border/50 overflow-hidden">
+              <div className="px-3 py-2 bg-muted/40 border-b border-border/50">
+                <span className="text-xs font-semibold text-foreground">
+                  Findings ({analysis.findings.length})
+                </span>
+              </div>
+              <div className="divide-y divide-border/30">
+                {analysis.findings.map((finding) => (
+                  <div key={finding.id} className="px-3 py-2.5 flex items-start gap-3">
+                    {severityIcon(finding.severity)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-foreground">{finding.description}</span>
+                        <Badge variant="outline" className="text-[9px] px-1 bg-muted/30 text-muted-foreground border-border/50">
+                          {categoryLabel(finding.category)}
+                        </Badge>
+                        {finding.amount != null && finding.amount > 0 && (
+                          <span className="text-[10px] font-medium tabular-nums text-foreground">{fmt(finding.amount)}</span>
+                        )}
+                      </div>
+                      {finding.action_description && (
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{finding.action_description}</p>
+                      )}
+                    </div>
+                    <div className="shrink-0">
+                      {actionButton(finding)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* v1_manual summary */}
+          {analysis.v1_manual_summary && (
+            <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+              <div className="flex items-center gap-1.5 mb-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-amber-400">Legacy Records</span>
+              </div>
+              <p className="text-xs text-amber-300/80">{analysis.v1_manual_summary}</p>
+            </div>
+          )}
+
+          {/* Recommendations */}
+          {analysis.recommendations && analysis.recommendations.length > 0 && (
+            <div className="px-3 py-2 rounded-lg bg-muted/20 border border-border/30">
+              <span className="text-xs font-semibold text-foreground">Recommendations</span>
+              <ul className="mt-1 space-y-0.5">
+                {analysis.recommendations.map((rec, i) => (
+                  <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <span className="text-muted-foreground/50 mt-0.5">--</span>
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -576,6 +1020,20 @@ export function VerificationPanel({ clientId, clientName }: VerificationPanelPro
   const depositTotal = walletData.filter(tx => tx.transaction_type === 'deposit').reduce((s, tx) => s + Number(tx.amount || 0), 0);
   const adjustmentTotal = walletData.filter(tx => tx.transaction_type === 'adjustment').reduce((s, tx) => s + Number(tx.amount || 0), 0);
   const netWalletCredits = depositTotal + adjustmentTotal;
+
+  // v1_manual legacy record stats for verification stamp gate
+  const { data: clientVerifications = [] } = useClientVerifications(clientId);
+  const verifiedRecordIds = new Set(
+    clientVerifications
+      .filter(v => v.billing_record_id && v.status === 'verified')
+      .map(v => v.billing_record_id!)
+  );
+  const v1ManualRecords = billingData.filter(r =>
+    (r as any).source === 'v1_manual' ||
+    (!r.stripe_payment_intent_id && (r as any).source !== 'auto_recharge' && (r as any).source !== 'stripe')
+  );
+  const v1Total = v1ManualRecords.length;
+  const v1VerifiedCount = v1ManualRecords.filter(r => verifiedRecordIds.has(r.id)).length;
 
   const isAnyLoading = adSpend.isFetching || billingRecords.isFetching || walletTransactions.isFetching || stripeCharges.isFetching;
 
@@ -1090,8 +1548,16 @@ export function VerificationPanel({ clientId, clientName }: VerificationPanelPro
         )}
       </div>
 
-      {/* TODO: Plan 02 - Verification stamp form, v1_manual records */}
-      {/* TODO: Plan 03 - AI analysis section */}
+      {/* Verification stamp form */}
+      <VerificationStampForm
+        clientId={clientId}
+        v1Total={v1Total}
+        v1VerifiedCount={v1VerifiedCount}
+      />
+
+      {/* AI Analysis Section -- intelligence layer */}
+      <div className="border-t border-border/30" />
+      <AIAnalysisSection clientId={clientId} />
     </div>
   );
 }

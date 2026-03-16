@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 // ── Types ──
@@ -46,6 +46,45 @@ export interface ClientVerification {
 export interface ClientVerificationSummary {
   clientId: string;
   verifiedAt: string;
+  scope: 'all_records' | 'new_only' | 'records_through_date' | null;
+}
+
+export interface AIFinding {
+  id: string;
+  severity: 'critical' | 'warning' | 'info';
+  category: string;
+  description: string;
+  affected_records: string[];
+  amount?: number;
+  suggested_action: string;
+  action_description: string;
+}
+
+export interface AIAnalysisResult {
+  status: 'clean' | 'issues_found' | 'critical_issues' | 'error';
+  summary: string;
+  findings: AIFinding[];
+  v1_manual_summary?: string;
+  recommendations?: string[];
+}
+
+export interface AIAnalysisCached {
+  result: AIAnalysisResult;
+  analyzedAt: string;
+}
+
+export interface VerifyClientParams {
+  clientId: string;
+  notes?: string;
+  scope: 'all_records' | 'new_only' | 'records_through_date';
+  scopeDate?: string | null;
+  legacyVerifiedCount?: number;
+}
+
+export interface VerifyRecordParams {
+  clientId: string;
+  billingRecordId: string;
+  notes?: string;
 }
 
 // ── Hooks ──
@@ -105,8 +144,8 @@ export function useSyncHealth() {
 }
 
 /**
- * Queries billing_verifications for a specific client. READ-ONLY.
- * Write mutation comes in Plan 02.
+ * Queries billing_verifications for a specific client.
+ * Used by VerificationPanel for per-record and client-level verification display.
  */
 export function useClientVerifications(clientId: string | null) {
   return useQuery({
@@ -130,7 +169,8 @@ export function useClientVerifications(clientId: string | null) {
 
 /**
  * Queries ALL verified billing_verifications to show which clients are verified
- * in the overview table. Groups by client_id, returns most recent verified_at per client.
+ * in the overview table. Groups by client_id, returns most recent CLIENT-LEVEL
+ * verified_at per client (billing_record_id IS NULL = client-level stamp).
  */
 export function useAllClientVerifications() {
   return useQuery({
@@ -138,20 +178,185 @@ export function useAllClientVerifications() {
     queryFn: async (): Promise<Map<string, ClientVerificationSummary>> => {
       const { data, error } = await supabase
         .from('billing_verifications')
-        .select('client_id, verified_at')
+        .select('client_id, verified_at, ai_analysis, billing_record_id')
         .eq('status', 'verified')
         .order('verified_at', { ascending: false });
 
       if (error) throw error;
 
-      // Group by client_id, keep most recent verified_at
+      // Group by client_id, keep most recent CLIENT-LEVEL verification (billing_record_id IS NULL)
       const map = new Map<string, ClientVerificationSummary>();
       for (const row of data ?? []) {
+        // Only client-level verifications count for overview stamp
+        if (row.billing_record_id != null) continue;
         if (!map.has(row.client_id)) {
+          const analysis = row.ai_analysis as Record<string, unknown> | null;
+          const scope = (analysis?.scope as string) ?? null;
           map.set(row.client_id, {
             clientId: row.client_id,
             verifiedAt: row.verified_at ?? '',
+            scope: scope as ClientVerificationSummary['scope'],
           });
+        }
+      }
+      return map;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Mutations ──
+
+/**
+ * Inserts a CLIENT-LEVEL verification stamp into billing_verifications.
+ * billing_record_id = NULL means this is a client-level sign-off, not per-record.
+ */
+export function useVerifyClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: VerifyClientParams) => {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('billing_verifications')
+        .insert({
+          client_id: params.clientId,
+          billing_record_id: null,
+          wallet_transaction_id: null,
+          status: 'verified',
+          verified_by: userData.user.id,
+          verified_at: new Date().toISOString(),
+          verification_method: 'human',
+          resolution_notes: params.notes || null,
+          ai_analysis: {
+            scope: params.scope,
+            scope_date: params.scopeDate || null,
+            legacy_verified_count: params.legacyVerifiedCount || 0,
+          },
+        });
+      if (error) throw error;
+    },
+    onSuccess: (_data, params) => {
+      queryClient.invalidateQueries({ queryKey: ['audit-books'] });
+      queryClient.invalidateQueries({ queryKey: ['billing-integrity'] });
+      queryClient.invalidateQueries({ queryKey: ['client-verifications', params.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['all-client-verifications'] });
+    },
+  });
+}
+
+/**
+ * Inserts a PER-RECORD verification into billing_verifications.
+ * Used for v1_manual record sign-off: billing_record_id is set, method is 'human'.
+ */
+export function useVerifyRecord() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: VerifyRecordParams) => {
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError || !userData?.user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('billing_verifications')
+        .insert({
+          client_id: params.clientId,
+          billing_record_id: params.billingRecordId,
+          wallet_transaction_id: null,
+          status: 'verified',
+          verified_by: userData.user.id,
+          verified_at: new Date().toISOString(),
+          verification_method: 'human',
+          resolution_notes: params.notes || null,
+        });
+      if (error) throw error;
+    },
+    onSuccess: (_data, params) => {
+      queryClient.invalidateQueries({ queryKey: ['client-verifications', params.clientId] });
+      queryClient.invalidateQueries({ queryKey: ['all-client-verifications'] });
+    },
+  });
+}
+
+// ── AI Analysis Hooks ──
+
+/**
+ * Mutation: calls analyze-billing edge function for a single client.
+ * Returns structured AI analysis result. Invalidates verification queries on success.
+ */
+export function useAnalyzeBilling() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (clientId: string): Promise<AIAnalysisResult> => {
+      const { data, error } = await supabase.functions.invoke('analyze-billing', {
+        body: { clientId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data as AIAnalysisResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['billing-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['all-client-verifications'] });
+      queryClient.invalidateQueries({ queryKey: ['all-ai-analyses'] });
+    },
+  });
+}
+
+/**
+ * Read query: fetches the latest cached AI analysis for a client from billing_verifications.
+ * Looks for verification_method = 'ai' and billing_record_id IS NULL (client-level).
+ */
+export function useClientAIAnalysis(clientId: string | null) {
+  return useQuery({
+    queryKey: ['client-ai-analysis', clientId],
+    queryFn: async (): Promise<AIAnalysisCached | null> => {
+      if (!clientId) return null;
+
+      const { data, error } = await supabase
+        .from('billing_verifications')
+        .select('ai_analysis, verified_at')
+        .eq('client_id', clientId)
+        .eq('verification_method', 'ai')
+        .is('billing_record_id', null)
+        .order('verified_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data?.ai_analysis) return null;
+
+      return {
+        result: data.ai_analysis as unknown as AIAnalysisResult,
+        analyzedAt: data.verified_at ?? '',
+      };
+    },
+    enabled: !!clientId,
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Read query: fetches ALL client-level AI analyses for the overview table icons.
+ * Returns a Map of clientId -> AIAnalysisResult.status.
+ */
+export function useAllAIAnalyses() {
+  return useQuery({
+    queryKey: ['all-ai-analyses'],
+    queryFn: async (): Promise<Map<string, AIAnalysisResult['status']>> => {
+      const { data, error } = await supabase
+        .from('billing_verifications')
+        .select('client_id, ai_analysis')
+        .eq('verification_method', 'ai')
+        .is('billing_record_id', null);
+
+      if (error) throw error;
+
+      const map = new Map<string, AIAnalysisResult['status']>();
+      for (const row of data ?? []) {
+        const analysis = row.ai_analysis as Record<string, unknown> | null;
+        if (analysis?.status) {
+          map.set(row.client_id, analysis.status as AIAnalysisResult['status']);
         }
       }
       return map;

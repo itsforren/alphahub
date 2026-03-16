@@ -224,6 +224,7 @@ export function BillingIntegrityAudit() {
                     row={row}
                     isVerified={verificationMap?.has(row.clientId) ?? false}
                     verifiedAt={verificationMap?.get(row.clientId)?.verifiedAt ?? null}
+                    verificationScope={verificationMap?.get(row.clientId)?.scope ?? null}
                     verifLoading={verifLoading}
                     onCheck={() => setSelectedClientId(row.clientId)}
                     onNavigate={() => navigate(`/hub/admin/clients/${row.clientId}?tab=billing`)}
@@ -282,6 +283,7 @@ function Row({
   row,
   isVerified,
   verifiedAt,
+  verificationScope,
   verifLoading,
   onCheck,
   onNavigate,
@@ -289,10 +291,23 @@ function Row({
   row: BillingIntegrityRow;
   isVerified: boolean;
   verifiedAt: string | null;
+  verificationScope: 'all_records' | 'new_only' | 'records_through_date' | null;
   verifLoading: boolean;
   onCheck: () => void;
   onNavigate: () => void;
 }) {
+  // Stale if verified more than 30 days ago
+  const isStale = (() => {
+    if (!verifiedAt) return false;
+    try {
+      const diff = Date.now() - new Date(verifiedAt).getTime();
+      return diff > 30 * 24 * 60 * 60 * 1000;
+    } catch { return false; }
+  })();
+
+  const isFullVerification = verificationScope === 'all_records';
+  const isPartialVerification = verificationScope === 'new_only' || verificationScope === 'records_through_date';
+
   return (
     <tr
       className={cn(
@@ -318,16 +333,23 @@ function Row({
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex flex-col items-center">
-                <CircleCheck className="w-4 h-4 text-green-400" />
+                <CircleCheck className={cn('w-4 h-4', isFullVerification ? 'text-green-400' : 'text-yellow-400')} />
                 {verifiedAt && (
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className={cn('text-[10px]', isStale ? 'text-muted-foreground/50' : 'text-muted-foreground')}>
                     {(() => { try { return format(new Date(verifiedAt), 'MMM d'); } catch { return ''; } })()}
+                    {isStale && ' (stale)'}
                   </span>
                 )}
               </span>
             </TooltipTrigger>
             <TooltipContent>
-              <p>Verified{verifiedAt ? ` on ${(() => { try { return format(new Date(verifiedAt), 'MMM d, yyyy'); } catch { return verifiedAt; } })()}` : ''}</p>
+              <p>
+                {isFullVerification ? 'Fully verified' : 'Partially verified'}
+                {verifiedAt ? ` on ${(() => { try { return format(new Date(verifiedAt), 'MMM d, yyyy'); } catch { return verifiedAt; } })()}` : ''}
+                {isPartialVerification && verificationScope === 'new_only' && ' (new records only)'}
+                {isPartialVerification && verificationScope === 'records_through_date' && ' (records through date)'}
+                {isStale && ' -- stale, re-verify recommended'}
+              </p>
             </TooltipContent>
           </Tooltip>
         ) : (
