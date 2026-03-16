@@ -90,7 +90,11 @@ export function useComputedWalletBalance(clientId?: string) {
       });
 
       if (error) throw error;
-      return Number(data) ?? 0;
+      // RPC returns a composite type {remaining_balance, total_deposits, ...}
+      if (typeof data === 'object' && data !== null && 'remaining_balance' in data) {
+        return Number((data as Record<string, unknown>).remaining_balance) || 0;
+      }
+      return Number(data) || 0;
     },
     enabled: !!clientId,
   });

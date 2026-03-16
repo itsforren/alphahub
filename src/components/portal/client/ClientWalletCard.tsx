@@ -23,7 +23,10 @@ export function ClientWalletCard({ clientId }: ClientWalletCardProps) {
         p_client_id: clientId,
       });
       if (error) throw error;
-      return Number(data) ?? 0;
+      if (typeof data === 'object' && data !== null && 'remaining_balance' in data) {
+        return Number((data as Record<string, unknown>).remaining_balance) || 0;
+      }
+      return Number(data) || 0;
     },
     enabled: !!clientId,
     refetchInterval: 30_000,

@@ -114,7 +114,9 @@ export function useAuditBooks(clientId: string | null) {
         discrepancies: result.discrepancies ?? [],
         quarantined_count: result.quarantined_count ?? 0,
         admin_verified: result.admin_verified ?? false,
-        balance: result.balance ?? 0,
+        balance: typeof result.balance === 'object' && result.balance !== null
+          ? Number(result.balance.remaining_balance) || 0
+          : Number(result.balance) || 0,
         checked_at: new Date().toISOString(),
       };
     },
