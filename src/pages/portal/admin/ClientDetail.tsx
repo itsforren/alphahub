@@ -40,6 +40,7 @@ import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CampaignPanel } from '@/components/portal/CampaignPanel';
+import { BudgetHistoryPanel } from '@/components/portal/BudgetHistoryPanel';
 import { useCampaigns } from '@/hooks/useCampaigns';
 import EditableField from '@/components/portal/EditableField';
 import { CreateTicketFromChat } from '@/components/portal/chat/CreateTicketFromChat';
@@ -843,6 +844,11 @@ export default function PortalAdminClientDetail() {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* Budget History Panel */}
+            {!isClientView && client.id && (
+              <BudgetHistoryPanel clientId={client.id} />
             )}
 
             {/* Agreement Signing Widget - Only show if NOT signed */}
