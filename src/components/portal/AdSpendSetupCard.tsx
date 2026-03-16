@@ -4,12 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings2, Wallet, Loader2, Info, Zap, RefreshCw, AlertCircle } from 'lucide-react';
+import { Settings2, Wallet, Loader2, Info, Zap, RefreshCw, AlertCircle, History, ChevronDown, ChevronUp } from 'lucide-react';
 import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
+import { useRechargeState } from '@/hooks/useRechargeState';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import {
   Tooltip,
   TooltipContent,
@@ -21,8 +24,85 @@ interface AdSpendSetupCardProps {
   clientId: string;
 }
 
+// Field display name mapping for audit history
+const fieldLabels: Record<string, string> = {
+  low_balance_threshold: 'Charge Threshold',
+  safe_mode_threshold: 'Safe Mode Threshold',
+  auto_charge_amount: 'Recharge Amount',
+  monthly_ad_spend_cap: 'Monthly Cap',
+  auto_billing_enabled: 'Auto-Billing',
+  billing_mode: 'Billing Mode',
+};
+
+const currencyFields = new Set([
+  'low_balance_threshold',
+  'safe_mode_threshold',
+  'auto_charge_amount',
+  'monthly_ad_spend_cap',
+]);
+
+function formatAuditValue(fieldName: string, value: string | null): string {
+  if (value === null || value === '') return 'none';
+  if (fieldName === 'auto_billing_enabled') return value === 'true' ? 'enabled' : 'disabled';
+  if (currencyFields.has(fieldName)) return `$${value}`;
+  return value;
+}
+
+/** Inline audit history for a single client */
+function AuditHistoryInline({ clientId }: { clientId: string }) {
+  const { data: entries, isLoading } = useQuery({
+    queryKey: ['billing-audit-inline', clientId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('billing_settings_audit')
+        .select('*')
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-2">
+        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!entries || entries.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground py-2 text-center">
+        No settings changes recorded yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-1 pt-2 max-h-48 overflow-y-auto">
+      {entries.map((entry: any) => (
+        <div key={entry.id} className="text-xs text-muted-foreground flex items-start gap-1.5">
+          <span className="shrink-0 text-muted-foreground/70">
+            {format(new Date(entry.created_at), 'MMM d, h:mma')}
+          </span>
+          <span className="text-foreground/80">
+            {fieldLabels[entry.field_name] || entry.field_name}:{' '}
+            {formatAuditValue(entry.field_name, entry.old_value)} {'->'}  {formatAuditValue(entry.field_name, entry.new_value)}
+          </span>
+          <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 shrink-0">
+            {entry.change_source}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
   const { data: wallet, isLoading } = useClientWallet(clientId);
+  const { data: rechargeState } = useRechargeState(clientId);
   const updateWallet = useCreateOrUpdateWallet();
   const queryClient = useQueryClient();
 
@@ -30,6 +110,9 @@ export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
   const [autoChargeAmount, setAutoChargeAmount] = useState('');
   const [autoEnabled, setAutoEnabled] = useState(false);
   const [billingMode, setBillingMode] = useState<'manual' | 'auto_stripe'>('manual');
+  const [chargeThreshold, setChargeThreshold] = useState('150');
+  const [safeModeThreshold, setSafeModeThreshold] = useState('100');
+  const [showHistory, setShowHistory] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
   const [isRefilling, setIsRefilling] = useState(false);
@@ -40,17 +123,80 @@ export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
       setAutoChargeAmount(wallet.auto_charge_amount?.toString() || '');
       setAutoEnabled(wallet.auto_billing_enabled || false);
       setBillingMode((wallet as any).billing_mode || 'manual');
+      setChargeThreshold(wallet.low_balance_threshold?.toString() || '150');
+      setSafeModeThreshold((wallet as any).safe_mode_threshold?.toString() || '100');
     } else {
       setAutoChargeAmount('250');
       setAutoEnabled(true);
     }
   }, [wallet]);
 
+  // Threshold validation
+  const thresholdError =
+    autoEnabled &&
+    chargeThreshold &&
+    safeModeThreshold &&
+    parseFloat(safeModeThreshold) >= parseFloat(chargeThreshold)
+      ? 'Safe mode threshold must be lower than charge threshold.'
+      : null;
+
   const handleSave = async () => {
+    if (thresholdError) {
+      toast.error(thresholdError);
+      return;
+    }
+
     setIsSaving(true);
     try {
       const previousMode = (wallet as any)?.billing_mode || 'manual';
       const switchingToAuto = previousMode === 'manual' && billingMode === 'auto_stripe';
+
+      // Build changes list for audit trail (before the save)
+      const changes: Array<{ field_name: string; old_value: string | null; new_value: string | null }> = [];
+
+      if (wallet?.low_balance_threshold?.toString() !== chargeThreshold) {
+        changes.push({
+          field_name: 'low_balance_threshold',
+          old_value: wallet?.low_balance_threshold?.toString() || null,
+          new_value: chargeThreshold || null,
+        });
+      }
+      if ((wallet as any)?.safe_mode_threshold?.toString() !== safeModeThreshold) {
+        changes.push({
+          field_name: 'safe_mode_threshold',
+          old_value: (wallet as any)?.safe_mode_threshold?.toString() || null,
+          new_value: safeModeThreshold || null,
+        });
+      }
+      if (wallet?.auto_charge_amount?.toString() !== autoChargeAmount) {
+        changes.push({
+          field_name: 'auto_charge_amount',
+          old_value: wallet?.auto_charge_amount?.toString() || null,
+          new_value: autoChargeAmount || null,
+        });
+      }
+      if (wallet?.monthly_ad_spend_cap?.toString() !== (monthlyCap || '')) {
+        changes.push({
+          field_name: 'monthly_ad_spend_cap',
+          old_value: wallet?.monthly_ad_spend_cap?.toString() || null,
+          new_value: monthlyCap || null,
+        });
+      }
+      const effectiveAutoEnabled = switchingToAuto ? false : autoEnabled;
+      if (wallet?.auto_billing_enabled?.toString() !== effectiveAutoEnabled.toString()) {
+        changes.push({
+          field_name: 'auto_billing_enabled',
+          old_value: wallet?.auto_billing_enabled?.toString() || 'false',
+          new_value: effectiveAutoEnabled.toString(),
+        });
+      }
+      if (((wallet as any)?.billing_mode || 'manual') !== billingMode) {
+        changes.push({
+          field_name: 'billing_mode',
+          old_value: (wallet as any)?.billing_mode || 'manual',
+          new_value: billingMode,
+        });
+      }
 
       await updateWallet.mutateAsync({
         client_id: clientId,
@@ -58,7 +204,25 @@ export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
         auto_charge_amount: autoChargeAmount ? parseFloat(autoChargeAmount) : null,
         auto_billing_enabled: switchingToAuto ? false : autoEnabled,
         billing_mode: billingMode,
+        low_balance_threshold: chargeThreshold ? parseFloat(chargeThreshold) : 150,
+        safe_mode_threshold: safeModeThreshold ? parseFloat(safeModeThreshold) : 100,
       });
+
+      // Write audit trail entries for each changed field
+      if (changes.length > 0) {
+        const { data: { user } } = await supabase.auth.getUser();
+        await supabase.from('billing_settings_audit').insert(
+          changes.map((c) => ({
+            client_id: clientId,
+            changed_by: user?.id || null,
+            change_source: 'admin',
+            ...c,
+          }))
+        );
+        // Refresh inline history if visible
+        queryClient.invalidateQueries({ queryKey: ['billing-audit-inline', clientId] });
+        queryClient.invalidateQueries({ queryKey: ['billing-audit-log'] });
+      }
 
       if (switchingToAuto) {
         await supabase
@@ -156,6 +320,32 @@ export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* RECH-02: Charging status indicator */}
+        {rechargeState && autoEnabled && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {rechargeState.state === 'charging' && (
+              <Badge variant="outline" className="border-yellow-500 text-yellow-600 animate-pulse">
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Charging...
+              </Badge>
+            )}
+            {rechargeState.state === 'failed' && (
+              <Badge variant="outline" className="border-red-500 text-red-600">
+                Retry pending (attempt {rechargeState.attempt_number}/2)
+              </Badge>
+            )}
+            {rechargeState.state === 'succeeded' && (
+              <Badge variant="outline" className="border-green-500 text-green-600">
+                Last charge succeeded
+              </Badge>
+            )}
+            {rechargeState.safe_mode_active && (
+              <Badge variant="destructive">
+                Safe Mode Active
+              </Badge>
+            )}
+          </div>
+        )}
+
         {/* Migration banner for manual clients */}
         {isManual && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-3">
@@ -241,34 +431,115 @@ export function AdSpendSetupCard({ clientId }: AdSpendSetupCardProps) {
           <Switch checked={autoEnabled} onCheckedChange={setAutoEnabled} />
         </div>
 
-        {/* Recharge amount */}
+        {/* Auto-recharge settings (only when enabled) */}
         {autoEnabled && (
-          <div className="space-y-1.5">
-            <Label>Recharge Amount ($)</Label>
-            <Input
-              type="number"
-              min="50"
-              step="50"
-              placeholder="e.g. 500"
-              value={autoChargeAmount}
-              onChange={(e) => setAutoChargeAmount(e.target.value)}
-              className="h-9"
-            />
-            <p className="text-xs text-muted-foreground">
-              Amount charged when wallet drops below threshold (${wallet?.low_balance_threshold ?? 150}).
-            </p>
-          </div>
+          <>
+            {/* Recharge amount */}
+            <div className="space-y-1.5">
+              <Label>Recharge Amount ($)</Label>
+              <Input
+                type="number"
+                min="50"
+                step="50"
+                placeholder="e.g. 500"
+                value={autoChargeAmount}
+                onChange={(e) => setAutoChargeAmount(e.target.value)}
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">
+                Amount charged when wallet drops below the charge threshold.
+              </p>
+            </div>
+
+            {/* Charge Threshold */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                Charge Threshold ($)
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-[220px]">
+                      <p className="text-xs">When wallet balance drops to this amount, the system attempts to auto-charge. Default: $150.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </Label>
+              <Input
+                type="number"
+                min="50"
+                step="25"
+                placeholder="150"
+                value={chargeThreshold}
+                onChange={(e) => setChargeThreshold(e.target.value)}
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">
+                Balance level that triggers an automatic charge attempt.
+              </p>
+            </div>
+
+            {/* Safe Mode Threshold */}
+            <div className="space-y-1.5">
+              <Label className="flex items-center gap-1.5">
+                Safe Mode Threshold ($)
+                <TooltipProvider delayDuration={100}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-[220px]">
+                      <p className="text-xs">When wallet balance drops to this amount, campaigns are set to $0.01 budgets to prevent overspend. Must be lower than charge threshold. Default: $100.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                step="25"
+                placeholder="100"
+                value={safeModeThreshold}
+                onChange={(e) => setSafeModeThreshold(e.target.value)}
+                className="h-9"
+              />
+              <p className="text-xs text-muted-foreground">
+                Balance level that triggers campaign budget protection.
+              </p>
+              {thresholdError && (
+                <p className="text-xs text-red-500 font-medium">
+                  {thresholdError}
+                </p>
+              )}
+            </div>
+          </>
         )}
 
         <Button
           onClick={handleSave}
           size="sm"
-          disabled={isSaving}
+          disabled={isSaving || !!thresholdError}
           className="w-full"
         >
           {isSaving ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Wallet className="w-4 h-4 mr-1" />}
           Save Settings
         </Button>
+
+        {/* Inline audit history */}
+        <div className="pt-2 border-t">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full text-xs text-muted-foreground"
+          >
+            <History className="w-3 h-3 mr-1" />
+            {showHistory ? 'Hide' : 'Show'} Change History
+            {showHistory ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
+          </Button>
+          {showHistory && <AuditHistoryInline clientId={clientId} />}
+        </div>
       </CardContent>
     </Card>
   );

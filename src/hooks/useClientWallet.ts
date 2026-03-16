@@ -6,10 +6,11 @@ export interface ClientWallet {
   client_id: string;
   ad_spend_balance: number;
   low_balance_threshold: number;
+  safe_mode_threshold: number;
   auto_charge_amount: number | null;
   auto_billing_enabled: boolean;
   monthly_ad_spend_cap: number | null;
-  billing_mode: 'manual' | 'auto_stripe' | 'admin_exempt';
+  billing_mode: 'manual' | 'auto_stripe';
   last_calculated_at: string;
   last_auto_charge_at: string | null;
   last_charge_failed_at: string | null;
@@ -77,10 +78,11 @@ export function useCreateOrUpdateWallet() {
       client_id: string;
       ad_spend_balance?: number;
       low_balance_threshold?: number;
+      safe_mode_threshold?: number;
       auto_charge_amount?: number | null;
       auto_billing_enabled?: boolean;
       monthly_ad_spend_cap?: number | null;
-      billing_mode?: 'manual' | 'auto_stripe' | 'admin_exempt';
+      billing_mode?: 'manual' | 'auto_stripe';
     }) => {
       // Check if wallet exists
       const { data: existing } = await supabase
@@ -96,6 +98,7 @@ export function useCreateOrUpdateWallet() {
         const updateData: Record<string, any> = { last_calculated_at: new Date().toISOString() };
         if (fields.ad_spend_balance !== undefined) updateData.ad_spend_balance = fields.ad_spend_balance;
         if (fields.low_balance_threshold !== undefined) updateData.low_balance_threshold = fields.low_balance_threshold;
+        if (fields.safe_mode_threshold !== undefined) updateData.safe_mode_threshold = fields.safe_mode_threshold;
         if (fields.auto_charge_amount !== undefined) updateData.auto_charge_amount = fields.auto_charge_amount;
         if (fields.auto_billing_enabled !== undefined) updateData.auto_billing_enabled = fields.auto_billing_enabled;
         if (fields.monthly_ad_spend_cap !== undefined) updateData.monthly_ad_spend_cap = fields.monthly_ad_spend_cap;
@@ -119,6 +122,7 @@ export function useCreateOrUpdateWallet() {
             client_id,
             ad_spend_balance: fields.ad_spend_balance ?? 0,
             low_balance_threshold: fields.low_balance_threshold ?? 150,
+            safe_mode_threshold: fields.safe_mode_threshold ?? 100,
             auto_charge_amount: fields.auto_charge_amount,
             auto_billing_enabled: fields.auto_billing_enabled ?? false,
             monthly_ad_spend_cap: fields.monthly_ad_spend_cap,
