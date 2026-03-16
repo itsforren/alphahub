@@ -15,6 +15,7 @@ import { WeeklyAuditWidget } from '@/components/admin/WeeklyAuditWidget';
 import { AdSpendIntelligenceWidget } from '@/components/admin/AdSpendIntelligenceWidget';
 import { BillingIntegrityAudit } from '@/components/admin/BillingIntegrityAudit';
 import { BillingSummaryCards } from '@/components/admin/BillingSummaryCards';
+import { StaleChargingPanel } from '@/components/admin/StaleChargingPanel';
 import { toast } from 'sonner';
 import {
   useRevenueIntelligence,
@@ -179,6 +180,9 @@ export default function BillingDashboard() {
         isLoading={integrityLoading || adSpendLoading}
         isVerificationLoading={allVerifLoading}
       />
+
+      {/* Stale Charging Records Monitor */}
+      <StaleChargingPanel />
 
       {/* Payments Table (Overdue / Upcoming / Paid / All) */}
       <BillingPaymentsTable

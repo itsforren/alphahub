@@ -278,6 +278,41 @@ export function useVerifyRecord() {
   });
 }
 
+// ── Stale Charging Records ──
+
+export interface StaleChargingRecord {
+  id: string;
+  client_id: string;
+  amount: number;
+  status: string;
+  updated_at: string;
+  stripe_payment_intent_id: string | null;
+  clients: { company_name: string } | null;
+}
+
+/**
+ * Queries billing_records where status='charging' and updated_at > 4 hours ago.
+ * Auto-refreshes every 60s for near-real-time monitoring.
+ */
+export function useStaleChargingRecords() {
+  return useQuery({
+    queryKey: ['stale-charging-records'],
+    queryFn: async (): Promise<StaleChargingRecord[]> => {
+      const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from('billing_records')
+        .select('id, client_id, amount, status, updated_at, stripe_payment_intent_id, clients!inner(company_name)')
+        .eq('status', 'charging')
+        .lt('updated_at', fourHoursAgo)
+        .order('updated_at', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as unknown as StaleChargingRecord[];
+    },
+    refetchInterval: 60_000, // Check every minute
+  });
+}
+
 // ── AI Analysis Hooks ──
 
 /**
