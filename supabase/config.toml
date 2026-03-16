@@ -258,6 +258,9 @@ verify_jwt = false
 [functions.sync-stripe-cards]
 verify_jwt = false
 
+[functions.sync-stripe-charges]
+verify_jwt = false
+
 [functions.create-stripe-subscription]
 verify_jwt = false
 

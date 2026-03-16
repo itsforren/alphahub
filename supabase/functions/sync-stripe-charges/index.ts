@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notify } from '../_shared/notifications.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -708,9 +709,45 @@ Deno.serve(async (req) => {
     }
 
     console.log('sync-stripe-charges result:', JSON.stringify(result));
+
+    // Track sync success -- reset failure counter
+    try {
+      await supabase.from('sync_failure_log').update({
+        consecutive_failures: 0,
+        last_success_at: new Date().toISOString(),
+      }).eq('function_name', 'sync-stripe-charges');
+    } catch { /* tracking failure should not break response */ }
+
     return jsonResponse(result);
   } catch (err) {
     console.error('sync-stripe-charges error:', err);
-    return jsonResponse({ error: 'Internal server error', details: String(err) }, 500);
+    const errorMessage = String(err) || 'Unknown error';
+
+    // Track sync failure -- increment counter, escalate at 3+
+    try {
+      const { data: failState } = await supabase
+        .from('sync_failure_log')
+        .select('consecutive_failures')
+        .eq('function_name', 'sync-stripe-charges')
+        .single();
+      const newCount = (failState?.consecutive_failures ?? 0) + 1;
+      await supabase.from('sync_failure_log').update({
+        consecutive_failures: newCount,
+        last_failure_at: new Date().toISOString(),
+        last_error: errorMessage.slice(0, 500),
+      }).eq('function_name', 'sync-stripe-charges');
+      if (newCount >= 3) {
+        await notify({
+          supabase,
+          severity: 'critical',
+          title: 'Stripe Charge Sync Failing',
+          message: `${newCount} consecutive failures (${newCount * 5}+ minutes without reconciliation). Error: ${errorMessage.slice(0, 300)}`,
+          alertType: 'sync_failure',
+          metadata: { function_name: 'sync-stripe-charges', consecutive_failures: newCount },
+        });
+      }
+    } catch { /* tracking failure should not break response */ }
+
+    return jsonResponse({ error: 'Internal server error', details: errorMessage }, 500);
   }
 });
