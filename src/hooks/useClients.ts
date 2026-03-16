@@ -223,6 +223,17 @@ export function useUpdateClient() {
 
   return useMutation({
     mutationFn: async ({ clientId, updates }: { clientId: string; updates: Partial<Client> }) => {
+      // CAMP-09: Get old status if we're changing status (for auto-pause logic)
+      let oldStatus: string | undefined;
+      if (updates.status) {
+        const { data: oldClient } = await supabase
+          .from('clients')
+          .select('status')
+          .eq('id', clientId)
+          .single();
+        oldStatus = oldClient?.status;
+      }
+
       const { data, error } = await supabase
         .from('clients')
         .update(updates)
@@ -231,6 +242,20 @@ export function useUpdateClient() {
         .single();
 
       if (error) throw error;
+
+      // CAMP-09: Auto-pause campaigns on status change to paused/cancelled/inactive/archived
+      if (updates.status && oldStatus && updates.status !== oldStatus) {
+        const pauseStatuses = ['paused', 'cancelled', 'inactive', 'archived'];
+        if (pauseStatuses.includes(updates.status.toLowerCase())) {
+          // Fire and forget -- don't block the mutation on Google Ads API latency
+          supabase.functions.invoke('handle-client-status-change', {
+            body: { clientId, oldStatus, newStatus: updates.status },
+          }).catch((err) => {
+            console.error('Auto-pause trigger failed:', err);
+          });
+        }
+      }
+
       return data;
     },
     onSuccess: (data) => {
@@ -408,13 +433,20 @@ export function useDeleteClient() {
     mutationFn: async ({ clientId, deletedBy }: { clientId: string; deletedBy?: string }) => {
       const { error } = await supabase
         .from('clients')
-        .update({ 
+        .update({
           deleted_at: new Date().toISOString(),
           deleted_by: deletedBy || null
         })
         .eq('id', clientId);
 
       if (error) throw error;
+
+      // CAMP-09: Auto-pause campaigns on archive (soft delete)
+      supabase.functions.invoke('handle-client-status-change', {
+        body: { clientId, oldStatus: 'active', newStatus: 'archived' },
+      }).catch((err) => {
+        console.error('Auto-pause on archive failed:', err);
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
