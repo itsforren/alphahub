@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBillingIntegrity, BillingIntegrityRow } from '@/hooks/useBillingDashboard';
-import { useAllClientVerifications, useSyncHealth } from '@/hooks/useBillingVerification';
+import { useAllClientVerifications, useSyncHealth, useAnalyzeBilling, useAllAIAnalyses } from '@/hooks/useBillingVerification';
+import type { AIAnalysisResult } from '@/hooks/useBillingVerification';
 import { VerificationPanel, fmt } from '@/components/admin/VerificationPanel';
 import { SyncHealthBar } from '@/components/admin/SyncHealthBar';
 import { Card } from '@/components/ui/card';
@@ -18,6 +19,7 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   ClipboardCheck,
@@ -30,6 +32,8 @@ import {
   Filter,
   ShieldCheck,
   Brain,
+  Loader2,
+  Square,
 } from 'lucide-react';
 
 type FilterMode = 'all' | 'problems' | 'warnings' | 'clean';
@@ -66,13 +70,51 @@ export function BillingIntegrityAudit() {
   const { data: rows = [], isLoading } = useBillingIntegrity();
   const { data: verificationMap, isLoading: verifLoading } = useAllClientVerifications();
   const { data: syncEntries = [], isLoading: syncLoading } = useSyncHealth();
+  const { data: aiStatusMap } = useAllAIAnalyses();
+  const analyzeMutation = useAnalyzeBilling();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<FilterMode>('all');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>('status');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [analyzeAllProgress, setAnalyzeAllProgress] = useState<{ current: number; total: number } | null>(null);
+  const [analyzeAllAbort, setAnalyzeAllAbort] = useState(false);
 
   const selectedRow = selectedClientId ? rows.find(r => r.clientId === selectedClientId) : null;
+
+  // Analyze All: sequential per-client calls with 500ms delay
+  const handleAnalyzeAll = async () => {
+    const clientIds = rows.map(r => r.clientId);
+    const total = clientIds.length;
+    setAnalyzeAllProgress({ current: 0, total });
+    setAnalyzeAllAbort(false);
+
+    let issuesFound = 0;
+
+    for (let i = 0; i < clientIds.length; i++) {
+      if (analyzeAllAbort) break;
+      setAnalyzeAllProgress({ current: i + 1, total });
+      try {
+        const result = await analyzeMutation.mutateAsync(clientIds[i]);
+        if (result.status === 'issues_found' || result.status === 'critical_issues') {
+          issuesFound++;
+        }
+      } catch (err) {
+        console.error(`AI analysis failed for client ${clientIds[i]}:`, err);
+      }
+      // 500ms delay between calls to avoid overwhelming APIs
+      if (i < clientIds.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    setAnalyzeAllProgress(null);
+    toast.success(`Analysis complete. ${issuesFound} issue(s) found across ${total} clients.`);
+  };
+
+  const handleStopAnalyzeAll = () => {
+    setAnalyzeAllAbort(true);
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -181,11 +223,29 @@ export function BillingIntegrityAudit() {
                   </button>
                 ))}
               </div>
-              {/* Analyze All -- placeholder for Plan 03 */}
-              <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" disabled>
-                <Brain className="w-3.5 h-3.5" />
-                Analyze All
-              </Button>
+              {/* Analyze All -- sequential per-client AI analysis */}
+              {analyzeAllProgress ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Analyzing {analyzeAllProgress.current} of {analyzeAllProgress.total}...
+                  </span>
+                  <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={handleStopAnalyzeAll}>
+                    <Square className="w-3 h-3" />
+                    Stop
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={handleAnalyzeAll}
+                  disabled={rows.length === 0}
+                >
+                  <Brain className="w-3.5 h-3.5" />
+                  Analyze All
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -200,6 +260,14 @@ export function BillingIntegrityAudit() {
               <tr className="border-b border-border/50 bg-muted/30">
                 <SortHeader field="status" label="Status" />
                 <th className="px-4 py-3 text-xs font-medium text-muted-foreground text-center">Verified</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cursor-default"><Brain className="w-3.5 h-3.5 inline text-muted-foreground" /></span>
+                    </TooltipTrigger>
+                    <TooltipContent><p>AI Analysis Status</p></TooltipContent>
+                  </Tooltip>
+                </th>
                 <SortHeader field="clientName" label="Client" />
                 <SortHeader field="mtdAdSpend" label="MTD Ad Spend" align="right" />
                 <SortHeader field="totalDeposits" label="Total Deposits" align="right" />
@@ -213,7 +281,7 @@ export function BillingIntegrityAudit() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                  <td colSpan={11} className="px-4 py-8 text-center text-muted-foreground text-sm">
                     {search ? 'No clients match your search' : 'No clients with wallets found'}
                   </td>
                 </tr>
@@ -226,6 +294,7 @@ export function BillingIntegrityAudit() {
                     verifiedAt={verificationMap?.get(row.clientId)?.verifiedAt ?? null}
                     verificationScope={verificationMap?.get(row.clientId)?.scope ?? null}
                     verifLoading={verifLoading}
+                    aiStatus={aiStatusMap?.get(row.clientId) ?? null}
                     onCheck={() => setSelectedClientId(row.clientId)}
                     onNavigate={() => navigate(`/hub/admin/clients/${row.clientId}?tab=billing`)}
                   />
@@ -285,6 +354,7 @@ function Row({
   verifiedAt,
   verificationScope,
   verifLoading,
+  aiStatus,
   onCheck,
   onNavigate,
 }: {
@@ -293,6 +363,7 @@ function Row({
   verifiedAt: string | null;
   verificationScope: 'all_records' | 'new_only' | 'records_through_date' | null;
   verifLoading: boolean;
+  aiStatus: AIAnalysisResult['status'] | null;
   onCheck: () => void;
   onNavigate: () => void;
 }) {
@@ -354,6 +425,29 @@ function Row({
           </Tooltip>
         ) : (
           <span className="text-muted-foreground">-</span>
+        )}
+      </td>
+
+      {/* AI Status */}
+      <td className="px-4 py-3 text-center">
+        {aiStatus ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>
+                <Brain className={cn('w-3.5 h-3.5 inline',
+                  aiStatus === 'clean' ? 'text-green-400' :
+                  aiStatus === 'issues_found' ? 'text-yellow-400' :
+                  aiStatus === 'critical_issues' ? 'text-red-400' :
+                  'text-muted-foreground'
+                )} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>AI: {aiStatus === 'clean' ? 'Clean' : aiStatus === 'issues_found' ? 'Issues found' : aiStatus === 'critical_issues' ? 'Critical issues' : 'Error'}</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-muted-foreground/30">-</span>
         )}
       </td>
 
