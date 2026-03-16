@@ -710,6 +710,8 @@ function VerificationStampForm({ clientId, v1Total, v1VerifiedCount }: Verificat
 function AIAnalysisSection({ clientId }: { clientId: string }) {
   const analyzeMutation = useAnalyzeBilling();
   const { data: cached, isLoading: cacheLoading } = useClientAIAnalysis(clientId);
+  const verifyRecord = useVerifyRecord();
+  const queryClient = useQueryClient();
   const [confirmAction, setConfirmAction] = useState<{ findingId: string; action: string } | null>(null);
 
   const handleAnalyze = () => {
@@ -746,12 +748,58 @@ function AIAnalysisSection({ clientId }: { clientId: string }) {
     const isConfirming = confirmAction?.findingId === finding.id;
 
     if (isConfirming) {
+      const executeAction = async () => {
+        const action = confirmAction.action;
+        const affectedRecords = finding.affected_records || [];
+        try {
+          if (action === 'mark_verified' && affectedRecords.length > 0) {
+            for (const recordId of affectedRecords) {
+              await verifyRecord.mutateAsync({ clientId, billingRecordId: recordId, notes: `AI-suggested: ${finding.description}` });
+            }
+          } else if (action === 'flag_for_review' && affectedRecords.length > 0) {
+            for (const recordId of affectedRecords) {
+              await supabase.from('billing_verifications').insert({
+                client_id: clientId,
+                billing_record_id: recordId,
+                status: 'quarantined',
+                verification_method: 'ai',
+                resolution_notes: `Flagged by AI: ${finding.description}`,
+                verified_at: new Date().toISOString(),
+              });
+            }
+            queryClient.invalidateQueries({ queryKey: ['billing-verifications'] });
+          } else if (action === 'create_adjustment') {
+            await supabase.from('billing_verifications').insert({
+              client_id: clientId,
+              billing_record_id: affectedRecords[0] || null,
+              status: 'disputed',
+              verification_method: 'ai',
+              resolution_notes: `Adjustment needed: ${finding.description} ($${finding.amount ?? 0})`,
+              verified_at: new Date().toISOString(),
+            });
+            queryClient.invalidateQueries({ queryKey: ['billing-verifications'] });
+          } else if (action === 'contact_client') {
+            await supabase.from('billing_verifications').insert({
+              client_id: clientId,
+              status: 'quarantined',
+              verification_method: 'ai',
+              resolution_notes: `Note: ${finding.description}`,
+              verified_at: new Date().toISOString(),
+            });
+            queryClient.invalidateQueries({ queryKey: ['billing-verifications'] });
+          }
+        } catch (err) {
+          console.error('AI action failed:', err);
+        }
+        setConfirmAction(null);
+      };
+
       return (
         <span className="inline-flex items-center gap-1">
           <span className="text-[10px] text-muted-foreground">Sure?</span>
           <button
             className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30"
-            onClick={() => setConfirmAction(null)}
+            onClick={executeAction}
           >
             Yes
           </button>
