@@ -8,7 +8,8 @@ export default defineConfig({
     sequence: {
       concurrent: false,
     },
-    globalSetup: ['tests/integration/setup.ts'],
+    globalSetup: ['tests/integration/setup.ts', 'tests/integration/teardown.ts'],
+    passWithNoTests: true,
     env: {
       // Vitest loads .env.test automatically when present
     },

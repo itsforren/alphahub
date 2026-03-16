@@ -28,6 +28,10 @@ supabase/.env.secrets
 .env
 .env.local
 .env.production
+.env.test
+
+# Integration test temp files
+.test-context.json
 
 # Temp files
 tmp/
