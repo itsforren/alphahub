@@ -14,10 +14,12 @@ import { ManagementFeeEnforcerWidget } from '@/components/admin/ManagementFeeEnf
 import { WeeklyAuditWidget } from '@/components/admin/WeeklyAuditWidget';
 import { AdSpendIntelligenceWidget } from '@/components/admin/AdSpendIntelligenceWidget';
 import { BillingIntegrityAudit } from '@/components/admin/BillingIntegrityAudit';
+import { BillingSummaryCards } from '@/components/admin/BillingSummaryCards';
 import { toast } from 'sonner';
 import {
   useRevenueIntelligence,
   useAdSpendIntelligence,
+  useBillingIntegrity,
   useOverdueBillingRecords,
   useUpcomingBillingRecords,
   usePaidBillingRecords,
@@ -27,6 +29,7 @@ import {
   useWalletPipeline,
   useWalletVerification,
 } from '@/hooks/useBillingDashboard';
+import { useAllClientVerifications } from '@/hooks/useBillingVerification';
 
 export default function BillingDashboard() {
   const queryClient = useQueryClient();
@@ -57,6 +60,8 @@ export default function BillingDashboard() {
   const { data: disputes = [], isLoading: disputesLoading } = useActiveDisputes();
   const { data: walletPipeline = [], isLoading: pipelineLoading } = useWalletPipeline();
   const { data: walletVerification, isLoading: verificationLoading } = useWalletVerification();
+  const { data: integrityRows = [], isLoading: integrityLoading } = useBillingIntegrity();
+  const { data: verificationMap, isLoading: allVerifLoading } = useAllClientVerifications();
 
   const paymentsLoading = overdueLoading || upcomingLoading || paidLoading;
 
@@ -162,6 +167,17 @@ export default function BillingDashboard() {
         data={adSpendIntel}
         isLoading={adSpendLoading}
         isCurrentMonth={isCurrentMonth}
+      />
+
+      {/* Billing Health Summary Cards */}
+      <BillingSummaryCards
+        rows={integrityRows}
+        verificationMap={verificationMap}
+        projectedAdSpend={adSpendIntel?.googleAdsSpendMtd && adSpendIntel.daysElapsed > 0
+          ? (adSpendIntel.googleAdsSpendMtd / adSpendIntel.daysElapsed) * adSpendIntel.daysInMonth
+          : 0}
+        isLoading={integrityLoading || adSpendLoading}
+        isVerificationLoading={allVerifLoading}
       />
 
       {/* Payments Table (Overdue / Upcoming / Paid / All) */}
