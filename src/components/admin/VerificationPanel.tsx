@@ -1033,8 +1033,8 @@ export function VerificationPanel({ clientId, clientName }: VerificationPanelPro
 
   const adSpendData = adSpend.data || [];
   const allBillingData = billingRecords.data || [];
-  const billingData = allBillingData.filter(r => r.status !== 'cancelled');
-  const cancelledBillingIds = new Set(allBillingData.filter(r => r.status === 'cancelled').map(r => r.id));
+  const billingData = allBillingData.filter(r => r.status !== 'cancelled' && r.status !== 'pending');
+  const excludedBillingIds = new Set(allBillingData.filter(r => r.status === 'cancelled' || r.status === 'pending').map(r => r.id));
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
@@ -1522,7 +1522,7 @@ export function VerificationPanel({ clientId, clientName }: VerificationPanelPro
                 <tbody>
                   {walletData.map(tx => {
                     const isAdjustment = tx.transaction_type === 'adjustment';
-                    const isReversed = !isAdjustment && tx.billing_record_id && cancelledBillingIds.has(tx.billing_record_id);
+                    const isReversed = !isAdjustment && tx.billing_record_id && excludedBillingIds.has(tx.billing_record_id);
                     const hasBillingRecord = !isAdjustment && !!tx.billing_record_id && !isReversed;
                     const isUnbacked = !isAdjustment && !tx.billing_record_id;
                     const linkedPi = tx.billing_record_id ? brPiMap.get(tx.billing_record_id) : null;
