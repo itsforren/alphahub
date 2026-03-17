@@ -1114,11 +1114,12 @@ export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
         totalDepositsPerClient.set(tx.client_id, prev + (tx.amount || 0));
       }
 
-      // Aggregate spend per client, respecting each client's tracking_start_date
+      // Aggregate spend per client, respecting each client's tracking_start_date (if set)
       const totalSpendPerClient = new Map<string, number>();
       for (const row of (('data' in allSpendRes ? allSpendRes.data : allSpendRes) || []) as Array<{ client_id: string; spend_date: string; cost: number | null }>) {
         const trackStart = walletTrackingMap.get(row.client_id);
-        if (!trackStart || row.spend_date < trackStart) continue;
+        // If tracking_start_date is set, only count spend from that date. Otherwise count all spend.
+        if (trackStart && row.spend_date < trackStart) continue;
         const prev = totalSpendPerClient.get(row.client_id) || 0;
         totalSpendPerClient.set(row.client_id, prev + (row.cost || 0));
       }
@@ -1328,7 +1329,7 @@ export function useBillingIntegrity() {
       const trackedSpendByClient = new Map<string, number>();
       for (const row of allSpendData) {
         const trackStart = trackingMap.get(row.client_id);
-        if (!trackStart || row.spend_date < trackStart) continue;
+        if (trackStart && row.spend_date < trackStart) continue;
         trackedSpendByClient.set(row.client_id, (trackedSpendByClient.get(row.client_id) || 0) + Number(row.cost || 0));
       }
 

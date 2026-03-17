@@ -61,22 +61,27 @@ export function useComputedWalletBalance(clientId?: string) {
   });
 
   // Fetch tracked ad spend from ad_spend_daily
+  // Uses tracking_start_date if set, otherwise fetches all spend (new clients don't need it)
   const spendQuery = useQuery({
     queryKey: ['tracked-ad-spend', clientId, walletQuery.data?.tracking_start_date],
     queryFn: async () => {
-      if (!clientId || !walletQuery.data?.tracking_start_date) return 0;
+      if (!clientId) return 0;
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('ad_spend_daily')
         .select('cost')
-        .eq('client_id', clientId)
-        .gte('spend_date', walletQuery.data.tracking_start_date);
+        .eq('client_id', clientId);
 
+      if (walletQuery.data?.tracking_start_date) {
+        query = query.gte('spend_date', walletQuery.data.tracking_start_date);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
 
       return data?.reduce((sum, day) => sum + Number(day.cost || 0), 0) ?? 0;
     },
-    enabled: !!clientId && !!walletQuery.data?.tracking_start_date,
+    enabled: !!clientId,
   });
 
   // Canonical balance from compute_wallet_balance() RPC — single source of truth
