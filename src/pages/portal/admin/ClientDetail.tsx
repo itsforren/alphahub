@@ -445,8 +445,15 @@ export default function PortalAdminClientDetail() {
         finalValue = parseFloat(cleanedValue) || 0;
       }
       
-      await updateClient.mutateAsync({ clientId: id, updates: { [key]: finalValue } });
-      toast.success('Field updated successfully');
+      const updates: Record<string, string | number | null> = { [key]: finalValue };
+
+      // Auto-update CRM link when subaccount_id changes
+      if (key === 'subaccount_id' && finalValue) {
+        updates.crm_link = `https://app.alphaagentcrm.com/v2/location/${finalValue}`;
+      }
+
+      await updateClient.mutateAsync({ clientId: id, updates });
+      toast.success(key === 'subaccount_id' ? 'Sub-account ID and CRM link updated' : 'Field updated successfully');
     } catch (error) {
       toast.error('Failed to update field');
       throw error;
