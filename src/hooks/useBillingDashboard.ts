@@ -1259,7 +1259,7 @@ export function useBillingIntegrity() {
       const now = new Date();
       const monthStart = format(startOfMonth(now), 'yyyy-MM-dd');
 
-      const [clientsRes, walletsRes, adSpendRes, depositsRes, adjustmentsRes, billingRes] = await Promise.all([
+      const [clientsRes, walletsRes, adSpendRes, depositsRes, adjustmentsRes, billingRes, verificationsRes] = await Promise.all([
         supabase.from('clients').select('id, name').in('status', ['active', 'onboarding']),
         supabase.from('client_wallets').select('client_id, tracking_start_date'),
         // MTD ad spend
@@ -1270,11 +1270,14 @@ export function useBillingIntegrity() {
         supabase.from('wallet_transactions').select('client_id, amount').eq('transaction_type', 'adjustment'),
         // All paid ad_spend billing records
         supabase.from('billing_records').select('id, client_id, amount, stripe_payment_intent_id, stripe_account, notes').eq('billing_type', 'ad_spend').eq('status', 'paid'),
+        // Admin verifications (client-level)
+        supabase.from('billing_verifications').select('client_id').eq('status', 'verified').not('verified_by', 'is', null).is('billing_record_id', null),
       ]);
 
       const clientMap = new Map((clientsRes.data || []).map(c => [c.id, c.name]));
       const walletClients = new Set((walletsRes.data || []).map(w => w.client_id));
       const trackingMap = new Map((walletsRes.data || []).map(w => [w.client_id, w.tracking_start_date]));
+      const verifiedClients = new Set((verificationsRes.data || []).map(v => v.client_id));
 
       // MTD ad spend per client
       const mtdSpend = new Map<string, number>();
@@ -1359,8 +1362,9 @@ export function useBillingIntegrity() {
         }
 
         let status: 'clean' | 'warning' | 'problem' = 'clean';
-        if (billing.unbackedCount > 0 || unbackedDeposits.length > 0) status = 'problem';
-        else if (walletBalance < 0) status = 'warning';
+        const isVerified = verifiedClients.has(clientId);
+        if ((billing.unbackedCount > 0 || unbackedDeposits.length > 0) && !isVerified) status = 'problem';
+        else if (walletBalance < 0 && !isVerified) status = 'warning';
 
         rows.push({
           clientId,
