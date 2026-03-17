@@ -1033,8 +1033,9 @@ export function VerificationPanel({ clientId, clientName }: VerificationPanelPro
 
   const adSpendData = adSpend.data || [];
   const allBillingData = billingRecords.data || [];
-  const billingData = allBillingData.filter(r => r.status !== 'cancelled' && r.status !== 'pending');
-  const excludedBillingIds = new Set(allBillingData.filter(r => r.status === 'cancelled' || r.status === 'pending').map(r => r.id));
+  // Only show paid records in the audit — pending/cancelled/failed/overdue are not charged and have no wallet impact
+  const billingData = allBillingData.filter(r => r.status === 'paid');
+  const excludedBillingIds = new Set(allBillingData.filter(r => r.status !== 'paid').map(r => r.id));
   const walletData = walletTransactions.data || [];
   const stripeData = stripeCharges.data;
 
