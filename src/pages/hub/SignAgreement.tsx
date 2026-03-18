@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SignatureCanvas from 'react-signature-canvas';
 import SHA256 from 'crypto-js/sha256';
 import { format } from 'date-fns';
+import { fireConfetti, fireFireworks, fireLensFlare } from '@/lib/confetti';
 import { 
   FileText, 
   CheckCircle2, 
@@ -305,11 +306,11 @@ export default function SignAgreement() {
       if (clientData.contract_signed_at) {
         setSignedTimestamp(clientData.contract_signed_at);
         setIsSuccess(true);
+        window.scrollTo({ top: 0 });
         // Fire confetti even on revisit
-        import('@/lib/confetti').then((mod) => {
-          mod.fireConfetti?.();
-          setTimeout(() => mod.fireFireworks?.(), 600);
-        }).catch(() => {});
+        fireConfetti();
+        setTimeout(() => fireFireworks(), 600);
+        setTimeout(() => fireConfetti(), 1500);
       }
     }
   }, [client, isSuccess]);
@@ -333,6 +334,11 @@ export default function SignAgreement() {
     }
   }, [client]);
   
+  // Always scroll to top when step changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [currentStep]);
+
   // Auto-advance when OTP verified
   useEffect(() => {
     if (otpState.isVerified && currentStep === 1) {
@@ -667,12 +673,13 @@ export default function SignAgreement() {
       }
       
       setIsSuccess(true);
-      // Fire confetti celebration
-      import('@/lib/confetti').then((mod) => {
-        mod.fireConfetti?.();
-        setTimeout(() => mod.fireFireworks?.(), 600);
-        setTimeout(() => mod.fireConfetti?.(), 1200);
-      }).catch(() => {});
+      window.scrollTo({ top: 0 });
+      // Fire celebration sequence: lens flare → confetti → fireworks → confetti
+      fireLensFlare();
+      setTimeout(() => fireConfetti(), 300);
+      setTimeout(() => fireFireworks(), 800);
+      setTimeout(() => fireLensFlare(), 2000);
+      setTimeout(() => fireConfetti(), 2500);
       
     } catch (error: any) {
       console.error('Error signing agreement:', error);
