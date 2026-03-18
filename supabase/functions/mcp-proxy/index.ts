@@ -280,7 +280,7 @@ Alpha ROI: ${(mtdMetrics.alphaROI * 100).toFixed(1)}% (${mtdMetrics.alphaROI.toF
 
   const txns = txnRes.data ?? [];
   if (txns.length) {
-    s.push(`\n### Recent Wallet Transactions (${txns.length})\n` + txns.map((t: any) => `  ${t.transaction_type} | $${t.amount} | After: $${t.balance_after} | ${t.description ?? ""} | ${t.created_at}`).join("\n"));
+    s.push(`\n### Recent Wallet Transactions (${txns.length})\n` + txns.map((t: any) => `  ${t.transaction_type} | $${t.amount} | ${t.description ?? ""} | ${t.created_at}`).join("\n"));
   }
 
   // Onboarding summary
