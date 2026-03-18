@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.agent-onboarding-webhook]
 verify_jwt = false
 
+[functions.self-onboard-agent]
+verify_jwt = false
+
 [functions.agent-update-webhook]
 verify_jwt = false
 

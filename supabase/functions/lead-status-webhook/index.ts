@@ -186,11 +186,13 @@ serve(async (req) => {
       );
     }
 
-    // Find client by subaccount_id (location_id)
+    // Find client by subaccount_id (location_id) — filter out cancelled clients
+    // to avoid .maybeSingle() error when duplicate records exist
     const { data: client, error: clientError } = await supabase
       .from('clients')
       .select('id, agent_id, name')
       .eq('subaccount_id', locationId)
+      .neq('status', 'cancelled')
       .maybeSingle();
 
     if (clientError) {

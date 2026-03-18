@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { clientId, startFromStep = 1, verifyOnlyStep } = await req.json();
+    const { clientId, startFromStep = 1, verifyOnlyStep, ghlPassword } = await req.json();
 
     if (!clientId) {
       return new Response(JSON.stringify({ error: 'Missing clientId' }), {
@@ -1364,6 +1364,7 @@ Deno.serve(async (req) => {
                   phone: client.phone,
                   profile_photo_url: client.profile_image_url,
                   location_id: locationId9,
+                  ...(ghlPassword ? { password: ghlPassword } : {}),
                 });
                 
                 userCreationResult9 = {

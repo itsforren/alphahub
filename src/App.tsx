@@ -40,6 +40,7 @@ import NotFound from "./pages/NotFound";
 import NotQualifiedLicense from "./pages/NotQualifiedLicense";
 import NotQualifiedBudget from "./pages/NotQualifiedBudget";
 import Apply from "./pages/Apply";
+import Onboarding from "./pages/Onboarding";
 
 // Auth pages (lazy loaded)
 const Login = lazy(() => import("./pages/auth/Login"));
@@ -127,6 +128,7 @@ const App = () => (
                   <Route path="/not-qualified-license" element={<NotQualifiedLicense />} />
                   <Route path="/not-qualified-budget" element={<NotQualifiedBudget />} />
                   <Route path="/apply" element={<Apply />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
                   
                   {/* Auth routes */}
                   <Route path="/login" element={<Login />} />

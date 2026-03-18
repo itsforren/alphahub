@@ -361,6 +361,7 @@ serve(async (req) => {
       phone,
       location_id,
       profile_photo_url,
+      password: chosenPassword,
     } = await req.json();
 
     if (!first_name || !last_name || !email || !location_id) {
@@ -421,7 +422,7 @@ serve(async (req) => {
       lastName: last_name,
       email: email,
       phone: phone || "",
-      password: DEFAULT_PASSWORD,
+      password: chosenPassword || DEFAULT_PASSWORD,
       type: "account",
       role: "admin",
       companyId: COMPANY_ID,
