@@ -76,9 +76,9 @@ export function InitialsSection({
                 htmlFor={`initials-${id}`}
                 className={`whitespace-nowrap text-sm font-montserrat ${showRequired && !isComplete ? 'text-blue-500' : ''}`}
               >
-                Your Initials{showRequired ? <span className="text-blue-500"> *</span> : null}
+                Type Your Initials Here{showRequired ? <span className="text-blue-500"> *</span> : null}
                 {expectedInitials ? (
-                  <span className="text-muted-foreground"> (Expected: {expectedInitials})</span>
+                  <span className="text-muted-foreground font-normal"> (e.g. {expectedInitials})</span>
                 ) : null}
               </Label>
 
@@ -87,10 +87,10 @@ export function InitialsSection({
                   id={`initials-${id}`}
                   value={isComplete ? value?.initials : typingValue}
                   onChange={(e) => onInitialsChange(id, e.target.value)}
-                  placeholder={expectedInitials || 'ABC'}
-                  className={`w-24 text-center font-bold uppercase text-lg font-montserrat ${
-                    !isComplete && error ? 'border-destructive focus-visible:ring-destructive' : ''
-                  }`}
+                  placeholder=""
+                  className={`w-24 text-center font-bold uppercase text-lg font-montserrat border-2 border-dashed ${
+                    !isComplete && !typingValue ? 'border-blue-500/50 bg-blue-500/5 animate-pulse' : ''
+                  } ${!isComplete && error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
                   maxLength={maxLength}
                   disabled={isComplete}
                 />

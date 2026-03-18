@@ -500,6 +500,8 @@ export default function SignAgreement() {
       auditLog.logStepCompleted(currentStep, STEPS[currentStep - 1].title);
     }
     setCurrentStep(newStep);
+    // Always scroll to top when changing steps
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
   const handleSubmit = async () => {
@@ -1489,37 +1491,7 @@ export default function SignAgreement() {
                     </div>
                   </div>
                   
-                  {/* Company Representative Signature - Pre-signed */}
-                  <div className="mb-8 p-6 rounded-xl border-2 border-border bg-muted/20">
-                    <Label className="mb-3 block font-medium text-lg">Company Representative</Label>
-                    
-                    {/* Pre-signed signature image */}
-                    <div className="bg-white dark:bg-zinc-900 rounded-lg p-4 mb-3 border">
-                      <img 
-                        src={forrenWarrenSignature} 
-                        alt="Forren Warren Signature" 
-                        className="h-16 object-contain"
-                      />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Name</p>
-                        <p className="font-medium">Forren Warren</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Title</p>
-                        <p className="font-medium">Authorized Representative</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Divider */}
-                  <div className="flex items-center gap-4 my-6">
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-sm text-muted-foreground font-medium">Client Signature Below</span>
-                    <div className="flex-1 h-px bg-border" />
-                  </div>
+                  {/* Client Signature */}
                   
                   {/* Signature Canvas */}
                   <div className="mb-6">
