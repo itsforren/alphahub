@@ -298,6 +298,22 @@ export default function SignAgreement() {
   const uploadSignature = useUploadSignature();
   const uploadPdf = useUploadAgreementPdf();
   
+  // Check if agreement is already signed (show success page on refresh)
+  useEffect(() => {
+    if (client && !isSuccess) {
+      const clientData = client as any;
+      if (clientData.contract_signed_at) {
+        setSignedTimestamp(clientData.contract_signed_at);
+        setIsSuccess(true);
+        // Fire confetti even on revisit
+        import('@/lib/confetti').then((mod) => {
+          mod.fireConfetti?.();
+          setTimeout(() => mod.fireFireworks?.(), 600);
+        }).catch(() => {});
+      }
+    }
+  }, [client, isSuccess]);
+
   // Pre-fill form with client data
   useEffect(() => {
     if (client) {
@@ -651,6 +667,12 @@ export default function SignAgreement() {
       }
       
       setIsSuccess(true);
+      // Fire confetti celebration
+      import('@/lib/confetti').then((mod) => {
+        mod.fireConfetti?.();
+        setTimeout(() => mod.fireFireworks?.(), 600);
+        setTimeout(() => mod.fireConfetti?.(), 1200);
+      }).catch(() => {});
       
     } catch (error: any) {
       console.error('Error signing agreement:', error);
