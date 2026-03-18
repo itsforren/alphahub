@@ -305,12 +305,20 @@ export default function SignAgreement() {
       const clientData = client as any;
       if (clientData.contract_signed_at) {
         setSignedTimestamp(clientData.contract_signed_at);
+        // Pre-fill signer info for the success certificate
+        setSignerInfo(prev => ({
+          ...prev,
+          fullName: clientData.name || prev.fullName,
+          email: clientData.email || prev.email,
+          phone: clientData.phone || prev.phone,
+          npn: clientData.npn || prev.npn,
+        }));
         setIsSuccess(true);
         window.scrollTo({ top: 0 });
-        // Fire confetti even on revisit
-        fireConfetti();
-        setTimeout(() => fireFireworks(), 600);
-        setTimeout(() => fireConfetti(), 1500);
+        // Fire confetti on revisit
+        fireLensFlare();
+        setTimeout(() => fireConfetti(), 300);
+        setTimeout(() => fireFireworks(), 800);
       }
     }
   }, [client, isSuccess]);
@@ -695,6 +703,9 @@ export default function SignAgreement() {
     }
   };
   
+  // Check if already signed BEFORE rendering the form (prevents flash)
+  const alreadySigned = !isSuccess && client && (client as any).contract_signed_at;
+
   // Loading state
   if (clientLoading || templateLoading) {
     return (
@@ -739,8 +750,8 @@ export default function SignAgreement() {
     );
   }
   
-  // Success state
-  if (isSuccess) {
+  // Success state (from signing OR from already-signed detection)
+  if (isSuccess || alreadySigned) {
     return (
       <div className="fixed inset-0 z-50 bg-gradient-to-br from-background via-background to-emerald-950/20 font-montserrat overflow-y-auto">
       <div className="min-h-full flex items-center justify-center p-4 py-12">
