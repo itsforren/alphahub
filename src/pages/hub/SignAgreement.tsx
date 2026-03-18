@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SignatureCanvas from 'react-signature-canvas';
 import SHA256 from 'crypto-js/sha256';
 import { format } from 'date-fns';
-import { fireConfetti, fireFireworks, fireLensFlare } from '@/lib/confetti';
+import { fireConfetti, fireShimmer } from '@/lib/confetti';
 import { 
   FileText, 
   CheckCircle2, 
@@ -316,9 +316,8 @@ export default function SignAgreement() {
         setIsSuccess(true);
         window.scrollTo({ top: 0 });
         // Fire confetti on revisit
-        fireLensFlare();
-        setTimeout(() => fireConfetti(), 300);
-        setTimeout(() => fireFireworks(), 800);
+        fireShimmer();
+        setTimeout(() => fireConfetti(), 400);
       }
     }
   }, [client, isSuccess]);
@@ -683,11 +682,8 @@ export default function SignAgreement() {
       setIsSuccess(true);
       window.scrollTo({ top: 0 });
       // Fire celebration sequence: lens flare → confetti → fireworks → confetti
-      fireLensFlare();
-      setTimeout(() => fireConfetti(), 300);
-      setTimeout(() => fireFireworks(), 800);
-      setTimeout(() => fireLensFlare(), 2000);
-      setTimeout(() => fireConfetti(), 2500);
+      fireShimmer();
+      setTimeout(() => fireConfetti(), 400);
       
     } catch (error: any) {
       console.error('Error signing agreement:', error);
