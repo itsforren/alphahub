@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+// Note: We use raw fetch for the edge function call (not supabase.functions.invoke)
+// because invoke swallows error response bodies on non-2xx status codes
 import type { OnboardingAction } from '../useOnboardingReducer';
 
 interface Props {
@@ -75,27 +77,38 @@ export default function CreateAccountStep({
       // The frontend-uploaded preview URL is a blob URL, not usable server-side
       // For now, headshot is handled post-onboarding or via the edge function
 
-      // Call the self-onboard-agent edge function
-      const { data, error } = await supabase.functions.invoke('self-onboard-agent', {
-        body: {
-          first_name: firstName,
-          last_name: lastName,
-          email: email.trim().toLowerCase(),
-          phone,
-          password,
-          states_licensed: licensedStates,
-          address_street: address.street,
-          address_city: address.city,
-          address_state: address.state,
-          address_zip: address.zip,
-          address_country: address.country || 'US',
-          npn,
-          bio: bio || undefined,
-          headshot_url: headshotUrl || undefined,
-        },
-      });
+      // Call the self-onboard-agent edge function via raw fetch
+      // (supabase.functions.invoke swallows error bodies on non-2xx)
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/self-onboard-agent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+          body: JSON.stringify({
+            first_name: firstName,
+            last_name: lastName,
+            email: email.trim().toLowerCase(),
+            phone,
+            password,
+            states_licensed: licensedStates,
+            address_street: address.street,
+            address_city: address.city,
+            address_state: address.state,
+            address_zip: address.zip,
+            address_country: address.country || 'US',
+            npn,
+            bio: bio || undefined,
+            headshot_url: headshotUrl || undefined,
+          }),
+        }
+      );
 
-      if (error) throw new Error(error.message || 'Failed to create account');
+      const data = await response.json();
+
+      if (!response.ok) throw new Error(data?.error || `Server error (${response.status})`);
       if (!data?.success) throw new Error(data?.error || 'Account creation failed');
 
       // Store the IDs from the response

@@ -50,16 +50,17 @@ Deno.serve(async (req) => {
 
     const chargeAmount = amount || Number(wallet.auto_charge_amount) || 250;
 
-    // Check monthly cap
+    // Check monthly cap (calendar month-to-date)
     if (wallet.monthly_ad_spend_cap) {
-      const rollingStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const now = new Date();
+      const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
       const { data: monthlyCharges } = await supabase
         .from('billing_records')
         .select('amount')
         .eq('client_id', client_id)
         .eq('billing_type', 'ad_spend')
         .eq('status', 'paid')
-        .gte('paid_at', rollingStart);
+        .gte('paid_at', mtdStart);
 
       const monthTotal = monthlyCharges?.reduce((sum: number, r: any) => sum + Number(r.amount), 0) ?? 0;
       const remainingCap = Number(wallet.monthly_ad_spend_cap) - monthTotal;

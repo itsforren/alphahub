@@ -25,7 +25,7 @@ struct DashboardView: View {
     // MARK: - Live Content
 
     private var liveContent: some View {
-        LazyVStack(alignment: .leading, spacing: AppSpacing.sectionGap) {
+        VStack(alignment: .leading, spacing: AppSpacing.sectionGap) {
             // Welcome greeting
             Text("Welcome, \(dataManager.firstName)")
                 .font(AppTypography.heading2)

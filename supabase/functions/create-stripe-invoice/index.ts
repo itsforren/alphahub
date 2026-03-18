@@ -193,6 +193,8 @@ Deno.serve(async (req) => {
           confirm: 'true',
           off_session: 'true',
           description,
+          'payment_method_types[0]': 'card',
+          'payment_method_types[1]': 'link',
           'metadata[billing_record_id]': billing_record_id,
           'metadata[billing_type]': record.billing_type,
           'metadata[client_id]': record.client_id,
