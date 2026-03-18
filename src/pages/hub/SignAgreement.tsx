@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SignatureCanvas from 'react-signature-canvas';
 import SHA256 from 'crypto-js/sha256';
 import { format } from 'date-fns';
-import { fireConfetti, fireShimmer } from '@/lib/confetti';
+import { fireCelebration } from '@/lib/confetti';
 import { 
   FileText, 
   CheckCircle2, 
@@ -316,8 +316,7 @@ export default function SignAgreement() {
         setIsSuccess(true);
         window.scrollTo({ top: 0 });
         // Fire confetti on revisit
-        fireShimmer();
-        setTimeout(() => fireConfetti(), 400);
+        fireCelebration();
       }
     }
   }, [client, isSuccess]);
