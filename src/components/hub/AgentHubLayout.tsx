@@ -480,8 +480,8 @@ export default function AgentHubLayout() {
         <Outlet />
       </main>
       
-      {/* Lead Intel pill (for clients) */}
-      {!isAdmin && <LeadIntelPill />}
+      {/* Lead Intel pill */}
+      <LeadIntelPill />
 
       {/* Floating Chat Bubble (for clients only) */}
       <ChatBubble />
