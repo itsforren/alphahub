@@ -74,8 +74,8 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     }
   }, [conversationId, messages.length]);
 
-  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }) => {
-    sendMessage.mutate({ conversationId, message, attachment });
+  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }, personaId?: import('@/hooks/useChat').ChatPersonaId) => {
+    sendMessage.mutate({ conversationId, message, attachment, personaId });
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {

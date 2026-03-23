@@ -101,8 +101,8 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
     }
   }, [conversationId, messages.length]);
 
-  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }) => {
-    sendMessage.mutate({ conversationId, message, attachment });
+  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }, personaId?: import('@/hooks/useChat').ChatPersonaId) => {
+    sendMessage.mutate({ conversationId, message, attachment, personaId });
   };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -256,6 +256,7 @@ export function AdminChatView({ conversationId, onBack }: AdminChatViewProps) {
           disabled={sendMessage.isPending}
           placeholder="Type your reply..."
           clientId={clientId}
+          isAdmin
         />
       </div>
     </div>

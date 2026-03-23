@@ -51,9 +51,11 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
       <div
         className={cn(
           'w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-medium overflow-hidden',
-          message.sender_role === 'admin'
-            ? 'bg-primary text-primary-foreground'
-            : 'bg-muted text-muted-foreground'
+          message.persona_name
+            ? 'bg-red-600 text-white'
+            : message.sender_role === 'admin'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground'
         )}
       >
         {message.sender_avatar_url && !avatarError ? (
@@ -76,8 +78,13 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
             {message.sender_name}
           </span>
           {message.sender_role === 'admin' && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium">
-              ASM
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded font-medium",
+              message.persona_name
+                ? 'bg-red-500/10 text-red-400'
+                : 'bg-primary/10 text-primary'
+            )}>
+              {message.persona_title || 'ASM'}
             </span>
           )}
           <span className="text-[11px] text-muted-foreground">

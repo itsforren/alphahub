@@ -14,9 +14,20 @@ export interface ChatMessage {
   attachment_url?: string | null;
   attachment_type?: string | null;
   attachment_name?: string | null;
+  persona_name?: string | null;
+  persona_title?: string | null;
   read_at: string | null;
   created_at: string;
 }
+
+export const CHAT_PERSONAS = [
+  { id: 'default', name: 'You', title: null, color: 'blue' },
+  { id: 'finance', name: 'Alpha Finance', title: 'Finance Department', color: 'red' },
+  { id: 'support', name: 'Alpha Support', title: 'Support Team', color: 'green' },
+  { id: 'onboarding', name: 'Alpha Onboarding', title: 'Onboarding Team', color: 'purple' },
+] as const;
+
+export type ChatPersonaId = typeof CHAT_PERSONAS[number]['id'];
 
 export interface ChatConversation {
   id: string;
@@ -193,23 +204,25 @@ export function useSendMessage() {
   const { user, profile, role } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ 
-      conversationId, 
+    mutationFn: async ({
+      conversationId,
       message,
-      attachment 
-    }: { 
-      conversationId: string; 
+      attachment,
+      personaId,
+    }: {
+      conversationId: string;
       message: string;
       attachment?: { url: string; type: string; name: string };
+      personaId?: ChatPersonaId;
     }) => {
       if (!user) throw new Error('Not authenticated');
-      
+
       const senderRole = role === 'admin' ? 'admin' : 'client';
-      
+
       // For clients, fetch their name and profile image from the clients table
       let senderName = profile?.name || user.email?.split('@')[0] || 'User';
       let senderAvatarUrl = profile?.avatar_url || null;
-      
+
       if (role !== 'admin') {
         // Try to get client info for better name/avatar
         const { data: client } = await supabase
@@ -217,25 +230,32 @@ export function useSendMessage() {
           .select('name, profile_image_url')
           .eq('user_id', user.id)
           .maybeSingle();
-        
+
         if (client) {
           senderName = client.name || senderName;
           senderAvatarUrl = client.profile_image_url || senderAvatarUrl;
         }
       }
-      
+
+      // Admin persona override
+      const persona = personaId && personaId !== 'default'
+        ? CHAT_PERSONAS.find(p => p.id === personaId)
+        : null;
+
       const { data, error } = await supabase
         .from('chat_messages')
         .insert({
           conversation_id: conversationId,
           sender_id: user.id,
-          sender_name: senderName,
+          sender_name: persona ? persona.name : senderName,
           sender_role: senderRole,
-          sender_avatar_url: senderAvatarUrl,
+          sender_avatar_url: persona ? null : senderAvatarUrl,
           message,
           attachment_url: attachment?.url || null,
           attachment_type: attachment?.type || null,
           attachment_name: attachment?.name || null,
+          persona_name: persona?.name || null,
+          persona_title: persona?.title || null,
         })
         .select()
         .single();

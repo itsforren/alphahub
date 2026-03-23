@@ -1,27 +1,32 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Paperclip, X, Loader2 } from 'lucide-react';
+import { Send, Paperclip, X, Loader2, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { CHAT_PERSONAS, type ChatPersonaId } from '@/hooks/useChat';
 
 interface ChatInputProps {
-  onSend: (message: string, attachment?: { url: string; type: string; name: string }) => void;
+  onSend: (message: string, attachment?: { url: string; type: string; name: string }, personaId?: ChatPersonaId) => void;
   disabled?: boolean;
   placeholder?: string;
   clientId?: string;
+  isAdmin?: boolean;
 }
 
-export function ChatInput({ 
-  onSend, 
-  disabled, 
+export function ChatInput({
+  onSend,
+  disabled,
   placeholder = 'Type a message...',
   clientId,
+  isAdmin = false,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [attachment, setAttachment] = useState<{ file: File; preview: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState<ChatPersonaId>('default');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -94,7 +99,7 @@ export function ChatInput({
       setIsUploading(false);
     }
 
-    onSend(trimmedMessage || `Sent ${attachmentData?.type === 'image' ? 'an image' : 'a file'}`, attachmentData);
+    onSend(trimmedMessage || `Sent ${attachmentData?.type === 'image' ? 'an image' : 'a file'}`, attachmentData, selectedPersona);
     setMessage('');
     setAttachment(null);
     // Release guard after a short delay to let isPending propagate
@@ -266,6 +271,37 @@ export function ChatInput({
           className="min-h-[40px] max-h-[120px] resize-none bg-background/50 border-border/50 focus:border-primary/50 text-sm sm:text-base"
           rows={1}
         />
+        {/* Persona selector — admin only */}
+        {isAdmin && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className={`flex-shrink-0 h-9 sm:h-10 text-xs gap-1 px-2 ${
+                  selectedPersona !== 'default' ? 'text-primary border border-primary/30 bg-primary/5' : 'text-muted-foreground'
+                }`}
+              >
+                {selectedPersona === 'default' ? 'You' : CHAT_PERSONAS.find(p => p.id === selectedPersona)?.name}
+                <ChevronDown className="w-3 h-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {CHAT_PERSONAS.map((persona) => (
+                <DropdownMenuItem
+                  key={persona.id}
+                  onClick={() => setSelectedPersona(persona.id)}
+                  className={selectedPersona === persona.id ? 'bg-primary/10' : ''}
+                >
+                  <span className="font-medium">{persona.name}</span>
+                  {persona.title && (
+                    <span className="text-xs text-muted-foreground ml-2">{persona.title}</span>
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <Button
           onClick={handleSubmit}
           disabled={(!message.trim() && !attachment) || disabled || isUploading}
