@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/collapsible';
 import { NavLink } from '@/components/NavLink';
 import { ChatBubble } from '@/components/portal/chat/ChatBubble';
+import { LeadIntelPill } from '@/components/hub/LeadIntelModal';
 import { ClientPreviewBanner } from '@/components/hub/ClientPreviewBanner';
 import { MaintenanceBanner } from '@/components/hub/MaintenanceBanner';
 import { CampaignUpdateBanner } from '@/components/hub/CampaignUpdateBanner';
@@ -479,6 +480,9 @@ export default function AgentHubLayout() {
         <Outlet />
       </main>
       
+      {/* Lead Intel pill (for clients) */}
+      {!isAdmin && <LeadIntelPill />}
+
       {/* Floating Chat Bubble (for clients only) */}
       <ChatBubble />
     </div>
