@@ -4,12 +4,30 @@ import { X, Lightbulb, CheckCircle2, ArrowRight, Sparkles, Target } from 'lucide
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
+// Inline pill version (for use in PillLinks row)
+export function LeadIntelPillInline({ className }: { className?: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium border transition-all duration-200 shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.98] bg-amber-500/15 text-amber-600 hover:bg-amber-500/25 border-amber-500/30 ${className || ''}`}
+      >
+        <Lightbulb className="w-4 h-4" />
+        Lead Intel
+      </button>
+      <LeadIntelModalContent open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
+// Floating pill version (for layout-level placement)
 export function LeadIntelPill() {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      {/* Floating pill button */}
       <motion.button
         onClick={() => setOpen(true)}
         className="fixed bottom-24 right-6 z-30 flex items-center gap-2 px-4 py-2.5 rounded-full bg-gradient-to-r from-blue-600/90 to-purple-600/90 text-white text-sm font-medium shadow-lg shadow-blue-500/20 backdrop-blur-sm border border-white/10 hover:shadow-blue-500/30 transition-all duration-300"
@@ -20,17 +38,23 @@ export function LeadIntelPill() {
         Lead Intel
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
       </motion.button>
+      <LeadIntelModalContent open={open} onClose={() => setOpen(false)} />
+    </>
+  );
+}
 
-      {/* Modal */}
+function LeadIntelModalContent({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <>
+
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setOpen(false)}
+              onClick={onClose}
               className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
             />
 
@@ -56,7 +80,7 @@ export function LeadIntelPill() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setOpen(false)}
+                  onClick={onClose}
                   className="text-white/40 hover:text-white hover:bg-white/5"
                 >
                   <X className="w-5 h-5" />

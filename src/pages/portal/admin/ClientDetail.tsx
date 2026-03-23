@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { OnboardingStageProgress } from '@/components/portal/onboarding';
 import { PillLinks } from '@/components/portal/PillLinks';
+import { LeadIntelPillInline } from '@/components/hub/LeadIntelModal';
 import { ChatPopup, ChatBubbleButton } from '@/components/portal/ChatPopup';
 import StatusBadge from '@/components/portal/StatusBadge';
 import { PackageTypeBadge } from '@/components/portal/PackageTypeBadge';
@@ -737,6 +738,7 @@ export default function PortalAdminClientDetail() {
             tfwpProfileLink={(client as any).tfwp_profile_link}
             agreementLink={(client as any).agreement_link}
           />
+          <LeadIntelPillInline />
           <Button
             variant="outline"
             size="sm"
