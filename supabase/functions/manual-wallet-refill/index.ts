@@ -12,23 +12,42 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // WALL-13: Require shared secret for service-to-service calls
+  // WALL-13: Auth guard — billing secret, or authenticated admin user
   const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
   const providedSecret = req.headers.get('x-billing-secret');
-
-  const authHeader = req.headers.get('Authorization');
+  const authHeader = req.headers.get('Authorization') ?? '';
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const isServiceRole = authHeader === `Bearer ${supabaseServiceKey}`;
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const hasValidSecret = billingSecret && providedSecret === billingSecret;
 
-  if (!isServiceRole && !hasValidSecret) {
+  let authorized = hasValidSecret;
+
+  // Check admin JWT (frontend Refill Wallet Now button)
+  if (!authorized && authHeader) {
+    try {
+      const authClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error } = await authClient.auth.getUser();
+      if (user && !error) {
+        const roleClient = createClient(supabaseUrl, supabaseServiceKey);
+        const { data: roles } = await roleClient
+          .from('user_roles')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+        authorized = roles?.role === 'admin';
+      }
+    } catch { /* auth failed */ }
+  }
+
+  if (!authorized) {
     return new Response(
       JSON.stringify({ error: 'Unauthorized' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } }
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
