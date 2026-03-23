@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -26,6 +26,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   const prevConversationId = useRef<string | null>(null);
 
   const { data: client } = useClient();
+  const [stellaIsTyping, setStellaIsTyping] = useState(false);
 
   const {
     data,
@@ -76,7 +77,24 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
 
   const handleSend = (message: string, attachment?: { url: string; type: string; name: string }, personaId?: import('@/hooks/useChat').ChatPersonaId) => {
     sendMessage.mutate({ conversationId, message, attachment, personaId });
+    setStellaIsTyping(true);
   };
+
+  // Hide typing indicator when Stella (or any admin) responds
+  useEffect(() => {
+    if (!stellaIsTyping) return;
+    const lastMsg = sortedMessages[sortedMessages.length - 1];
+    if (lastMsg?.sender_role === 'admin') {
+      setStellaIsTyping(false);
+    }
+  }, [sortedMessages, stellaIsTyping]);
+
+  // Timeout: hide typing indicator after 90 seconds max
+  useEffect(() => {
+    if (!stellaIsTyping) return;
+    const timeout = setTimeout(() => setStellaIsTyping(false), 90000);
+    return () => clearTimeout(timeout);
+  }, [stellaIsTyping]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
@@ -151,6 +169,28 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
               />
             );
           })
+        )}
+
+        {/* Stella typing indicator */}
+        {stellaIsTyping && (
+          <div className="flex gap-3 px-2 py-1.5 -mx-2 rounded-lg animate-in fade-in duration-300">
+            <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center flex-shrink-0 text-xs font-medium">
+              ST
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline gap-2">
+                <span className="font-semibold text-sm text-foreground">Stella</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-primary/10 text-primary">
+                  Alpha Success Manager
+                </span>
+              </div>
+              <div className="flex gap-1 mt-1.5">
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.2s' }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.2s' }} />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1.2s' }} />
+              </div>
+            </div>
+          </div>
         )}
       </div>
 

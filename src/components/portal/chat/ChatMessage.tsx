@@ -84,7 +84,7 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
                 ? 'bg-red-500/10 text-red-400'
                 : 'bg-primary/10 text-primary'
             )}>
-              {message.persona_title || 'ASM'}
+              {message.persona_title || 'Alpha Success Manager'}
             </span>
           )}
           <span className="text-[11px] text-muted-foreground">
