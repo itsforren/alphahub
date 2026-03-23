@@ -60,11 +60,46 @@ export function parseMessageWithLinks(text: string): React.ReactNode[] {
         result.push(trailingChars);
       }
     } else {
-      result.push(part);
+      result.push(...parseFormatting(part, index));
     }
   });
-  
+
   return result;
+}
+
+/**
+ * Parses markdown-style formatting: **bold** and *italic*
+ */
+function parseFormatting(text: string, keyPrefix: number): React.ReactNode[] {
+  if (!text) return [];
+
+  const result: React.ReactNode[] = [];
+  // Match **bold** first, then *italic*
+  const BOLD_REGEX = /\*\*(.+?)\*\*/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = BOLD_REGEX.exec(text)) !== null) {
+    // Add text before the bold
+    if (match.index > lastIndex) {
+      result.push(text.slice(lastIndex, match.index));
+    }
+    // Add bold text
+    result.push(
+      <strong key={`bold-${keyPrefix}-${match.index}`} className="font-semibold text-foreground">
+        {match[1]}
+      </strong>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    result.push(text.slice(lastIndex));
+  }
+
+  return result.length > 0 ? result : [text];
 }
 
 /**
