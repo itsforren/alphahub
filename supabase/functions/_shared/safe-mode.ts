@@ -293,6 +293,24 @@ export async function restoreFromSnapshot(
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+  // CRITICAL: Clear safe_mode_active BEFORE pushing budgets to Google Ads.
+  // update-google-ads-budget blocks edits when safe_mode_active = true,
+  // so we must clear it first for the restoration calls to succeed.
+  const gracePeriodUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  await supabase
+    .from('recharge_state')
+    .upsert(
+      {
+        client_id: clientId,
+        safe_mode_active: false,
+        safe_mode_activated_at: null,
+        grace_period_until: gracePeriodUntil,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'client_id' },
+    );
+  console.log(`[safe-mode] Cleared safe_mode_active before budget restoration, grace period until ${gracePeriodUntil}`);
+
   for (const budget of budgets) {
     // Skip if budget was already at safe mode level before snapshot (rare but defensive)
     if (!budget.daily_budget || budget.daily_budget <= 0.01) {
@@ -360,20 +378,7 @@ export async function restoreFromSnapshot(
     campaignsRestored++;
   }
 
-  // Update recharge_state: clear safe mode, set RECH-12 grace period (2 hours)
-  const gracePeriodUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-  await supabase
-    .from('recharge_state')
-    .upsert(
-      {
-        client_id: clientId,
-        safe_mode_active: false,
-        safe_mode_activated_at: null,
-        grace_period_until: gracePeriodUntil,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'client_id' },
-    );
+  // recharge_state already cleared above (before budget push loop)
 
   // Log to campaign_audit_log
   await supabase.from('campaign_audit_log').insert([{
