@@ -28,6 +28,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const {
     remainingBalance,
     trackingStartDate,
+    performancePercentage,
     isLoading: computedLoading,
     refetch: refetchComputedBalance
   } = useComputedWalletBalance(clientId);
@@ -78,7 +79,8 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   });
 
   const monthlyCap = wallet?.monthly_ad_spend_cap ?? null;
-  const monthlyCapPercent = monthlyCap ? Math.min(100, (capPeriodSpend / monthlyCap) * 100) : 0;
+  const capPeriodSpendWithFee = capPeriodSpend * (1 + (performancePercentage ?? 0) / 100);
+  const monthlyCapPercent = monthlyCap ? Math.min(100, (capPeriodSpendWithFee / monthlyCap) * 100) : 0;
   const capPeriodDaysElapsed = differenceInDays(new Date(), parseISO(capPeriodStart));
   const capPeriodDaysTotal = 30;
 
@@ -306,7 +308,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                     'font-semibold',
                     monthlyCapPercent >= 90 ? 'text-red-400' : monthlyCapPercent >= 75 ? 'text-orange-400' : 'text-violet-400'
                   )}>
-                    ${capPeriodSpend.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    ${capPeriodSpendWithFee.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     <span className="text-muted-foreground font-normal"> / ${monthlyCap.toLocaleString()}</span>
                   </span>
                 </div>
@@ -327,7 +329,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                   )}
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>${Math.max(0, monthlyCap - capPeriodSpend).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining</span>
+                  <span>${Math.max(0, monthlyCap - capPeriodSpendWithFee).toLocaleString('en-US', { maximumFractionDigits: 0 })} remaining</span>
                   <span>Day {Math.min(capPeriodDaysElapsed, capPeriodDaysTotal)} of {capPeriodDaysTotal}</span>
                 </div>
               </div>
