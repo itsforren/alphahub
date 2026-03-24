@@ -14,6 +14,8 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { BusinessHoursBanner } from './BusinessHoursBanner';
 import { Button } from '@/components/ui/button';
+import { ScheduleCallModal } from './ScheduleCallModal';
+import { CalendarDays } from 'lucide-react';
 
 const STELLA_AVATAR_URL = 'https://qcunascacayiiuufjtaq.supabase.co/storage/v1/object/public/chat-attachments/stella-avatar.jpeg';
 
@@ -31,6 +33,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
 
   const { data: client } = useClient();
   const [stellaIsTyping, setStellaIsTyping] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
 
   const {
     data,
@@ -140,10 +143,21 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
 
   return (
     <div className={`flex flex-col h-full min-h-0 bg-card ${className}`}>
-      {/* Fixed header banners */}
+      {/* Fixed header with schedule button */}
       <div className="flex-shrink-0">
-        <BusinessHoursBanner />
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border">
+          <BusinessHoursBanner />
+          <button
+            onClick={() => setShowScheduler(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            Schedule a Call
+          </button>
+        </div>
       </div>
+
+      <ScheduleCallModal open={showScheduler} onClose={() => setShowScheduler(false)} />
 
       {/* Messages area - scrollable */}
       <div
