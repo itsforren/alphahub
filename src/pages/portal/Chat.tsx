@@ -40,14 +40,14 @@ export default function PortalChat() {
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 flex flex-col bg-card overflow-hidden">
-        <ChatHeader 
+    <div className="h-[calc(100vh-4rem)] lg:h-screen flex flex-col overflow-hidden">
+      <div className="flex-shrink-0">
+        <ChatHeader
           title="Chat with Your Success Manager"
           subtitle="We're here to help you succeed"
         />
-        <ChatPanel conversationId={conversation.id} className="flex-1" />
       </div>
+      <ChatPanel conversationId={conversation.id} className="flex-1 min-h-0" />
     </div>
   );
 }
