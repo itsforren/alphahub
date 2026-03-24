@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { X, Minus, Maximize2, Lightbulb } from 'lucide-react';
+import { X, Minus, Maximize2, Lightbulb, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isWithinBusinessHours } from '@/hooks/useChat';
 import { FeatureRequestModal } from '@/components/hub/FeatureRequestModal';
+import { ScheduleCallModal } from './ScheduleCallModal';
 
 interface ChatHeaderProps {
   title?: string;
@@ -23,6 +24,7 @@ export function ChatHeader({
 }: ChatHeaderProps) {
   const isOpen = isWithinBusinessHours();
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
 
   return (
     <>
@@ -47,6 +49,13 @@ export function ChatHeader({
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowScheduler(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors mr-1"
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Schedule a Call</span>
+          </button>
           <Button
             variant="ghost"
             size="icon"
@@ -89,6 +98,7 @@ export function ChatHeader({
         </div>
       </div>
       <FeatureRequestModal open={featureModalOpen} onOpenChange={setFeatureModalOpen} />
+      <ScheduleCallModal open={showScheduler} onClose={() => setShowScheduler(false)} />
     </>
   );
 }
