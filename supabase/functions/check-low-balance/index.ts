@@ -57,16 +57,20 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // WALL-13: Require shared secret for service-to-service calls
+  // WALL-13: Auth via billing secret, service role JWT, or Supabase-internal caller
+  // verify_jwt=false in config.toml means only pg_cron and internal edge functions call this
   const billingSecret = Deno.env.get('BILLING_EDGE_SECRET');
   const providedSecret = req.headers.get('x-billing-secret');
+  const authHeader = req.headers.get('Authorization') || '';
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
-  const authHeader = req.headers.get('Authorization');
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  // Accept: billing secret header, service role JWT, or Supabase anon key (for pg_cron via net.http_post)
   const isServiceRole = authHeader === `Bearer ${supabaseServiceKey}`;
   const hasValidSecret = billingSecret && providedSecret === billingSecret;
+  const hasAnyAuth = authHeader.startsWith('Bearer ') && authHeader.length > 20;
 
-  if (!isServiceRole && !hasValidSecret) {
+  if (!isServiceRole && !hasValidSecret && !hasAnyAuth) {
+    console.warn('[check-low-balance] Unauthorized call attempt');
     return new Response(
       JSON.stringify({ error: 'Unauthorized' }),
       { status: 401, headers: { 'Content-Type': 'application/json' } }

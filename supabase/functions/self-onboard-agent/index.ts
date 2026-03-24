@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     };
 
     console.log('=== SELF-ONBOARD-AGENT COMPLETE ===');
-    return new Response(JSON.stringify(response), { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify(response), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error: unknown) {
     console.error('Unexpected error:', error);

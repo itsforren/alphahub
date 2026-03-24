@@ -32,7 +32,7 @@ export function ScheduleCallModal({ open, onClose }: ScheduleCallModalProps) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-card rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-3xl max-h-[95vh] bg-card rounded-2xl border border-border shadow-2xl overflow-hidden flex flex-col">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -90,7 +90,7 @@ export function ScheduleCallModal({ open, onClose }: ScheduleCallModalProps) {
           <iframe
             src={CALENDAR_EMBED_URL}
             className="w-full border-none"
-            style={{ minHeight: '550px', height: '100%' }}
+            style={{ minHeight: '700px', height: '100%' }}
             scrolling="no"
           />
         </div>

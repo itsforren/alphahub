@@ -224,9 +224,13 @@ async function copyCampaign(
           status: 'PAUSED', // Always create as paused
           campaignBudget: newBudgetResourceName, // Use new dedicated budget
           networkSettings: {
-            targetGoogleSearch: sourceCampaign.networkSettings?.targetGoogleSearch ?? true,
-            targetSearchNetwork: sourceCampaign.networkSettings?.targetSearchNetwork ?? true,
-            targetContentNetwork: sourceCampaign.networkSettings?.targetContentNetwork ?? false,
+            targetGoogleSearch: true,
+            targetSearchNetwork: false,  // Search partners OFF — Google Search only
+            targetContentNetwork: false,
+          },
+          // Geo targeting: PRESENCE only (people IN the location, not "interested in")
+          geoTargetTypeSetting: {
+            positiveGeoTargetType: 'PRESENCE',
           },
           // Bidding strategy - Maximize Conversions (same as template)
           maximizeConversions: {},
@@ -457,6 +461,55 @@ async function setLocationTargeting(
   }
 
   console.log('Location targeting set successfully');
+}
+
+// Shared negative keyword lists — MANDATORY for all IUL campaigns
+const SHARED_NEGATIVE_KEYWORD_LISTS = [
+  '10419525119',  // IUL Spanish Keywords
+  '10474348949',  // Not Related IUL Keywords
+];
+
+async function applySharedNegativeKeywordLists(
+  accessToken: string,
+  customerId: string,
+  campaignId: string
+): Promise<void> {
+  const developerToken = Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN');
+  const mccCustomerId = Deno.env.get('GOOGLE_ADS_MCC_CUSTOMER_ID');
+  const cleanCustomerId = customerId.trim().replace(/-/g, '');
+  const cleanMccId = mccCustomerId?.trim().replace(/-/g, '');
+
+  console.log(`Applying ${SHARED_NEGATIVE_KEYWORD_LISTS.length} shared negative keyword lists to campaign ${campaignId}`);
+
+  const operations = SHARED_NEGATIVE_KEYWORD_LISTS.map(sharedSetId => ({
+    create: {
+      campaign: `customers/${cleanCustomerId}/campaigns/${campaignId}`,
+      sharedSet: `customers/${cleanCustomerId}/sharedSets/${sharedSetId}`,
+    },
+  }));
+
+  const mutateUrl = `https://googleads.googleapis.com/v22/customers/${cleanCustomerId}/campaignSharedSets:mutate`;
+
+  const response = await fetch(mutateUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'developer-token': developerToken!,
+      'login-customer-id': cleanMccId!,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ operations }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('Error applying shared negative keyword lists:', error);
+    // Don't throw — campaign is still usable without negatives, just suboptimal
+    console.warn('Continuing without shared negative keyword lists');
+    return;
+  }
+
+  console.log(`Applied ${SHARED_NEGATIVE_KEYWORD_LISTS.length} shared negative keyword lists successfully`);
 }
 
 async function deleteExistingAdGroups(
@@ -1092,6 +1145,9 @@ Deno.serve(async (req) => {
         if (parsedStates.length > 0) {
           await setLocationTargeting(accessToken, customerId, newCampaignId, parsedStates);
         }
+
+        // Apply shared negative keyword lists (IUL Spanish + Not Related IUL)
+        await applySharedNegativeKeywordLists(accessToken, customerId, newCampaignId);
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error('Campaign creation failed:', errorMessage);
