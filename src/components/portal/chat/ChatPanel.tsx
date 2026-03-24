@@ -46,17 +46,28 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   // Set up realtime subscription for messages
   useChatRealtime(conversationId);
 
-  // Listen for Stella typing broadcasts
+  // Listen for typing indicator changes via postgres_changes
   useEffect(() => {
     if (!conversationId) return;
 
     const typingChannel = supabase
       .channel(`chat-typing-${conversationId}`)
-      .on('broadcast', { event: 'stella-typing' }, () => {
-        // Clear any pending hide timeout
-        if (typingHideTimeout.current) clearTimeout(typingHideTimeout.current);
-        setStellaIsTyping(true);
-      })
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'chat_typing',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload: any) => {
+          const isTyping = payload.new?.is_typing ?? false;
+          if (isTyping) {
+            if (typingHideTimeout.current) clearTimeout(typingHideTimeout.current);
+          }
+          setStellaIsTyping(isTyping);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -98,18 +109,8 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     }
   }, [conversationId, messages.length]);
 
-  // When a new admin message arrives, debounce-hide the typing indicator
-  // (short delay so if another typing broadcast comes right after, it stays visible)
-  useEffect(() => {
-    if (!stellaIsTyping) return;
-    const lastMsg = sortedMessages[sortedMessages.length - 1];
-    if (lastMsg?.sender_role === 'admin') {
-      typingHideTimeout.current = setTimeout(() => setStellaIsTyping(false), 800);
-      return () => {
-        if (typingHideTimeout.current) clearTimeout(typingHideTimeout.current);
-      };
-    }
-  }, [sortedMessages, stellaIsTyping]);
+  // The chat_typing table handles is_typing on/off directly via postgres_changes.
+  // No debounce needed - the edge function sets is_typing=false before inserting each message.
 
   // Safety timeout: hide typing after 90 seconds no matter what
   useEffect(() => {
