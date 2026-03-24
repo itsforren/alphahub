@@ -282,12 +282,7 @@ export function useSendMessage() {
           console.error('Failed to send chat notification:', notifError);
         }
 
-        // Trigger Stella AI assistant response (fire-and-forget, client messages only)
-        if (senderRole === 'client') {
-          supabase.functions.invoke('stella-chat', {
-            body: { conversation_id: conversationId }
-          }).catch(() => {}); // silent fail - Stella handles her own errors
-        }
+        // Stella AI is now triggered via database trigger (pg_net) - no frontend call needed
       }
 
       return data as ChatMessage;
