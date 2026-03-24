@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -9,10 +9,13 @@ import {
   ChatMessage as ChatMessageType,
 } from '@/hooks/useChat';
 import { useClient } from '@/hooks/useClientData';
+import { supabase } from '@/integrations/supabase/client';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { BusinessHoursBanner } from './BusinessHoursBanner';
 import { Button } from '@/components/ui/button';
+
+const STELLA_AVATAR_URL = 'https://qcunascacayiiuufjtaq.supabase.co/storage/v1/object/public/chat-attachments/stella-avatar.jpeg';
 
 interface ChatPanelProps {
   conversationId: string;
@@ -24,6 +27,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
   const prevConversationId = useRef<string | null>(null);
+  const typingHideTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   const { data: client } = useClient();
   const [stellaIsTyping, setStellaIsTyping] = useState(false);
@@ -39,14 +43,33 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
   const sendMessage = useSendMessage();
   const markAsRead = useMarkAsRead();
 
-  // Set up realtime subscription
+  // Set up realtime subscription for messages
   useChatRealtime(conversationId);
+
+  // Listen for Stella typing broadcasts
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const typingChannel = supabase
+      .channel(`chat-typing-${conversationId}`)
+      .on('broadcast', { event: 'stella-typing' }, () => {
+        // Clear any pending hide timeout
+        if (typingHideTimeout.current) clearTimeout(typingHideTimeout.current);
+        setStellaIsTyping(true);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(typingChannel);
+    };
+  }, [conversationId]);
 
   // Reset on conversation change
   useEffect(() => {
     if (conversationId && conversationId !== prevConversationId.current) {
       prevConversationId.current = conversationId;
       isInitialLoad.current = true;
+      setStellaIsTyping(false);
     }
   }, [conversationId]);
 
@@ -66,7 +89,7 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     if (el && sortedMessages.length > 0) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [sortedMessages]);
+  }, [sortedMessages, stellaIsTyping]);
 
   // Mark messages as read when viewing
   useEffect(() => {
@@ -75,26 +98,29 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
     }
   }, [conversationId, messages.length]);
 
-  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }, personaId?: import('@/hooks/useChat').ChatPersonaId) => {
-    sendMessage.mutate({ conversationId, message, attachment, personaId });
-    setStellaIsTyping(true);
-  };
-
-  // Hide typing indicator when Stella (or any admin) responds
+  // When a new admin message arrives, debounce-hide the typing indicator
+  // (short delay so if another typing broadcast comes right after, it stays visible)
   useEffect(() => {
     if (!stellaIsTyping) return;
     const lastMsg = sortedMessages[sortedMessages.length - 1];
     if (lastMsg?.sender_role === 'admin') {
-      setStellaIsTyping(false);
+      typingHideTimeout.current = setTimeout(() => setStellaIsTyping(false), 800);
+      return () => {
+        if (typingHideTimeout.current) clearTimeout(typingHideTimeout.current);
+      };
     }
   }, [sortedMessages, stellaIsTyping]);
 
-  // Timeout: hide typing indicator after 90 seconds max
+  // Safety timeout: hide typing after 90 seconds no matter what
   useEffect(() => {
     if (!stellaIsTyping) return;
     const timeout = setTimeout(() => setStellaIsTyping(false), 90000);
     return () => clearTimeout(timeout);
   }, [stellaIsTyping]);
+
+  const handleSend = (message: string, attachment?: { url: string; type: string; name: string }, personaId?: import('@/hooks/useChat').ChatPersonaId) => {
+    sendMessage.mutate({ conversationId, message, attachment, personaId });
+  };
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
@@ -174,8 +200,13 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
         {/* Stella typing indicator */}
         {stellaIsTyping && (
           <div className="flex gap-3 px-2 py-1.5 -mx-2 rounded-lg animate-in fade-in duration-300">
-            <div className="w-9 h-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center flex-shrink-0 text-xs font-medium">
-              ST
+            <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-medium overflow-hidden bg-primary text-primary-foreground">
+              <img
+                src={STELLA_AVATAR_URL}
+                alt="Stella"
+                className="w-9 h-9 rounded-lg object-cover"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline gap-2">
@@ -184,10 +215,10 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
                   Alpha Success Manager
                 </span>
               </div>
-              <div className="flex gap-1 mt-1.5">
-                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.2s' }} />
-                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.2s' }} />
-                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1.2s' }} />
+              <div className="flex gap-1.5 mt-2">
+                <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '0ms', animationDuration: '1.4s' }} />
+                <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '200ms', animationDuration: '1.4s' }} />
+                <span className="w-2 h-2 bg-muted-foreground/40 rounded-full animate-bounce" style={{ animationDelay: '400ms', animationDuration: '1.4s' }} />
               </div>
             </div>
           </div>
