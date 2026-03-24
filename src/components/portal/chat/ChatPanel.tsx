@@ -143,8 +143,8 @@ export function ChatPanel({ conversationId, className }: ChatPanelProps) {
 
   return (
     <div className={`flex flex-col h-full min-h-0 bg-card ${className}`}>
-      {/* Fixed header with schedule button */}
-      <div className="flex-shrink-0">
+      {/* Sticky header with schedule button */}
+      <div className="flex-shrink-0 sticky top-0 z-10 bg-card">
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-border">
           <BusinessHoursBanner />
           <button
