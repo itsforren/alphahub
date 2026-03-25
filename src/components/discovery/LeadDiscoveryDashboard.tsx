@@ -4,10 +4,11 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter } from 'lucide-react';
+import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp } from 'lucide-react';
 import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
+import { CallerLeaderboard } from './CallerLeaderboard';
 import { useDiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
 import { computePriorityScore } from '@/hooks/useLeadDiscoveryQueue';
 import type { DiscoveryQueueData, DiscoveryLead } from '@/hooks/useLeadDiscoveryQueue';
@@ -125,6 +126,10 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
             <Badge variant="secondary" className="ml-1 text-xs">
               {data.lost.length}
             </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="stats" className="gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Stats
           </TabsTrigger>
         </TabsList>
 
@@ -245,6 +250,11 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
               <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
             ))
           )}
+        </TabsContent>
+
+        {/* Stats */}
+        <TabsContent value="stats" className="space-y-6">
+          <CallerLeaderboard agentId={agentId} />
         </TabsContent>
       </Tabs>
 
