@@ -226,7 +226,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
               pre_safe_mode_budget: null,
               current_daily_budget: budget.daily_budget,
               last_budget_change_at: new Date().toISOString(),
-              last_budget_change_by: 'ADMIN_CREDIT',
+              last_budget_change_by: 'SAFE_MODE_EXIT',
               updated_at: new Date().toISOString(),
             }).eq('id', budget.campaign_id);
           }
