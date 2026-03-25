@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Minus, Maximize2, Lightbulb, CalendarDays } from 'lucide-react';
+import { X, Minus, Maximize2, MessageSquarePlus, CalendarDays } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isWithinBusinessHours } from '@/hooks/useChat';
 import { FeatureRequestModal } from '@/components/hub/FeatureRequestModal';
@@ -60,10 +60,10 @@ export function ChatHeader({
             variant="ghost"
             size="icon"
             onClick={() => setFeatureModalOpen(true)}
-            className="h-8 w-8 text-amber-400 hover:text-amber-300"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             title="Request a Feature"
           >
-            <Lightbulb className="w-4 h-4" />
+            <MessageSquarePlus className="w-4 h-4" />
           </Button>
           {showExpand && onExpand && (
             <Button
