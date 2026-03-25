@@ -9,6 +9,7 @@ import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
 import { CallerLeaderboard } from './CallerLeaderboard';
+import { DailyWeeklyReport } from './DailyWeeklyReport';
 import { useDiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
 import { computePriorityScore } from '@/hooks/useLeadDiscoveryQueue';
 import type { DiscoveryQueueData, DiscoveryLead } from '@/hooks/useLeadDiscoveryQueue';
@@ -255,6 +256,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         {/* Stats */}
         <TabsContent value="stats" className="space-y-6">
           <CallerLeaderboard agentId={agentId} />
+          <DailyWeeklyReport agentId={agentId} />
         </TabsContent>
       </Tabs>
 
