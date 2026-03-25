@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useClientWallet, useCreateOrUpdateWallet, useAddWalletAdjustment } from '@/hooks/useClientWallet';
+import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -85,12 +85,11 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const capPeriodDaysElapsed = differenceInDays(new Date(), parseISO(capPeriodStart));
   const capPeriodDaysTotal = 30;
 
-  const addWalletAdjustment = useAddWalletAdjustment();
-
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [creditModalOpen, setCreditModalOpen] = useState(false);
   const [creditAmount, setCreditAmount] = useState('');
   const [creditDescription, setCreditDescription] = useState('');
+  const [isAddingCredit, setIsAddingCredit] = useState(false);
   const [threshold, setThreshold] = useState('');
   const [autoCharge, setAutoCharge] = useState('');
   const [editTrackingDate, setEditTrackingDate] = useState('');
@@ -104,14 +103,80 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
       toast.error('Enter a valid amount');
       return;
     }
+    setIsAddingCredit(true);
     try {
-      await addWalletAdjustment.mutateAsync({
-        clientId,
-        amount,
-        description: creditDescription || 'Ad spend credit',
-      });
+      const desc = creditDescription || 'Ad spend credit';
+      const today = new Date().toISOString().split('T')[0];
+
+      // Get client name
+      const { data: clientData } = await supabase
+        .from('clients')
+        .select('name')
+        .eq('id', clientId)
+        .maybeSingle();
+
+      // Create billing record so it shows in billing details
+      const { data: billingRec, error: brError } = await supabase
+        .from('billing_records')
+        .insert({
+          client_id: clientId,
+          client_name: clientData?.name || null,
+          billing_type: 'ad_spend',
+          amount,
+          status: 'paid',
+          paid_at: new Date().toISOString(),
+          due_date: today,
+          billing_period_start: today,
+          billing_period_end: today,
+          notes: `Admin credit: ${desc}`,
+          is_recurring_parent: false,
+          recurrence_type: 'one_time',
+          source: 'admin_credit',
+        })
+        .select('id')
+        .single();
+
+      if (brError) throw brError;
+
+      // Get or create wallet
+      let walletId: string;
+      const { data: existingWallet } = await supabase
+        .from('client_wallets')
+        .select('id')
+        .eq('client_id', clientId)
+        .maybeSingle();
+
+      if (existingWallet) {
+        walletId = existingWallet.id;
+      } else {
+        const { data: newWallet, error: wErr } = await supabase
+          .from('client_wallets')
+          .insert({ client_id: clientId, ad_spend_balance: 0, tracking_start_date: today })
+          .select('id')
+          .single();
+        if (wErr) throw wErr;
+        walletId = newWallet.id;
+      }
+
+      // Create wallet transaction
+      const { error: txError } = await supabase
+        .from('wallet_transactions')
+        .insert({
+          wallet_id: walletId,
+          client_id: clientId,
+          transaction_type: 'adjustment',
+          amount,
+          balance_after: 0,
+          description: desc,
+          billing_record_id: billingRec.id,
+        });
+
+      if (txError) throw txError;
+
       queryClient.invalidateQueries({ queryKey: ['computed-wallet-balance', clientId] });
       queryClient.invalidateQueries({ queryKey: ['billing-records', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['wallet-transactions', clientId] });
       refetchComputedBalance();
       toast.success(`$${amount.toLocaleString()} credit added to wallet`);
       setCreditModalOpen(false);
@@ -119,6 +184,8 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
       setCreditDescription('');
     } catch (err: any) {
       toast.error(err.message || 'Failed to add credit');
+    } finally {
+      setIsAddingCredit(false);
     }
   };
 
@@ -452,9 +519,9 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
             <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
             <Button
               onClick={handleAddCredit}
-              disabled={addWalletAdjustment.isPending || !creditAmount || parseFloat(creditAmount) <= 0}
+              disabled={isAddingCredit || !creditAmount || parseFloat(creditAmount) <= 0}
             >
-              {addWalletAdjustment.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {isAddingCredit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Add Credit
             </Button>
           </DialogFooter>
