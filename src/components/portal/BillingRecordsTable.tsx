@@ -134,7 +134,9 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 flex-wrap">
                 <BillingTypeBadge type={record.billing_type} />
-                {record.stripe_invoice_id || record.stripe_payment_intent_id ? (
+                {record.source === 'admin_credit' ? (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-emerald-500/40 text-emerald-400">Credit</Badge>
+                ) : record.stripe_invoice_id || record.stripe_payment_intent_id ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-blue-500/40 text-blue-400">Stripe</Badge>
                 ) : record.notes?.includes('Auto-recharge') || record.notes?.includes('auto-recharge') ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-violet-500/40 text-violet-400">Auto</Badge>
@@ -322,7 +324,11 @@ export function BillingRecordsTable({ records, onEdit, filterType = 'all', filte
                 {/* Source: Stripe, Auto, Manual, or Legacy (v1_manual) */}
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    {record.source === 'v1_manual' ? (
+                    {record.source === 'admin_credit' ? (
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 border-emerald-500/40 text-emerald-400">
+                        Credit
+                      </Badge>
+                    ) : record.source === 'v1_manual' ? (
                       <Badge className="text-[10px] px-1.5 py-0 h-5 bg-amber-500/15 text-amber-400 border-amber-500/30 hover:bg-amber-500/20">
                         Legacy
                       </Badge>

@@ -111,6 +111,7 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
         description: creditDescription || 'Ad spend credit',
       });
       queryClient.invalidateQueries({ queryKey: ['computed-wallet-balance', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['billing-records', clientId] });
       refetchComputedBalance();
       toast.success(`$${amount.toLocaleString()} credit added to wallet`);
       setCreditModalOpen(false);
