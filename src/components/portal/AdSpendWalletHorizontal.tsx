@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
-import { useClientWallet, useCreateOrUpdateWallet } from '@/hooks/useClientWallet';
+import { useClientWallet, useCreateOrUpdateWallet, useAddWalletAdjustment } from '@/hooks/useClientWallet';
 import { useComputedWalletBalance } from '@/hooks/useComputedWalletBalance';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target } from 'lucide-react';
+import { Wallet, AlertTriangle, Settings, Loader2, TrendingDown, Target, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -84,13 +85,41 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
   const capPeriodDaysElapsed = differenceInDays(new Date(), parseISO(capPeriodStart));
   const capPeriodDaysTotal = 30;
 
+  const addWalletAdjustment = useAddWalletAdjustment();
+
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditAmount, setCreditAmount] = useState('');
+  const [creditDescription, setCreditDescription] = useState('');
   const [threshold, setThreshold] = useState('');
   const [autoCharge, setAutoCharge] = useState('');
   const [editTrackingDate, setEditTrackingDate] = useState('');
   const [monthlyCapInput, setMonthlyCapInput] = useState('');
   const [billingModeInput, setBillingModeInput] = useState<string>('');
   const [isSavingDate, setIsSavingDate] = useState(false);
+
+  const handleAddCredit = async () => {
+    const amount = parseFloat(creditAmount);
+    if (!amount || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    try {
+      await addWalletAdjustment.mutateAsync({
+        clientId,
+        amount,
+        description: creditDescription || 'Ad spend credit',
+      });
+      queryClient.invalidateQueries({ queryKey: ['computed-wallet-balance', clientId] });
+      refetchComputedBalance();
+      toast.success(`$${amount.toLocaleString()} credit added to wallet`);
+      setCreditModalOpen(false);
+      setCreditAmount('');
+      setCreditDescription('');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add credit');
+    }
+  };
 
   const isLoading = walletLoading || computedLoading;
   const lowThreshold = wallet?.low_balance_threshold ?? 150;
@@ -350,19 +379,86 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
                 )}
               </div>
               {isAdmin && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={openSettings}
-                  className="h-9 w-9"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreditModalOpen(true)}
+                    className="h-9 gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Credit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={openSettings}
+                    className="h-9 w-9"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
+                </>
               )}
             </div>
           </div>
         </div>
       </Card>
+
+      {/* Add Credit Modal */}
+      <Dialog open={creditModalOpen} onOpenChange={setCreditModalOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="w-5 h-5 text-emerald-500" />
+              Add Wallet Credit
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Credit Amount</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={creditAmount}
+                  onChange={(e) => setCreditAmount(e.target.value)}
+                  className="pl-7"
+                  placeholder="500.00"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={creditDescription}
+                onChange={(e) => setCreditDescription(e.target.value)}
+                placeholder="Ad spend credit — reason..."
+                rows={2}
+              />
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+              This credit will be added directly to the wallet balance as an adjustment.
+              Current balance: <span className="font-medium text-foreground">${remainingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+              {creditAmount && parseFloat(creditAmount) > 0 && (
+                <> → <span className="font-medium text-emerald-500">${(remainingBalance + parseFloat(creditAmount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreditModalOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddCredit}
+              disabled={addWalletAdjustment.isPending || !creditAmount || parseFloat(creditAmount) <= 0}
+            >
+              {addWalletAdjustment.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Add Credit
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Settings Modal */}
       <Dialog open={settingsModalOpen} onOpenChange={setSettingsModalOpen}>
