@@ -39,7 +39,7 @@ export function ClosedWonModal({
   prospectName,
   isLoading = false,
 }: ClosedWonModalProps) {
-  const [managementFee, setManagementFee] = useState('');
+  const [managementFee, setManagementFee] = useState('1497');
   const [depositType, setDepositType] = useState<DepositType>('full');
   const [depositAmount, setDepositAmount] = useState('');
   const [adSpendBudget, setAdSpendBudget] = useState('');
@@ -58,7 +58,7 @@ export function ClosedWonModal({
     });
 
     // Reset
-    setManagementFee('');
+    setManagementFee('1497');
     setDepositType('full');
     setDepositAmount('');
     setAdSpendBudget('');
@@ -96,7 +96,7 @@ export function ClosedWonModal({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input
                 type="number"
-                placeholder="597"
+                placeholder="1497"
                 value={managementFee}
                 onChange={(e) => setManagementFee(e.target.value)}
                 className="pl-7"

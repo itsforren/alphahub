@@ -227,10 +227,7 @@ export function useSignAgreement() {
       queryClient.invalidateQueries({ queryKey: ['client'] });
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       queryClient.invalidateQueries({ queryKey: ['client-self-onboarding'] });
-      toast.success('Agreement signed successfully!');
-    },
-    onError: (error) => {
-      toast.error('Failed to sign agreement: ' + error.message);
+      // Note: toast handled by calling code in SignAgreement.tsx to avoid duplicate toasts
     },
   });
 }

@@ -663,27 +663,31 @@ export default function SignAgreement() {
         } as any,
       });
       
-      auditLog.logAgreementSigned(agreementResult.id);
+      // Agreement is now signed in DB — show success immediately
       setSignedTimestamp(signedAt);
-      
-      // Auto-complete the sign_agreement self-onboarding task
-      const signTask = selfOnboardingTasks.find(t => t.task_key === 'sign_agreement' && !t.completed);
-      if (signTask && client) {
-        updateSelfOnboardingTask.mutate({
-          taskId: signTask.id,
-          completed: true,
-          clientId: client.id,
-          clientName: client.name,
-          taskLabel: signTask.task_label,
-        });
-      }
-      
       setIsSuccess(true);
+      toast.success('Agreement signed successfully!');
       window.scrollTo({ top: 0 });
-      // Fire celebration sequence: lens flare → confetti → fireworks → confetti
       fireShimmer();
       setTimeout(() => fireConfetti(), 400);
-      
+
+      // Post-sign housekeeping (non-critical — don't let failures override success)
+      try {
+        auditLog.logAgreementSigned(agreementResult.id);
+        const signTask = selfOnboardingTasks.find(t => t.task_key === 'sign_agreement' && !t.completed);
+        if (signTask && client) {
+          updateSelfOnboardingTask.mutate({
+            taskId: signTask.id,
+            completed: true,
+            clientId: client.id,
+            clientName: client.name,
+            taskLabel: signTask.task_label,
+          });
+        }
+      } catch (postSignErr) {
+        console.warn('Post-sign housekeeping error (agreement IS signed):', postSignErr);
+      }
+
     } catch (error: any) {
       console.error('Error signing agreement:', error);
       const errorMsg = error?.message || 'Unknown error';
