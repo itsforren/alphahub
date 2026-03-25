@@ -123,6 +123,7 @@ export default function Onboarding() {
             address={state.address}
             npn={state.npn}
             bio={state.bio}
+            headshotFile={state.headshotFile}
             headshotPreviewUrl={state.headshotPreviewUrl}
             isCreatingAccount={state.isCreatingAccount}
             dispatch={dispatch}

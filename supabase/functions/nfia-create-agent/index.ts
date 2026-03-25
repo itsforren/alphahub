@@ -1,11 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-const NFIA_API_URL = "https://www.nationalfia.org/api/create-agent";
 
 const VALID_US_STATE_CODES = new Set([
   "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
@@ -18,71 +17,10 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-+/g, "-");
 
-const isLikelyImageContentType = (contentType: string | null) => {
-  if (!contentType) return false;
-  const ct = contentType.toLowerCase();
-  return ct.startsWith("image/");
-};
-
-const probeUrl = async (url: string) => {
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        // Try to avoid downloading large bodies, while still allowing servers that ignore Range.
-        "Range": "bytes=0-1023",
-        "Accept": "image/*,*/*;q=0.8",
-      },
-    });
-
-    const contentType = res.headers.get("content-type");
-    const contentLength = res.headers.get("content-length");
-
-    // Read a small sample for debugging when content-type looks wrong.
-    let sampleText: string | null = null;
-    try {
-      const buf = await res.arrayBuffer();
-      const bytes = new Uint8Array(buf).slice(0, 256);
-      // Best effort: decode as text; if binary it will be garbage but still useful.
-      sampleText = new TextDecoder().decode(bytes);
-    } catch {
-      // ignore
-    }
-
-    return {
-      ok: res.ok,
-      status: res.status,
-      contentType,
-      contentLength,
-      sampleText,
-      ms: Date.now() - startedAt,
-    };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      status: 0,
-      contentType: null,
-      contentLength: null,
-      sampleText: message,
-      ms: Date.now() - startedAt,
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-};
-
 const normalizeStatesLicensed = (value: unknown): string[] => {
   const extractPrimitive = (v: unknown): string => {
     if (v === null || v === undefined) return "";
     if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
-
     if (typeof v === "object") {
       const anyV = v as Record<string, unknown>;
       const direct = anyV.value ?? anyV.Value ?? anyV.state ?? anyV.State;
@@ -94,21 +32,15 @@ const normalizeStatesLicensed = (value: unknown): string[] => {
       );
       if (firstPrimitive !== undefined) return String(firstPrimitive);
     }
-
     return "";
   };
 
   if (value === null || value === undefined) return [];
 
-  // If we get a JSON string stored in a text field, try to parse it.
   if (typeof value === "string") {
     const trimmed = value.trim();
     if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-      try {
-        return normalizeStatesLicensed(JSON.parse(trimmed));
-      } catch {
-        // fall through
-      }
+      try { return normalizeStatesLicensed(JSON.parse(trimmed)); } catch { /* fall through */ }
     }
   }
 
@@ -116,8 +48,6 @@ const normalizeStatesLicensed = (value: unknown): string[] => {
     return value.map(extractPrimitive).map((s) => s.trim()).filter(Boolean);
   }
 
-  // Zapier "Line items" objects:
-  // { "1": "TX", "2": "FL", ... }
   if (value && typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>).sort((a, b) => {
       const an = Number(a[0]);
@@ -125,19 +55,10 @@ const normalizeStatesLicensed = (value: unknown): string[] => {
       if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
       return String(a[0]).localeCompare(String(b[0]));
     });
-
-    return entries
-      .map(([, v]) => extractPrimitive(v).trim())
-      .filter(Boolean);
+    return entries.map(([, v]) => extractPrimitive(v).trim()).filter(Boolean);
   }
 
-  const str = String(value);
-
-  // Handle comma/newline/space-separated strings, incl. Zapier's "1 TX 2 FL" style text.
-  return str
-    .split(/[\s\n,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  return String(value).split(/[\s\n,]+/).map((s) => s.trim()).filter(Boolean);
 };
 
 serve(async (req) => {
@@ -168,7 +89,7 @@ serve(async (req) => {
       ),
     );
 
-    // Validate required fields (NFIA page breaks if these are missing)
+    // Validate required fields
     const missing: string[] = [];
     if (!fullname) missing.push("fullname");
     if (!email) missing.push("email");
@@ -188,169 +109,82 @@ serve(async (req) => {
 
     console.log(`[nfia-create-agent] request_id=${requestId} Creating NFIA page for:`, fullname);
 
-    // Preflight: verify headshot URL is reachable and looks like an image.
-    // This isolates third-party NFIA failures (500) from our own input issues.
-    const headshotProbe = await probeUrl(String(headshotUrl));
-    console.log(`[nfia-create-agent] request_id=${requestId} headshot preflight:`, JSON.stringify(headshotProbe));
-    if (!headshotProbe.ok || !isLikelyImageContentType(headshotProbe.contentType)) {
-      return new Response(
-        JSON.stringify({
-          error: "Headshot URL is not reachable as an image (preflight failed)",
-          request_id: requestId,
-          diagnostics: {
-            headshotUrl,
-            headshotProbe,
-          },
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    // Prefer provided slug (from automation), but normalize it to NFIA-safe format.
-    // Desired format: agent_id-firstname-lastname
     const computedSlug = (slug && String(slug).trim())
       ? slugify(String(slug).trim())
       : slugify(String(fullname));
 
-    // NFIA uses license_states field with format "OH,AK,AL,AR" (no spaces)
-    const licenseStatesString = statesLicensed.join(",");
+    const licenseStatesString = statesLicensed.join(", ");
+    const firstName = String(fullname).split(/\s+/)[0] || fullname;
 
-    const payload = {
-      fullname,
-      scheduleurl,
-      email,
-      phone,
-      bio,
-      headshotUrl,
-      // The correct field for NFIA is license_states as a comma-separated string
+    // Upsert directly into nfia_agents table (rebuild-nfia reads from here)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const agentRow = {
+      fullname: String(fullname),
+      slug: computedSlug,
+      consultation_name: firstName,
+      email: String(email),
+      phone: String(phone),
+      npn: String(npn),
+      license: `NAFIV${String(npn).slice(-2) || "00"}`,
       license_states: licenseStatesString,
-      // NFIA uses npn_number for the NPN Number field
-      npn_number: npn,
-      // NFIA may accept either an object or string depending on their backend.
-      // We'll try object format first to preserve existing behavior.
-      slug: { current: computedSlug },
+      states_count: statesLicensed.length,
+      years_experience: "1+",
+      bio: String(bio),
+      headshot_url: String(headshotUrl),
+      scheduleurl: String(scheduleurl),
+      published_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
-    console.log(`[nfia-create-agent] request_id=${requestId} Raw stateslicensed input:`, stateslicensed);
-    console.log(`[nfia-create-agent] request_id=${requestId} Normalized statesLicensed array:`, statesLicensed);
-    console.log(`[nfia-create-agent] request_id=${requestId} NFIA license_states (final string):`, licenseStatesString);
-    console.log(`[nfia-create-agent] request_id=${requestId} NFIA payload:`, JSON.stringify(payload, null, 2));
+    // Check if agent with this slug already exists
+    const { data: existing } = await supabase
+      .from("nfia_agents")
+      .select("id")
+      .eq("slug", computedSlug)
+      .maybeSingle();
 
-    const response = await fetch(NFIA_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+    let data;
+    let error;
 
-    const responseText = await response.text();
-    console.log(`[nfia-create-agent] request_id=${requestId} NFIA API response status:`, response.status);
-    console.log(`[nfia-create-agent] request_id=${requestId} NFIA API response:`, responseText);
-
-    // If NFIA rejected the object-based slug, retry once with a plain string slug.
-    if (!response.ok) {
-      console.log(`[nfia-create-agent] request_id=${requestId} NFIA request failed; retrying once with slug as string`);
-
-      const retryPayload = {
-        ...payload,
-        // override slug format
-        slug: computedSlug,
-      };
-
-      const retryResponse = await fetch(NFIA_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(retryPayload),
-      });
-
-      const retryText = await retryResponse.text();
-      console.log(`[nfia-create-agent] request_id=${requestId} NFIA retry response status:`, retryResponse.status);
-      console.log(`[nfia-create-agent] request_id=${requestId} NFIA retry response:`, retryText);
-
-      if (!retryResponse.ok) {
-        throw new Error(
-          `NFIA API error (initial + retry): ${response.status} - ${responseText} | retry ${retryResponse.status} - ${retryText}`,
-        );
-      }
-
-      // Use retry response
-      let retryData: any;
-      try {
-        retryData = JSON.parse(retryText);
-      } catch {
-        retryData = { url: retryText };
-      }
-
-      // Extract the NFIA page URL from response
-      let retryUrl = retryData.url || retryData.agentUrl || retryData.pageUrl;
-      const retryReturnedSlug =
-        typeof retryData.slug === "string"
-          ? retryData.slug
-          : retryData.slug?.current;
-
-      if (!retryUrl && retryReturnedSlug) retryUrl = `https://www.nationalfia.org/agent/${retryReturnedSlug}`;
-      if (!retryUrl && computedSlug) retryUrl = `https://www.nationalfia.org/agent/${computedSlug}`;
-      if (!retryUrl && typeof retryData === "string") retryUrl = retryData;
-      if (!retryUrl) throw new Error("Could not extract NFIA page URL from retry response");
-
-      console.log(`[nfia-create-agent] request_id=${requestId} NFIA page created successfully (retry):`, retryUrl);
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          nfia_url: retryUrl,
-          response: retryData,
-          request_id: requestId,
-          headshot_preflight: headshotProbe,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+    if (existing) {
+      // Update existing record
+      const result = await supabase
+        .from("nfia_agents")
+        .update(agentRow)
+        .eq("id", existing.id)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
+    } else {
+      // Insert new record
+      const result = await supabase
+        .from("nfia_agents")
+        .insert(agentRow)
+        .select()
+        .single();
+      data = result.data;
+      error = result.error;
     }
 
-    let responseData: any;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch {
-      responseData = { url: responseText };
+    if (error) {
+      console.error(`[nfia-create-agent] request_id=${requestId} Supabase error:`, error);
+      throw new Error(`Failed to upsert nfia_agents: ${error.message}`);
     }
 
-    // Extract the NFIA page URL from response
-    let nfiaUrl = responseData.url || responseData.agentUrl || responseData.pageUrl;
-
-    const returnedSlug =
-      typeof responseData.slug === "string"
-        ? responseData.slug
-        : responseData.slug?.current;
-
-    if (!nfiaUrl && returnedSlug) {
-      nfiaUrl = `https://www.nationalfia.org/agent/${returnedSlug}`;
-    }
-
-    if (!nfiaUrl && computedSlug) {
-      nfiaUrl = `https://www.nationalfia.org/agent/${computedSlug}`;
-    }
-
-    if (!nfiaUrl && typeof responseData === "string") {
-      nfiaUrl = responseData;
-    }
-
-    if (!nfiaUrl) {
-      console.log("Full response data:", responseData);
-      throw new Error("Could not extract NFIA page URL from response");
-    }
-
-    console.log("NFIA page created successfully:", nfiaUrl);
+    const nfiaUrl = `https://www.nationalfia.org/agent/${computedSlug}`;
+    console.log(`[nfia-create-agent] request_id=${requestId} NFIA agent created:`, nfiaUrl);
 
     return new Response(
       JSON.stringify({
         success: true,
         nfia_url: nfiaUrl,
-        response: responseData,
+        agent_id: data.id,
+        slug: computedSlug,
         request_id: requestId,
-        headshot_preflight: headshotProbe,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

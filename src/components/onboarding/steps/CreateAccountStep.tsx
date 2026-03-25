@@ -21,6 +21,7 @@ interface Props {
   address: { street: string; city: string; state: string; zip: string; country: string };
   npn: string;
   bio: string;
+  headshotFile: File | null;
   headshotPreviewUrl: string | null;
   isCreatingAccount: boolean;
   dispatch: React.Dispatch<OnboardingAction>;
@@ -50,6 +51,7 @@ export default function CreateAccountStep({
   address,
   npn,
   bio,
+  headshotFile,
   headshotPreviewUrl,
   isCreatingAccount,
   dispatch,
@@ -71,11 +73,32 @@ export default function CreateAccountStep({
     dispatch({ type: 'SET_ERROR', error: null });
 
     try {
-      // Upload headshot first if provided
+      // Upload headshot to Supabase storage if provided
       let headshotUrl: string | null = null;
-      // We skip headshot upload here — the edge function handles stabilization
-      // The frontend-uploaded preview URL is a blob URL, not usable server-side
-      // For now, headshot is handled post-onboarding or via the edge function
+      if (headshotFile) {
+        try {
+          const fileExt = headshotFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+          // Use a temp path keyed by email hash — will be moved to stable path
+          // (agent-headshots/{clientId}.ext) by refresh-stable-headshot after client creation
+          const tempKey = btoa(email.trim().toLowerCase()).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20);
+          const filePath = `agent-headshots/onboarding-${tempKey}.${fileExt}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('media')
+            .upload(filePath, headshotFile, { upsert: true });
+
+          if (uploadError) {
+            console.warn('Headshot upload failed (non-blocking):', uploadError);
+          } else {
+            const { data: { publicUrl } } = supabase.storage
+              .from('media')
+              .getPublicUrl(filePath);
+            headshotUrl = publicUrl;
+          }
+        } catch (err) {
+          console.warn('Headshot upload error (non-blocking):', err);
+        }
+      }
 
       // Call the self-onboard-agent edge function via raw fetch
       // (supabase.functions.invoke swallows error bodies on non-2xx)
