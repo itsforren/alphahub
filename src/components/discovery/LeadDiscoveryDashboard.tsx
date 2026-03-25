@@ -9,6 +9,7 @@ import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
 import { useDiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
+import { computePriorityScore } from '@/hooks/useLeadDiscoveryQueue';
 import type { DiscoveryQueueData, DiscoveryLead } from '@/hooks/useLeadDiscoveryQueue';
 import type { DiscoveryStage } from '@/hooks/useDiscoveryCalls';
 
@@ -19,8 +20,6 @@ interface LeadDiscoveryDashboardProps {
   subaccountId?: string | null;
   isLoading?: boolean;
 }
-
-const stageOrder: DiscoveryStage[] = ['new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4', 'discovery_complete'];
 
 export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccountId, isLoading }: LeadDiscoveryDashboardProps) {
   const [selectedLead, setSelectedLead] = useState<DiscoveryLead | null>(null);
@@ -55,19 +54,8 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
     return Array.from(states).sort();
   }, [data.all]);
 
-  // Group queue by stage (with filters applied)
-  const groupedQueue = useMemo(() => {
-    const filtered = applyFilters(data.queue);
-    const groups: Record<string, DiscoveryLead[]> = {};
-    stageOrder.forEach((s) => (groups[s] = []));
-    filtered.forEach((lead) => {
-      const stage = lead.discovery_stage || 'new';
-      if (groups[stage]) groups[stage].push(lead);
-    });
-    return groups;
-  }, [data.queue, filterState, filterTemp]);
-
-  const filteredQueueCount = useMemo(() => applyFilters(data.queue).length, [data.queue, filterState, filterTemp]);
+  // Flat priority-sorted queue (with filters applied)
+  const filteredQueue = useMemo(() => applyFilters(data.queue), [data.queue, filterState, filterTemp]);
 
   // Filter all contacts by search + filters
   const filteredAll = useMemo(() => {
@@ -89,6 +77,11 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
   const handleLeadClick = (lead: DiscoveryLead) => {
     setSelectedLead(lead);
     setSheetOpen(true);
+  };
+
+  const handleCallNext = (lead: DiscoveryLead) => {
+    setSelectedLead(lead);
+    // Sheet stays open — resets for the new lead via useEffect in DiscoveryCallSheet
   };
 
   const handleSheetClose = () => {
@@ -184,35 +177,29 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
             </Card>
           )}
 
-          {data.queue.length === 0 ? (
+          {filteredQueue.length === 0 ? (
             <EmptyState icon={PhoneCall} message="No follow-ups right now. Nice." />
           ) : (
-            stageOrder.map((stage) => {
-              const leads = groupedQueue[stage];
-              if (!leads || leads.length === 0) return null;
-              const stageLabels: Record<string, string> = {
-                new: 'New Leads',
-                attempt_1: 'Attempt 1',
-                attempt_2: 'Attempt 2',
-                attempt_3: 'Attempt 3',
-                attempt_4: 'Attempt 4',
-                discovery_complete: 'Needs Strategy Booking',
-              };
-              const stageLabel = stageLabels[stage] || stage;
-              return (
-                <div key={stage} className="space-y-2">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70 px-1">
-                    {stageLabel}
-                    <span className="ml-2 text-primary">{leads.length}</span>
-                  </h3>
-                  <div className="space-y-2">
-                    {leads.map((lead) => (
-                      <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-                    ))}
+            <div className="space-y-2">
+              {filteredQueue.map((lead) => {
+                const score = computePriorityScore(lead);
+                return (
+                  <div key={lead.id} className="relative">
+                    {score >= 900 && (
+                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-500/90 text-white rounded">
+                        URGENT
+                      </span>
+                    )}
+                    {score >= 700 && score < 900 && (
+                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/90 text-white rounded">
+                        HIGH
+                      </span>
+                    )}
+                    <LeadCard lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
                   </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </TabsContent>
 
@@ -268,6 +255,8 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         lead={selectedLead}
         agentId={agentId}
         schedulerLink={schedulerLink}
+        onCallNext={handleCallNext}
+        queueData={data}
       />
     </>
   );
