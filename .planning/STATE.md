@@ -83,6 +83,10 @@ Recent decisions affecting current work:
 
 None.
 
+### Quick Tasks Completed
+
+- **001**: Discovery Tool Elite Improvements (2026-03-24, ~8min) — 8 features: scoreboard, attempt progress, cadence, call-next, priority sort, leaderboard, report, time-of-day heatmap
+
 ### Blockers/Concerns
 
 - Phase 3 blocker RESOLVED: Supabase Realtime Swift client WebSocket disconnect issues handled via explicit disconnect on background, reconnect + catch-up on foreground
@@ -91,6 +95,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-07
-Stopped at: Completed 03-02-PLAN.md (chat attachments & link previews)
+Last session: 2026-03-24
+Stopped at: Completed quick/001 (discovery tool elite improvements)
 Resume file: None
