@@ -173,10 +173,72 @@ export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWal
 
       if (txError) throw txError;
 
+      // If client was in safe mode, clear it and restore campaign budgets
+      const { data: rechargeState } = await supabase
+        .from('recharge_state')
+        .select('safe_mode_active')
+        .eq('client_id', clientId)
+        .maybeSingle();
+
+      if (rechargeState?.safe_mode_active) {
+        // Clear safe_mode_active + set grace period
+        const gracePeriodUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+        await supabase.from('recharge_state').upsert({
+          client_id: clientId,
+          safe_mode_active: false,
+          safe_mode_activated_at: null,
+          grace_period_until: gracePeriodUntil,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'client_id' });
+
+        // Restore campaign budgets from snapshot
+        const { data: snapshot } = await supabase
+          .from('campaign_budget_snapshots')
+          .update({ restored_at: new Date().toISOString(), restored_by: 'admin_credit' })
+          .eq('client_id', clientId)
+          .eq('snapshot_type', 'safe_mode_entry')
+          .is('restored_at', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .select('id, campaign_budgets')
+          .maybeSingle();
+
+        if (snapshot?.campaign_budgets) {
+          const budgets = snapshot.campaign_budgets as Array<{ campaign_id: string; daily_budget: number; campaign_name?: string }>;
+          for (const budget of budgets) {
+            if (!budget.daily_budget || budget.daily_budget <= 0.01) continue;
+            // Restore via edge function
+            await supabase.functions.invoke('update-google-ads-budget', {
+              body: {
+                clientId,
+                campaignRowId: budget.campaign_id,
+                newDailyBudget: budget.daily_budget,
+                changeSource: 'safe_mode_exit',
+                changeReason: 'Wallet refilled via admin credit',
+              },
+            });
+            // Clear safe mode flags on campaign
+            await supabase.from('campaigns').update({
+              safe_mode: false,
+              safe_mode_reason: null,
+              safe_mode_triggered_at: null,
+              safe_mode_budget_used: null,
+              pre_safe_mode_budget: null,
+              current_daily_budget: budget.daily_budget,
+              last_budget_change_at: new Date().toISOString(),
+              last_budget_change_by: 'ADMIN_CREDIT',
+              updated_at: new Date().toISOString(),
+            }).eq('id', budget.campaign_id);
+          }
+          toast.success('Safe mode cleared — campaign budgets restored');
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['computed-wallet-balance', clientId] });
       queryClient.invalidateQueries({ queryKey: ['billing-records', clientId] });
       queryClient.invalidateQueries({ queryKey: ['client-wallet', clientId] });
       queryClient.invalidateQueries({ queryKey: ['wallet-transactions', clientId] });
+      queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       refetchComputedBalance();
       toast.success(`$${amount.toLocaleString()} credit added to wallet`);
       setCreditModalOpen(false);
