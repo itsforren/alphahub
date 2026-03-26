@@ -451,6 +451,10 @@ serve(async (req) => {
             campaignUpsertData.label = campaignInfo.campaignName;
           }
         }
+        // Save geo-targeting states from Google Ads
+        if (campaignInfo.targetStates.length > 0) {
+          campaignUpsertData.states = campaignInfo.targetStates.sort().join(', ');
+        }
         const { error: campaignUpsertError } = await supabase
           .from('campaigns')
           .upsert(campaignUpsertData, {
