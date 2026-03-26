@@ -26,6 +26,7 @@ import { ProposalApprovalModal } from './ProposalApprovalModal';
 import { CampaignDetailModal } from './CampaignDetailModal';
 import { ManualBudgetDialog } from './ManualBudgetDialog';
 import { IgnoreCampaignDialog } from './IgnoreCampaignDialog';
+import { FindUntrackedCampaignsDialog } from './FindUntrackedCampaignsDialog';
 import { AccountSummaryWidget } from './AccountSummaryWidget';
 import { OverallHealthScore } from './OverallHealthScore';
 import { 
@@ -503,6 +504,7 @@ export function CampaignCommandCenter() {
             <History className="h-4 w-4 mr-2" />
             Change Log
           </Button>
+          <FindUntrackedCampaignsDialog />
           <Button variant="outline" size="sm" onClick={handleRefresh}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh

@@ -20,6 +20,7 @@ interface GoogleAdsMetrics {
 interface CampaignInfo {
   dailyBudget: number;
   targetStates: string[];
+  campaignName: string | null;
 }
 
 // Google Ads geo target constant IDs to US state abbreviations
@@ -187,14 +188,18 @@ async function fetchGoogleAdsData(
     }
   }
 
-  // Fetch campaign budget
+  // Fetch campaign budget and name
   let dailyBudget = 0;
+  let campaignName: string | null = null;
   try {
     const budgetData = await fetchQuery(budgetQuery);
     if (budgetData?.[0]?.results?.[0]?.campaignBudget?.amountMicros) {
       dailyBudget = safeNumber(budgetData[0].results[0].campaignBudget.amountMicros, 0) / 1_000_000;
     }
-    console.log(`Campaign daily budget: $${dailyBudget}`);
+    if (budgetData?.[0]?.results?.[0]?.campaign?.name) {
+      campaignName = budgetData[0].results[0].campaign.name;
+    }
+    console.log(`Campaign daily budget: $${dailyBudget}, name: ${campaignName}`);
   } catch (e) {
     console.error('Error fetching budget:', e);
   }
@@ -224,7 +229,7 @@ async function fetchGoogleAdsData(
   }
 
   console.log(`Fetched ${results.length} daily records from Google Ads`);
-  return { metrics: results, campaignInfo: { dailyBudget, targetStates } };
+  return { metrics: results, campaignInfo: { dailyBudget, targetStates, campaignName } };
 }
 
 serve(async (req) => {
@@ -375,7 +380,7 @@ serve(async (req) => {
     const totalFailedDates: string[] = [];
     const totalUpsertErrors: { date: string; error: string }[] = [];
     let totalRecordsFetched = 0;
-    let lastCampaignInfo: CampaignInfo = { dailyBudget: 0, targetStates: [] };
+    let lastCampaignInfo: CampaignInfo = { dailyBudget: 0, targetStates: [], campaignName: null };
 
     // Sync each campaign (per-campaign try/catch so one failure doesn't block others)
     for (const campaign of campaignsToSync) {
@@ -430,17 +435,25 @@ serve(async (req) => {
           }
         }
 
-        // Upsert into campaigns table
+        // Upsert into campaigns table (include campaign name as label if available)
         console.log(`Upserting campaign record for ${campaign.googleCustomerId}:${campaign.googleCampaignId}`);
+        const campaignUpsertData: Record<string, unknown> = {
+          client_id: clientId,
+          google_customer_id: campaign.googleCustomerId,
+          google_campaign_id: campaign.googleCampaignId,
+          current_daily_budget: campaignInfo.dailyBudget || null,
+          updated_at: new Date().toISOString(),
+        };
+        // Set label from Google Ads campaign name if current label is generic or empty
+        if (campaignInfo.campaignName) {
+          const isGenericLabel = !campaign.label || /^Campaign \d+$/.test(campaign.label);
+          if (isGenericLabel) {
+            campaignUpsertData.label = campaignInfo.campaignName;
+          }
+        }
         const { error: campaignUpsertError } = await supabase
           .from('campaigns')
-          .upsert({
-            client_id: clientId,
-            google_customer_id: campaign.googleCustomerId,
-            google_campaign_id: campaign.googleCampaignId,
-            current_daily_budget: campaignInfo.dailyBudget || null,
-            updated_at: new Date().toISOString(),
-          }, {
+          .upsert(campaignUpsertData, {
             onConflict: 'google_customer_id,google_campaign_id',
           });
 

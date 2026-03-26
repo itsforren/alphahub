@@ -200,10 +200,17 @@ export function CampaignPanel({
 
       if (error) throw error;
 
-      toast.success(`Campaign added: ${label}`);
+      toast.success(`Campaign added: ${label}`, { description: 'Syncing campaign name from Google Ads...' });
       setManualCampaignId('');
       setShowManualInput(false);
       queryClient.invalidateQueries({ queryKey: ['campaigns', clientId] });
+
+      // Trigger sync to pull campaign name and ad spend data
+      supabase.functions.invoke('sync-google-ads', {
+        body: { clientId, daysBack: 7 },
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['campaigns', clientId] });
+      }).catch(console.error);
     } catch (error) {
       console.error('Error saving campaign:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to save campaign');
