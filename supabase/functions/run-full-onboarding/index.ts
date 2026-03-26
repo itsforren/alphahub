@@ -30,7 +30,7 @@ const AUTOMATION_STEPS = [
   { step: 13, name: 'assign_calendars', label: 'Assign User to Calendars' },
   { step: 14, name: 'update_scheduler_embed', label: 'Update Scheduler Embed' },
   { step: 15, name: 'sync_crm_custom_fields', label: 'Sync CRM Custom Fields' },
-  { step: 16, name: 'create_google_ads', label: 'Create Google Ads Campaign' },
+  { step: 16, name: 'create_google_ads', label: 'Create Google Ads Campaigns (Search + Display)' },
   { step: 17, name: 'final_verification', label: 'Final Verification' },
   { step: 18, name: 'verify_onboarding', label: 'Verify & Test Onboarding' },
   { step: 19, name: 'provision_phone', label: 'Provision Phone Number (Manual)', manual: true },
@@ -1842,7 +1842,8 @@ Deno.serve(async (req) => {
           }
 
           case 'create_google_ads': {
-            const result = await callFunction('create-google-ads-campaign', {
+            // Step 1: Create Search [MaxConv] campaign (primary)
+            const searchResult = await callFunction('create-google-ads-campaign', {
               clientId: clientId,
               states: client.states,
               budget: client.ad_spend_budget,
@@ -1850,22 +1851,57 @@ Deno.serve(async (req) => {
               agentName: client.name,
               landingPage: client.lander_link,
             });
-            if (result.success) {
+
+            let searchCampaignId: string | null = null;
+            if (searchResult.success) {
+              searchCampaignId = searchResult.campaignId;
               await supabase.from('clients').update({
-                google_campaign_id: result.campaignId,
-                ads_link: result.adsLink,
+                google_campaign_id: searchResult.campaignId,
+                ads_link: searchResult.adsLink,
                 gads_campaign_created: true,
               }).eq('id', clientId);
-              client.google_campaign_id = result.campaignId;
-              client.ads_link = result.adsLink;
-              await updateStep(i, true, { campaignId: result.campaignId, adsLink: result.adsLink });
+              client.google_campaign_id = searchResult.campaignId;
+              client.ads_link = searchResult.adsLink;
+              console.log(`[onboarding] Search campaign created: ${searchCampaignId}`);
             } else {
-              // Not fatal - store error but continue
               await supabase.from('clients').update({
-                gads_creation_error: result.error,
+                gads_creation_error: searchResult.error,
                 gads_last_attempt_at: new Date().toISOString(),
               }).eq('id', clientId);
-              await updateStep(i, false, null, result.error || 'Failed to create Google Ads campaign');
+              console.warn(`[onboarding] Search campaign failed: ${searchResult.error}`);
+            }
+
+            // Step 2: Create Display campaigns (Remarketing + In-Market)
+            let displayResult: any = { success: false, error: 'skipped' };
+            try {
+              displayResult = await callFunction('create-display-campaigns', {
+                clientId: clientId,
+                agentName: client.name,
+                agentId: client.agent_id,
+                states: client.states,
+                landingPage: client.lander_link,
+              });
+              if (displayResult.success) {
+                console.log(`[onboarding] Display campaigns created: remarket=${displayResult.remarkCampaignId}, inmarket=${displayResult.inmarketCampaignId}`);
+              } else {
+                console.warn(`[onboarding] Display campaigns failed: ${displayResult.error}`);
+              }
+            } catch (displayError) {
+              console.warn('[onboarding] Display campaign creation error (non-fatal):', displayError);
+              displayResult = { success: false, error: displayError instanceof Error ? displayError.message : 'Unknown error' };
+            }
+
+            // Overall step result
+            if (searchResult.success) {
+              await updateStep(i, true, {
+                searchCampaignId,
+                adsLink: searchResult.adsLink,
+                displayRemarket: displayResult.remarkCampaignId || null,
+                displayInmarket: displayResult.inmarketCampaignId || null,
+                displaySuccess: displayResult.success,
+              });
+            } else {
+              await updateStep(i, false, null, searchResult.error || 'Failed to create Google Ads campaigns');
             }
             break;
           }

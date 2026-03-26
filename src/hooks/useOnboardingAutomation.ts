@@ -25,7 +25,7 @@ export const AUTOMATION_STEPS: AutomationStep[] = [
   { step: 13, name: 'assign_calendars', label: 'Assign User to Calendars' },
   { step: 14, name: 'update_scheduler_embed', label: 'Update Scheduler Embed' },
   { step: 15, name: 'sync_crm_custom_fields', label: 'Sync CRM Custom Fields' },
-  { step: 16, name: 'create_google_ads', label: 'Create Google Ads Campaign' },
+  { step: 16, name: 'create_google_ads', label: 'Create Google Ads Campaigns (Search + Display)' },
   { step: 17, name: 'final_verification', label: 'Final Verification' },
   { step: 18, name: 'verify_onboarding', label: 'Verify & Test Onboarding' },
   { step: 19, name: 'provision_phone', label: 'Provision Phone Number (Manual)', manual: true },

@@ -78,6 +78,47 @@ export function CampaignPanel({
     return `https://ads.google.com/aw/campaigns?ocid=${ocid}&campaignId=${campaignId}`;
   };
 
+  const handleBuildDisplayCampaigns = async () => {
+    setIsBuilding(true);
+    try {
+      const { data: client } = await supabase
+        .from('clients')
+        .select('name, agent_id, states, lander_link')
+        .eq('id', clientId)
+        .single();
+
+      if (!client) throw new Error('Client not found');
+
+      const primaryCampaign = campaigns.find(c => c.is_primary);
+      const statesToUse = primaryCampaign?.states || client.states;
+
+      const { data, error } = await supabase.functions.invoke('create-display-campaigns', {
+        body: {
+          clientId,
+          agentName: client.name,
+          agentId: client.agent_id,
+          states: statesToUse,
+          landingPage: client.lander_link,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to create display campaigns');
+
+      toast.success('Display campaigns created', {
+        description: `Remarketing: ${data.remarkCampaignId}, In-Market: ${data.inmarketCampaignId}`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['campaigns', clientId] });
+      onRefresh();
+    } catch (error) {
+      console.error('Error building display campaigns:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to create display campaigns');
+    } finally {
+      setIsBuilding(false);
+    }
+  };
+
   const handleBuildCampaign = async (templateType: 'primary' | 'secondary') => {
     setIsBuilding(true);
     try {
@@ -365,8 +406,7 @@ export function CampaignPanel({
               Add Campaign to Track
             </Button>
 
-            {campaigns.length < 2 && (
-              <DropdownMenu>
+            <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="sm" disabled={isBuilding} className="gap-1 text-xs text-muted-foreground">
                     {isBuilding ? (
@@ -380,14 +420,16 @@ export function CampaignPanel({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
                   <DropdownMenuItem onClick={() => handleBuildCampaign('primary')}>
-                    Original (Standard Template)
+                    Search (Standard Template)
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleBuildCampaign('secondary')}>
-                    Revamp (Secondary Template)
+                    Search (Secondary Template)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleBuildDisplayCampaigns}>
+                    Display (Remarketing + In-Market)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
           </>
         )}
       </div>
