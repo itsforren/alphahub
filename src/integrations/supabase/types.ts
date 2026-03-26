@@ -1,3 +1,4 @@
+npm warn exec The following package was not found and will be installed: supabase@2.84.1
 export type Json =
   | string
   | number
@@ -10,7 +11,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
@@ -110,6 +111,9 @@ export type Database = {
       }
       admin_channel_messages: {
         Row: {
+          attachment_name: string | null
+          attachment_type: string | null
+          attachment_url: string | null
           channel_id: string
           created_at: string
           id: string
@@ -117,6 +121,9 @@ export type Database = {
           sender_id: string
         }
         Insert: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           channel_id: string
           created_at?: string
           id?: string
@@ -124,6 +131,9 @@ export type Database = {
           sender_id: string
         }
         Update: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           channel_id?: string
           created_at?: string
           id?: string
@@ -199,6 +209,9 @@ export type Database = {
       }
       admin_dm_messages: {
         Row: {
+          attachment_name: string | null
+          attachment_type: string | null
+          attachment_url: string | null
           conversation_id: string
           created_at: string
           id: string
@@ -207,6 +220,9 @@ export type Database = {
           sender_id: string
         }
         Insert: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           conversation_id: string
           created_at?: string
           id?: string
@@ -215,6 +231,9 @@ export type Database = {
           sender_id: string
         }
         Update: {
+          attachment_name?: string | null
+          attachment_type?: string | null
+          attachment_url?: string | null
           conversation_id?: string
           created_at?: string
           id?: string
@@ -231,6 +250,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      agent_team_members: {
+        Row: {
+          agent_id: string
+          callback_calendar_id: string | null
+          created_at: string
+          ghl_user_id: string | null
+          id: string
+          name: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          agent_id: string
+          callback_calendar_id?: string | null
+          created_at?: string
+          ghl_user_id?: string | null
+          id?: string
+          name: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          agent_id?: string
+          callback_calendar_id?: string | null
+          created_at?: string
+          ghl_user_id?: string | null
+          id?: string
+          name?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       agreement_otps: {
         Row: {
@@ -338,7 +390,7 @@ export type Database = {
           ip_forwarded_for: string | null
           key_terms_checkboxes: Json | null
           language_locale: string | null
-          otp_provider_receipt: Json | null
+          otp_provider_receipt: string | null
           otp_verified: boolean | null
           otp_verified_at: string | null
           page_load_at: string | null
@@ -399,7 +451,7 @@ export type Database = {
           ip_forwarded_for?: string | null
           key_terms_checkboxes?: Json | null
           language_locale?: string | null
-          otp_provider_receipt?: Json | null
+          otp_provider_receipt?: string | null
           otp_verified?: boolean | null
           otp_verified_at?: string | null
           page_load_at?: string | null
@@ -460,7 +512,7 @@ export type Database = {
           ip_forwarded_for?: string | null
           key_terms_checkboxes?: Json | null
           language_locale?: string | null
-          otp_provider_receipt?: Json | null
+          otp_provider_receipt?: string | null
           otp_verified?: boolean | null
           otp_verified_at?: string | null
           page_load_at?: string | null
@@ -687,6 +739,7 @@ export type Database = {
       billing_records: {
         Row: {
           amount: number
+          archived_at: string | null
           billing_period_end: string | null
           billing_period_start: string | null
           billing_type: Database["public"]["Enums"]["billing_type"]
@@ -707,6 +760,7 @@ export type Database = {
           payment_link: string | null
           payment_reference: string | null
           recurrence_type: string | null
+          source: string | null
           status: Database["public"]["Enums"]["billing_status"]
           stripe_account: string | null
           stripe_invoice_id: string | null
@@ -716,6 +770,7 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          archived_at?: string | null
           billing_period_end?: string | null
           billing_period_start?: string | null
           billing_type: Database["public"]["Enums"]["billing_type"]
@@ -736,6 +791,7 @@ export type Database = {
           payment_link?: string | null
           payment_reference?: string | null
           recurrence_type?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["billing_status"]
           stripe_account?: string | null
           stripe_invoice_id?: string | null
@@ -745,6 +801,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          archived_at?: string | null
           billing_period_end?: string | null
           billing_period_start?: string | null
           billing_type?: Database["public"]["Enums"]["billing_type"]
@@ -765,6 +822,7 @@ export type Database = {
           payment_link?: string | null
           payment_reference?: string | null
           recurrence_type?: string | null
+          source?: string | null
           status?: Database["public"]["Enums"]["billing_status"]
           stripe_account?: string | null
           stripe_invoice_id?: string | null
@@ -785,6 +843,105 @@ export type Database = {
             columns: ["parent_billing_id"]
             isOneToOne: false
             referencedRelation: "billing_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_settings_audit: {
+        Row: {
+          change_source: string
+          changed_by: string | null
+          client_id: string
+          created_at: string
+          field_name: string
+          id: string
+          new_value: string | null
+          old_value: string | null
+        }
+        Insert: {
+          change_source?: string
+          changed_by?: string | null
+          client_id: string
+          created_at?: string
+          field_name: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Update: {
+          change_source?: string
+          changed_by?: string | null
+          client_id?: string
+          created_at?: string
+          field_name?: string
+          id?: string
+          new_value?: string | null
+          old_value?: string | null
+        }
+        Relationships: []
+      }
+      billing_verifications: {
+        Row: {
+          ai_analysis: Json | null
+          billing_record_id: string | null
+          client_id: string
+          created_at: string
+          id: string
+          matched_stripe_amount: number | null
+          matched_stripe_charge_id: string | null
+          resolution_notes: string | null
+          status: string
+          updated_at: string
+          verification_method: string | null
+          verified_at: string | null
+          verified_by: string | null
+          wallet_transaction_id: string | null
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          billing_record_id?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          matched_stripe_amount?: number | null
+          matched_stripe_charge_id?: string | null
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+          verification_method?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          wallet_transaction_id?: string | null
+        }
+        Update: {
+          ai_analysis?: Json | null
+          billing_record_id?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          matched_stripe_amount?: number | null
+          matched_stripe_charge_id?: string | null
+          resolution_notes?: string | null
+          status?: string
+          updated_at?: string
+          verification_method?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+          wallet_transaction_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_verifications_billing_record_id_fkey"
+            columns: ["billing_record_id"]
+            isOneToOne: false
+            referencedRelation: "billing_records"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_verifications_wallet_transaction_id_fkey"
+            columns: ["wallet_transaction_id"]
+            isOneToOne: false
+            referencedRelation: "wallet_transactions"
             referencedColumns: ["id"]
           },
         ]
@@ -950,6 +1107,93 @@ export type Database = {
           },
         ]
       }
+      campaign_budget_changes: {
+        Row: {
+          campaign_id: string | null
+          change_reason: string | null
+          change_source: string
+          client_id: string | null
+          created_at: string | null
+          google_campaign_id: string | null
+          id: string
+          new_budget: number | null
+          old_budget: number | null
+          triggered_by: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          change_reason?: string | null
+          change_source: string
+          client_id?: string | null
+          created_at?: string | null
+          google_campaign_id?: string | null
+          id?: string
+          new_budget?: number | null
+          old_budget?: number | null
+          triggered_by?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          change_reason?: string | null
+          change_source?: string
+          client_id?: string | null
+          created_at?: string | null
+          google_campaign_id?: string | null
+          id?: string
+          new_budget?: number | null
+          old_budget?: number | null
+          triggered_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_budget_changes_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campaign_budget_changes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaign_budget_snapshots: {
+        Row: {
+          campaign_budgets: Json
+          client_id: string
+          created_at: string
+          id: string
+          restored_at: string | null
+          restored_by: string | null
+          snapshot_type: string
+          triggered_by: string | null
+        }
+        Insert: {
+          campaign_budgets: Json
+          client_id: string
+          created_at?: string
+          id?: string
+          restored_at?: string | null
+          restored_by?: string | null
+          snapshot_type: string
+          triggered_by?: string | null
+        }
+        Update: {
+          campaign_budgets?: Json
+          client_id?: string
+          created_at?: string
+          id?: string
+          restored_at?: string | null
+          restored_by?: string | null
+          snapshot_type?: string
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
       campaign_settings: {
         Row: {
           ai_provider: string | null
@@ -1069,7 +1313,9 @@ export type Database = {
           ignored_by: string | null
           ignored_reason: string | null
           ignored_until: string | null
+          is_primary: boolean | null
           issued_paid_7d: number | null
+          label: string | null
           last_budget_change_at: string | null
           last_budget_change_by: string | null
           last_status_change_at: string | null
@@ -1084,6 +1330,7 @@ export type Database = {
           safe_mode_budget_used: number | null
           safe_mode_reason: string | null
           safe_mode_triggered_at: string | null
+          states: string | null
           status: string | null
           updated_at: string | null
           wallet_remaining: number | null
@@ -1120,7 +1367,9 @@ export type Database = {
           ignored_by?: string | null
           ignored_reason?: string | null
           ignored_until?: string | null
+          is_primary?: boolean | null
           issued_paid_7d?: number | null
+          label?: string | null
           last_budget_change_at?: string | null
           last_budget_change_by?: string | null
           last_status_change_at?: string | null
@@ -1135,6 +1384,7 @@ export type Database = {
           safe_mode_budget_used?: number | null
           safe_mode_reason?: string | null
           safe_mode_triggered_at?: string | null
+          states?: string | null
           status?: string | null
           updated_at?: string | null
           wallet_remaining?: number | null
@@ -1171,7 +1421,9 @@ export type Database = {
           ignored_by?: string | null
           ignored_reason?: string | null
           ignored_until?: string | null
+          is_primary?: boolean | null
           issued_paid_7d?: number | null
+          label?: string | null
           last_budget_change_at?: string | null
           last_budget_change_by?: string | null
           last_status_change_at?: string | null
@@ -1186,6 +1438,7 @@ export type Database = {
           safe_mode_budget_used?: number | null
           safe_mode_reason?: string | null
           safe_mode_triggered_at?: string | null
+          states?: string | null
           status?: string | null
           updated_at?: string | null
           wallet_remaining?: number | null
@@ -1194,7 +1447,7 @@ export type Database = {
           {
             foreignKeyName: "campaigns_client_id_fkey"
             columns: ["client_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
           },
@@ -1301,6 +1554,8 @@ export type Database = {
           id: string
           link_preview: Json | null
           message: string
+          persona_name: string | null
+          persona_title: string | null
           read_at: string | null
           sender_avatar_url: string | null
           sender_id: string
@@ -1316,6 +1571,8 @@ export type Database = {
           id?: string
           link_preview?: Json | null
           message: string
+          persona_name?: string | null
+          persona_title?: string | null
           read_at?: string | null
           sender_avatar_url?: string | null
           sender_id: string
@@ -1331,6 +1588,8 @@ export type Database = {
           id?: string
           link_preview?: Json | null
           message?: string
+          persona_name?: string | null
+          persona_title?: string | null
           read_at?: string | null
           sender_avatar_url?: string | null
           sender_id?: string
@@ -1367,6 +1626,38 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      chat_typing: {
+        Row: {
+          conversation_id: string
+          is_typing: boolean
+          sender_avatar_url: string | null
+          sender_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          conversation_id: string
+          is_typing?: boolean
+          sender_avatar_url?: string | null
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          conversation_id?: string
+          is_typing?: boolean
+          sender_avatar_url?: string | null
+          sender_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_typing_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: true
+            referencedRelation: "chat_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       client_credits: {
         Row: {
@@ -1758,6 +2049,7 @@ export type Database = {
           last_charge_failed_at: string | null
           low_balance_threshold: number
           monthly_ad_spend_cap: number | null
+          safe_mode_threshold: number
           tracking_start_date: string | null
           updated_at: string
         }
@@ -1774,6 +2066,7 @@ export type Database = {
           last_charge_failed_at?: string | null
           low_balance_threshold?: number
           monthly_ad_spend_cap?: number | null
+          safe_mode_threshold?: number
           tracking_start_date?: string | null
           updated_at?: string
         }
@@ -1790,10 +2083,19 @@ export type Database = {
           last_charge_failed_at?: string | null
           low_balance_threshold?: number
           monthly_ad_spend_cap?: number | null
+          safe_mode_threshold?: number
           tracking_start_date?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "client_wallets_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: true
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clients: {
         Row: {
@@ -1802,6 +2104,7 @@ export type Database = {
           a2p_campaign_id: string | null
           a2p_campaign_status: string | null
           a2p_last_synced_at: string | null
+          activated_at: string | null
           ad_spend_budget: number | null
           ad_spend_renewal: string | null
           address_city: string | null
@@ -1809,6 +2112,7 @@ export type Database = {
           address_state: string | null
           address_street: string | null
           address_zip: string | null
+          admin_notes: string | null
           ads_link: string | null
           ads_live: boolean | null
           agent_bio_input: string | null
@@ -1846,6 +2150,7 @@ export type Database = {
           email: string
           end_date: string | null
           filters_notes: string | null
+          fire_page_link: string | null
           gads_ad_created: boolean | null
           gads_adgroup_created: boolean | null
           gads_campaign_created: boolean | null
@@ -1864,6 +2169,7 @@ export type Database = {
           made_review: boolean | null
           management_fee: number | null
           management_fee_renewal: string | null
+          management_stripe_subscription_id: string | null
           monthly_ad_spend: number | null
           mtd_ad_spend: number | null
           mtd_leads: number | null
@@ -1884,6 +2190,7 @@ export type Database = {
           prospect_id: string | null
           referral_code: string | null
           referred_by_client_id: string | null
+          referred_by_client_id_secondary: string | null
           renewal_date: string | null
           scheduler_link: string | null
           stage_messages_sent: Json | null
@@ -1916,6 +2223,7 @@ export type Database = {
           a2p_campaign_id?: string | null
           a2p_campaign_status?: string | null
           a2p_last_synced_at?: string | null
+          activated_at?: string | null
           ad_spend_budget?: number | null
           ad_spend_renewal?: string | null
           address_city?: string | null
@@ -1923,6 +2231,7 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          admin_notes?: string | null
           ads_link?: string | null
           ads_live?: boolean | null
           agent_bio_input?: string | null
@@ -1960,6 +2269,7 @@ export type Database = {
           email: string
           end_date?: string | null
           filters_notes?: string | null
+          fire_page_link?: string | null
           gads_ad_created?: boolean | null
           gads_adgroup_created?: boolean | null
           gads_campaign_created?: boolean | null
@@ -1978,6 +2288,7 @@ export type Database = {
           made_review?: boolean | null
           management_fee?: number | null
           management_fee_renewal?: string | null
+          management_stripe_subscription_id?: string | null
           monthly_ad_spend?: number | null
           mtd_ad_spend?: number | null
           mtd_leads?: number | null
@@ -1998,6 +2309,7 @@ export type Database = {
           prospect_id?: string | null
           referral_code?: string | null
           referred_by_client_id?: string | null
+          referred_by_client_id_secondary?: string | null
           renewal_date?: string | null
           scheduler_link?: string | null
           stage_messages_sent?: Json | null
@@ -2030,6 +2342,7 @@ export type Database = {
           a2p_campaign_id?: string | null
           a2p_campaign_status?: string | null
           a2p_last_synced_at?: string | null
+          activated_at?: string | null
           ad_spend_budget?: number | null
           ad_spend_renewal?: string | null
           address_city?: string | null
@@ -2037,6 +2350,7 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          admin_notes?: string | null
           ads_link?: string | null
           ads_live?: boolean | null
           agent_bio_input?: string | null
@@ -2074,6 +2388,7 @@ export type Database = {
           email?: string
           end_date?: string | null
           filters_notes?: string | null
+          fire_page_link?: string | null
           gads_ad_created?: boolean | null
           gads_adgroup_created?: boolean | null
           gads_campaign_created?: boolean | null
@@ -2092,6 +2407,7 @@ export type Database = {
           made_review?: boolean | null
           management_fee?: number | null
           management_fee_renewal?: string | null
+          management_stripe_subscription_id?: string | null
           monthly_ad_spend?: number | null
           mtd_ad_spend?: number | null
           mtd_leads?: number | null
@@ -2112,6 +2428,7 @@ export type Database = {
           prospect_id?: string | null
           referral_code?: string | null
           referred_by_client_id?: string | null
+          referred_by_client_id_secondary?: string | null
           renewal_date?: string | null
           scheduler_link?: string | null
           stage_messages_sent?: Json | null
@@ -2156,6 +2473,13 @@ export type Database = {
           {
             foreignKeyName: "clients_referred_by_client_id_fkey"
             columns: ["referred_by_client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_referred_by_client_id_secondary_fkey"
+            columns: ["referred_by_client_id_secondary"]
             isOneToOne: false
             referencedRelation: "clients"
             referencedColumns: ["id"]
@@ -2491,6 +2815,80 @@ export type Database = {
           },
         ]
       }
+      discovery_calls: {
+        Row: {
+          agent_id: string
+          answered: boolean | null
+          appointment_booked_at: string | null
+          appointment_datetime: string | null
+          attempt_number: number
+          bad_number_reason: string | null
+          booked_calendar_id: string | null
+          booked_calendar_type: string | null
+          call_date: string
+          called_by: string | null
+          called_by_name: string | null
+          created_at: string
+          discovery_data: Json | null
+          ghl_sync_error: string | null
+          ghl_synced_at: string | null
+          id: string
+          lead_id: string
+          outcome: string | null
+          temperature: string | null
+        }
+        Insert: {
+          agent_id: string
+          answered?: boolean | null
+          appointment_booked_at?: string | null
+          appointment_datetime?: string | null
+          attempt_number?: number
+          bad_number_reason?: string | null
+          booked_calendar_id?: string | null
+          booked_calendar_type?: string | null
+          call_date?: string
+          called_by?: string | null
+          called_by_name?: string | null
+          created_at?: string
+          discovery_data?: Json | null
+          ghl_sync_error?: string | null
+          ghl_synced_at?: string | null
+          id?: string
+          lead_id: string
+          outcome?: string | null
+          temperature?: string | null
+        }
+        Update: {
+          agent_id?: string
+          answered?: boolean | null
+          appointment_booked_at?: string | null
+          appointment_datetime?: string | null
+          attempt_number?: number
+          bad_number_reason?: string | null
+          booked_calendar_id?: string | null
+          booked_calendar_type?: string | null
+          call_date?: string
+          called_by?: string | null
+          called_by_name?: string | null
+          created_at?: string
+          discovery_data?: Json | null
+          ghl_sync_error?: string | null
+          ghl_synced_at?: string | null
+          id?: string
+          lead_id?: string
+          outcome?: string | null
+          temperature?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discovery_calls_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       disputes: {
         Row: {
           amount: number
@@ -2802,6 +3200,50 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "expense_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feature_requests: {
+        Row: {
+          admin_notes: string | null
+          category: string | null
+          client_id: string
+          created_at: string
+          description: string | null
+          id: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          category?: string | null
+          client_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          category?: string | null
+          client_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feature_requests_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
             referencedColumns: ["id"]
           },
         ]
@@ -3187,11 +3629,15 @@ export type Database = {
           approved_at: string | null
           approved_premium: number | null
           booked_call_at: string | null
+          call_attempt_count: number | null
           created_at: string | null
+          currently_being_worked: boolean | null
           delivered_at: string | null
           delivery_attempts: number | null
           delivery_error: string | null
           delivery_status: string | null
+          discovery_stage: string | null
+          discovery_temperature: string | null
           email: string | null
           employment: string | null
           fbclid: string | null
@@ -3200,20 +3646,28 @@ export type Database = {
           ghl_contact_id: string | null
           id: string
           interest: string | null
+          intro_calendar_event_id: string | null
+          intro_scheduled_at: string | null
           investments: string | null
           issued_at: string | null
           issued_premium: number | null
+          last_attempted_by: string | null
+          last_attempted_by_id: string | null
+          last_call_attempt_at: string | null
           last_delivery_attempt_at: string | null
           last_name: string | null
           lead_data: Json | null
           lead_date: string | null
           lead_id: string
           lead_source: string | null
+          lost_reason: string | null
           notes: string | null
           phone: string | null
           savings: string | null
           state: string | null
           status: string | null
+          strategy_booked_at: string | null
+          strategy_calendar_event_id: string | null
           submitted_at: string | null
           submitted_premium: number | null
           target_premium: number | null
@@ -3225,6 +3679,7 @@ export type Database = {
           utm_source: string | null
           utm_term: string | null
           webhook_payload: Json | null
+          work_started_at: string | null
         }
         Insert: {
           age?: string | null
@@ -3232,11 +3687,15 @@ export type Database = {
           approved_at?: string | null
           approved_premium?: number | null
           booked_call_at?: string | null
+          call_attempt_count?: number | null
           created_at?: string | null
+          currently_being_worked?: boolean | null
           delivered_at?: string | null
           delivery_attempts?: number | null
           delivery_error?: string | null
           delivery_status?: string | null
+          discovery_stage?: string | null
+          discovery_temperature?: string | null
           email?: string | null
           employment?: string | null
           fbclid?: string | null
@@ -3245,20 +3704,28 @@ export type Database = {
           ghl_contact_id?: string | null
           id?: string
           interest?: string | null
+          intro_calendar_event_id?: string | null
+          intro_scheduled_at?: string | null
           investments?: string | null
           issued_at?: string | null
           issued_premium?: number | null
+          last_attempted_by?: string | null
+          last_attempted_by_id?: string | null
+          last_call_attempt_at?: string | null
           last_delivery_attempt_at?: string | null
           last_name?: string | null
           lead_data?: Json | null
           lead_date?: string | null
           lead_id: string
           lead_source?: string | null
+          lost_reason?: string | null
           notes?: string | null
           phone?: string | null
           savings?: string | null
           state?: string | null
           status?: string | null
+          strategy_booked_at?: string | null
+          strategy_calendar_event_id?: string | null
           submitted_at?: string | null
           submitted_premium?: number | null
           target_premium?: number | null
@@ -3270,6 +3737,7 @@ export type Database = {
           utm_source?: string | null
           utm_term?: string | null
           webhook_payload?: Json | null
+          work_started_at?: string | null
         }
         Update: {
           age?: string | null
@@ -3277,11 +3745,15 @@ export type Database = {
           approved_at?: string | null
           approved_premium?: number | null
           booked_call_at?: string | null
+          call_attempt_count?: number | null
           created_at?: string | null
+          currently_being_worked?: boolean | null
           delivered_at?: string | null
           delivery_attempts?: number | null
           delivery_error?: string | null
           delivery_status?: string | null
+          discovery_stage?: string | null
+          discovery_temperature?: string | null
           email?: string | null
           employment?: string | null
           fbclid?: string | null
@@ -3290,20 +3762,28 @@ export type Database = {
           ghl_contact_id?: string | null
           id?: string
           interest?: string | null
+          intro_calendar_event_id?: string | null
+          intro_scheduled_at?: string | null
           investments?: string | null
           issued_at?: string | null
           issued_premium?: number | null
+          last_attempted_by?: string | null
+          last_attempted_by_id?: string | null
+          last_call_attempt_at?: string | null
           last_delivery_attempt_at?: string | null
           last_name?: string | null
           lead_data?: Json | null
           lead_date?: string | null
           lead_id?: string
           lead_source?: string | null
+          lost_reason?: string | null
           notes?: string | null
           phone?: string | null
           savings?: string | null
           state?: string | null
           status?: string | null
+          strategy_booked_at?: string | null
+          strategy_calendar_event_id?: string | null
           submitted_at?: string | null
           submitted_premium?: number | null
           target_premium?: number | null
@@ -3315,6 +3795,7 @@ export type Database = {
           utm_source?: string | null
           utm_term?: string | null
           webhook_payload?: Json | null
+          work_started_at?: string | null
         }
         Relationships: []
       }
@@ -3529,6 +4010,66 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      nfia_agents: {
+        Row: {
+          bio: string | null
+          consultation_name: string | null
+          created_at: string | null
+          email: string | null
+          fullname: string
+          headshot_url: string | null
+          id: string
+          license: string | null
+          license_states: string | null
+          npn: string | null
+          phone: string | null
+          published_at: string | null
+          scheduleurl: string | null
+          slug: string
+          states_count: number | null
+          updated_at: string | null
+          years_experience: string | null
+        }
+        Insert: {
+          bio?: string | null
+          consultation_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          fullname: string
+          headshot_url?: string | null
+          id?: string
+          license?: string | null
+          license_states?: string | null
+          npn?: string | null
+          phone?: string | null
+          published_at?: string | null
+          scheduleurl?: string | null
+          slug: string
+          states_count?: number | null
+          updated_at?: string | null
+          years_experience?: string | null
+        }
+        Update: {
+          bio?: string | null
+          consultation_name?: string | null
+          created_at?: string | null
+          email?: string | null
+          fullname?: string
+          headshot_url?: string | null
+          id?: string
+          license?: string | null
+          license_states?: string | null
+          npn?: string | null
+          phone?: string | null
+          published_at?: string | null
+          scheduleurl?: string | null
+          slug?: string
+          states_count?: number | null
+          updated_at?: string | null
+          years_experience?: string | null
+        }
+        Relationships: []
       }
       notification_preferences: {
         Row: {
@@ -3817,6 +4358,157 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ops_brain_dumps: {
+        Row: {
+          content: string
+          created_at: string | null
+          created_by: string
+          id: string
+          processed: boolean | null
+          tasks_created: Json | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          created_by: string
+          id?: string
+          processed?: boolean | null
+          tasks_created?: Json | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          processed?: boolean | null
+          tasks_created?: Json | null
+        }
+        Relationships: []
+      }
+      ops_claude_sync: {
+        Row: {
+          created_at: string | null
+          from_claude: string
+          id: string
+          message: string
+          message_type: string | null
+          read: boolean | null
+          related_task_id: string | null
+          to_claude: string
+        }
+        Insert: {
+          created_at?: string | null
+          from_claude: string
+          id?: string
+          message: string
+          message_type?: string | null
+          read?: boolean | null
+          related_task_id?: string | null
+          to_claude: string
+        }
+        Update: {
+          created_at?: string | null
+          from_claude?: string
+          id?: string
+          message?: string
+          message_type?: string | null
+          read?: boolean | null
+          related_task_id?: string | null
+          to_claude?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ops_claude_sync_related_task_id_fkey"
+            columns: ["related_task_id"]
+            isOneToOne: false
+            referencedRelation: "ops_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ops_objectives: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          status: string | null
+          target_date: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          status?: string | null
+          target_date?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          status?: string | null
+          target_date?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      ops_tasks: {
+        Row: {
+          assigned_by: string
+          assigned_to: string
+          completed_at: string | null
+          created_at: string | null
+          details: string | null
+          due_date: string | null
+          id: string
+          objective_id: string | null
+          priority: string | null
+          status: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_by: string
+          assigned_to: string
+          completed_at?: string | null
+          created_at?: string | null
+          details?: string | null
+          due_date?: string | null
+          id?: string
+          objective_id?: string | null
+          priority?: string | null
+          status?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_by?: string
+          assigned_to?: string
+          completed_at?: string | null
+          created_at?: string | null
+          details?: string | null
+          due_date?: string | null
+          id?: string
+          objective_id?: string | null
+          priority?: string | null
+          status?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ops_tasks_objective_id_fkey"
+            columns: ["objective_id"]
+            isOneToOne: false
+            referencedRelation: "ops_objectives"
             referencedColumns: ["id"]
           },
         ]
@@ -4591,6 +5283,80 @@ export type Database = {
           },
         ]
       }
+      recharge_state: {
+        Row: {
+          attempt_number: number
+          charge_attempts_today: number
+          charges_this_month: number
+          client_id: string
+          created_at: string
+          current_billing_record_id: string | null
+          current_stripe_pi_id: string | null
+          grace_period_until: string | null
+          id: string
+          idempotency_key: string | null
+          last_charge_at: string | null
+          last_failure_at: string | null
+          last_failure_reason: string | null
+          last_success_at: string | null
+          month_reset_at: string | null
+          safe_mode_activated_at: string | null
+          safe_mode_active: boolean
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          attempt_number?: number
+          charge_attempts_today?: number
+          charges_this_month?: number
+          client_id: string
+          created_at?: string
+          current_billing_record_id?: string | null
+          current_stripe_pi_id?: string | null
+          grace_period_until?: string | null
+          id?: string
+          idempotency_key?: string | null
+          last_charge_at?: string | null
+          last_failure_at?: string | null
+          last_failure_reason?: string | null
+          last_success_at?: string | null
+          month_reset_at?: string | null
+          safe_mode_activated_at?: string | null
+          safe_mode_active?: boolean
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          attempt_number?: number
+          charge_attempts_today?: number
+          charges_this_month?: number
+          client_id?: string
+          created_at?: string
+          current_billing_record_id?: string | null
+          current_stripe_pi_id?: string | null
+          grace_period_until?: string | null
+          id?: string
+          idempotency_key?: string | null
+          last_charge_at?: string | null
+          last_failure_at?: string | null
+          last_failure_reason?: string | null
+          last_success_at?: string | null
+          month_reset_at?: string | null
+          safe_mode_activated_at?: string | null
+          safe_mode_active?: boolean
+          state?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recharge_state_billing_record_fk"
+            columns: ["current_billing_record_id"]
+            isOneToOne: false
+            referencedRelation: "billing_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       referral_codes: {
         Row: {
           client_id: string | null
@@ -4635,7 +5401,7 @@ export type Database = {
       }
       referral_commission_config: {
         Row: {
-          billing_types: string[] | null
+          billing_types: string | null
           commission_percentage: number
           created_at: string | null
           id: string
@@ -4645,7 +5411,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          billing_types?: string[] | null
+          billing_types?: string | null
           commission_percentage?: number
           created_at?: string | null
           id?: string
@@ -4655,7 +5421,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          billing_types?: string[] | null
+          billing_types?: string | null
           commission_percentage?: number
           created_at?: string | null
           id?: string
@@ -4722,7 +5488,7 @@ export type Database = {
           payment_reference: string | null
           period_end: string | null
           period_start: string | null
-          referral_id: string
+          referral_id: string | null
           referred_client_name: string | null
           referrer_client_id: string
           reward_type: string
@@ -4739,7 +5505,7 @@ export type Database = {
           payment_reference?: string | null
           period_end?: string | null
           period_start?: string | null
-          referral_id: string
+          referral_id?: string | null
           referred_client_name?: string | null
           referrer_client_id: string
           reward_type?: string
@@ -4756,7 +5522,7 @@ export type Database = {
           payment_reference?: string | null
           period_end?: string | null
           period_start?: string | null
-          referral_id?: string
+          referral_id?: string | null
           referred_client_name?: string | null
           referrer_client_id?: string
           reward_type?: string
@@ -5097,6 +5863,33 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_processed_events: {
+        Row: {
+          billing_record_id: string | null
+          event_id: string
+          event_type: string
+          metadata: Json | null
+          processed_at: string
+          stripe_account: string
+        }
+        Insert: {
+          billing_record_id?: string | null
+          event_id: string
+          event_type: string
+          metadata?: Json | null
+          processed_at?: string
+          stripe_account: string
+        }
+        Update: {
+          billing_record_id?: string | null
+          event_id?: string
+          event_type?: string
+          metadata?: Json | null
+          processed_at?: string
+          stripe_account?: string
+        }
+        Relationships: []
+      }
       support_agents: {
         Row: {
           categories: string[]
@@ -5154,10 +5947,12 @@ export type Database = {
           due_date: string | null
           escalated_at: string | null
           id: string
+          labels: Json | null
           last_reply_at: string | null
           message: string
           onboarding_checklist_id: string | null
           priority: Database["public"]["Enums"]["ticket_priority"]
+          resolution_notes: string | null
           resolved_at: string | null
           sla_deadline: string | null
           status: string
@@ -5174,10 +5969,12 @@ export type Database = {
           due_date?: string | null
           escalated_at?: string | null
           id?: string
+          labels?: Json | null
           last_reply_at?: string | null
           message: string
           onboarding_checklist_id?: string | null
           priority?: Database["public"]["Enums"]["ticket_priority"]
+          resolution_notes?: string | null
           resolved_at?: string | null
           sla_deadline?: string | null
           status?: string
@@ -5194,10 +5991,12 @@ export type Database = {
           due_date?: string | null
           escalated_at?: string | null
           id?: string
+          labels?: Json | null
           last_reply_at?: string | null
           message?: string
           onboarding_checklist_id?: string | null
           priority?: Database["public"]["Enums"]["ticket_priority"]
+          resolution_notes?: string | null
           resolved_at?: string | null
           sla_deadline?: string | null
           status?: string
@@ -5228,6 +6027,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sync_failure_log: {
+        Row: {
+          consecutive_failures: number
+          function_name: string
+          last_error: string | null
+          last_failure_at: string | null
+          last_success_at: string | null
+        }
+        Insert: {
+          consecutive_failures?: number
+          function_name: string
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_success_at?: string | null
+        }
+        Update: {
+          consecutive_failures?: number
+          function_name?: string
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_success_at?: string | null
+        }
+        Relationships: []
       }
       system_alerts: {
         Row: {
@@ -5304,6 +6127,98 @@ export type Database = {
         }
         Relationships: []
       }
+      ticket_activity_log: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          new_value: string | null
+          old_value: string | null
+          ticket_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          ticket_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          new_value?: string | null
+          old_value?: string | null
+          ticket_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_activity_log_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ticket_attachments: {
+        Row: {
+          created_at: string | null
+          file_name: string
+          file_size: number | null
+          file_type: string
+          file_url: string
+          id: string
+          reply_id: string | null
+          ticket_id: string | null
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          file_name: string
+          file_size?: number | null
+          file_type: string
+          file_url: string
+          id?: string
+          reply_id?: string | null
+          ticket_id?: string | null
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string
+          file_size?: number | null
+          file_type?: string
+          file_url?: string
+          id?: string
+          reply_id?: string | null
+          ticket_id?: string | null
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_attachments_reply_id_fkey"
+            columns: ["reply_id"]
+            isOneToOne: false
+            referencedRelation: "ticket_replies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ticket_attachments_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "support_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ticket_replies: {
         Row: {
           created_at: string
@@ -5338,6 +6253,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ticket_templates: {
+        Row: {
+          category: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          labels: Json | null
+          message: string
+          name: string
+          priority: Database["public"]["Enums"]["ticket_priority"]
+          subject: string
+          ticket_type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          labels?: Json | null
+          message?: string
+          name: string
+          priority?: Database["public"]["Enums"]["ticket_priority"]
+          subject: string
+          ticket_type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          labels?: Json | null
+          message?: string
+          name?: string
+          priority?: Database["public"]["Enums"]["ticket_priority"]
+          subject?: string
+          ticket_type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -5563,6 +6523,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      attempt_recharge: {
+        Args: {
+          p_charge_amount: number
+          p_client_id: string
+          p_monthly_cap?: number
+        }
+        Returns: Json
+      }
+      audit_books: { Args: { p_client_id: string }; Returns: Json }
       calculate_sla_deadline: {
         Args: {
           p_category: string
@@ -5570,6 +6539,11 @@ export type Database = {
         }
         Returns: string
       }
+      compute_client_metrics: {
+        Args: { p_client_id: string; p_period?: string }
+        Returns: Json
+      }
+      compute_wallet_balance: { Args: { p_client_id: string }; Returns: Json }
       generate_referral_code: { Args: { client_name: string }; Returns: string }
       get_or_create_conversation: {
         Args: { p_client_id: string }
@@ -5619,11 +6593,25 @@ export type Database = {
         Args: { p_conversation_id: string; p_user_role: string }
         Returns: undefined
       }
+      pessimistic_balance: { Args: { p_client_id: string }; Returns: number }
+      process_successful_charge: {
+        Args: {
+          p_billing_record_id: string
+          p_paid_at?: string
+          p_stripe_pi_id: string
+        }
+        Returns: Json
+      }
       run_readonly_query: { Args: { query_text: string }; Returns: Json }
+      stale_charging_cleanup: { Args: never; Returns: Json }
+      try_advisory_lock_client: {
+        Args: { p_client_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "member" | "guest" | "client" | "referrer"
-      billing_status: "pending" | "paid" | "overdue" | "cancelled"
+      billing_status: "pending" | "paid" | "overdue" | "cancelled" | "charging"
       billing_type: "ad_spend" | "management"
       onboarding_check_status: "pending" | "yes" | "no"
       onboarding_status:
@@ -5763,7 +6751,7 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "member", "guest", "client", "referrer"],
-      billing_status: ["pending", "paid", "overdue", "cancelled"],
+      billing_status: ["pending", "paid", "overdue", "cancelled", "charging"],
       billing_type: ["ad_spend", "management"],
       onboarding_check_status: ["pending", "yes", "no"],
       onboarding_status: [

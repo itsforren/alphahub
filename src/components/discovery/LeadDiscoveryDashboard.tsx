@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp } from 'lucide-react';
+import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp, PhoneForwarded, Video, Headphones } from 'lucide-react';
 import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
@@ -20,15 +20,33 @@ interface LeadDiscoveryDashboardProps {
   agentId: string;
   schedulerLink?: string | null;
   subaccountId?: string | null;
+  callbackCalendarId?: string | null;
   isLoading?: boolean;
 }
 
-export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccountId, isLoading }: LeadDiscoveryDashboardProps) {
+export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccountId, callbackCalendarId, isLoading }: LeadDiscoveryDashboardProps) {
   const [selectedLead, setSelectedLead] = useState<DiscoveryLead | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterState, setFilterState] = useState<string>('');
   const [filterTemp, setFilterTemp] = useState<string>('');
+  const [filterAssigned, setFilterAssigned] = useState<string>('');
+
+  // Search filter — works across all tabs
+  const filterBySearch = (leads: DiscoveryLead[]) => {
+    if (!searchQuery) return leads;
+    const q = searchQuery.toLowerCase();
+    return leads.filter((l) => {
+      const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
+      return (
+        name.includes(q) ||
+        (l.email || '').toLowerCase().includes(q) ||
+        (l.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+        (l.state || '').toLowerCase().includes(q) ||
+        (l.lost_reason || '').toLowerCase().replace(/_/g, ' ').includes(q)
+      );
+    });
+  };
 
   // Apply filters to a list of leads
   const applyFilters = (leads: DiscoveryLead[]) => {
@@ -47,7 +65,8 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         return l.discovery_temperature === filterTemp;
       });
     }
-    return result;
+    if (filterAssigned) result = result.filter((l) => l.last_attempted_by === filterAssigned);
+    return filterBySearch(result);
   };
 
   // Unique states for filter dropdown
@@ -56,25 +75,27 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
     return Array.from(states).sort();
   }, [data.all]);
 
+  // Unique assignees for filter dropdown
+  const availableAssignees = useMemo(() => {
+    const assignees = new Set(data.all.map((l) => l.last_attempted_by).filter(Boolean) as string[]);
+    return Array.from(assignees).sort();
+  }, [data.all]);
+
   // Flat priority-sorted queue (with filters applied)
-  const filteredQueue = useMemo(() => applyFilters(data.queue), [data.queue, filterState, filterTemp]);
+  const filteredQueue = useMemo(() => applyFilters(data.queue), [data.queue, filterState, filterTemp, filterAssigned, searchQuery]);
+
+  // Filter callbacks by search + filters
+  const filteredCallbacks = useMemo(() => applyFilters(data.callbacks), [data.callbacks, filterState, filterTemp, filterAssigned, searchQuery]);
+
+  // Filter intro booked + strategy booked by search + filters
+  const filteredIntroBooked = useMemo(() => applyFilters(data.introBooked), [data.introBooked, filterState, filterTemp, filterAssigned, searchQuery]);
+  const filteredStrategyBooked = useMemo(() => applyFilters(data.strategyBooked), [data.strategyBooked, filterState, filterTemp, filterAssigned, searchQuery]);
 
   // Filter all contacts by search + filters
-  const filteredAll = useMemo(() => {
-    let result = applyFilters(data.all);
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((l) => {
-        const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
-        return (
-          name.includes(q) ||
-          (l.email || '').toLowerCase().includes(q) ||
-          (l.phone || '').toLowerCase().includes(q)
-        );
-      });
-    }
-    return result;
-  }, [data.all, searchQuery, filterState, filterTemp]);
+  const filteredAll = useMemo(() => applyFilters(data.all), [data.all, filterState, filterTemp, filterAssigned, searchQuery]);
+
+  // Filter lost by search + filters
+  const filteredLost = useMemo(() => applyFilters(data.lost), [data.lost, filterState, filterTemp, filterAssigned, searchQuery]);
 
   const handleLeadClick = (lead: DiscoveryLead) => {
     setSelectedLead(lead);
@@ -98,39 +119,60 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
       {/* Speed-to-Lead Scoreboard */}
       <SpeedToLeadScoreboard stats={stats} queueData={data} />
 
+      {/* Global Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, email, phone, state, or lost reason..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 bg-background/50"
+        />
+      </div>
+
       <Tabs defaultValue="queue" className="space-y-4">
         <TabsList className="bg-background/50 border border-border/50">
           <TabsTrigger value="queue" className="gap-2">
             <PhoneCall className="h-4 w-4" />
-            Follow Up
+            Dial
             <Badge variant="secondary" className="ml-1 text-xs">
-              {data.queue.length}
+              {filteredQueue.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger value="booked" className="gap-2">
-            <Calendar className="h-4 w-4" />
-            Booked
+          <TabsTrigger value="callbacks" className="gap-2">
+            <PhoneForwarded className="h-4 w-4" />
+            Callbacks
             <Badge variant="secondary" className="ml-1 text-xs">
-              {data.booked.length}
+              {filteredCallbacks.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="intro-booked" className="gap-2">
+            <Headphones className="h-4 w-4" />
+            Intro
+            <Badge variant="secondary" className="ml-1 text-xs">
+              {filteredIntroBooked.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="strategy-booked" className="gap-2">
+            <Video className="h-4 w-4" />
+            Strategy
+            <Badge variant="secondary" className="ml-1 text-xs">
+              {filteredStrategyBooked.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="all" className="gap-2">
             <Users className="h-4 w-4" />
             All
             <Badge variant="secondary" className="ml-1 text-xs">
-              {data.all.length}
+              {filteredAll.length}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="lost" className="gap-2">
             <XCircle className="h-4 w-4" />
             Lost
             <Badge variant="secondary" className="ml-1 text-xs">
-              {data.lost.length}
+              {filteredLost.length}
             </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="stats" className="gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Stats
           </TabsTrigger>
         </TabsList>
 
@@ -159,9 +201,20 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
               <SelectItem value="cold" className="text-xs">Cold (1-3)</SelectItem>
             </SelectContent>
           </Select>
-          {(filterState || filterTemp) && (
+          <Select value={filterAssigned} onValueChange={(v) => setFilterAssigned(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-7 text-xs w-auto min-w-[120px] bg-background/50 border-border/50">
+              <SelectValue placeholder="Assigned To" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">All Assignees</SelectItem>
+              {availableAssignees.map((a) => (
+                <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {(filterState || filterTemp || filterAssigned) && (
             <button
-              onClick={() => { setFilterState(''); setFilterTemp(''); }}
+              onClick={() => { setFilterState(''); setFilterTemp(''); setFilterAssigned(''); }}
               className="text-[10px] text-muted-foreground hover:text-primary underline"
             >
               Clear
@@ -209,56 +262,74 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           )}
         </TabsContent>
 
-        {/* Booked */}
-        <TabsContent value="booked" className="space-y-2">
-          {data.booked.length === 0 ? (
-            <EmptyState icon={Calendar} message="No calls booked yet" />
+        {/* Callbacks */}
+        <TabsContent value="callbacks" className="space-y-2">
+          {filteredCallbacks.length === 0 ? (
+            <EmptyState icon={PhoneForwarded} message="No callbacks scheduled" />
           ) : (
-            data.booked.map((lead) => (
+            filteredCallbacks.map((lead) => (
+              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
+            ))
+          )}
+        </TabsContent>
+
+        {/* Intro Booked */}
+        <TabsContent value="intro-booked" className="space-y-2">
+          {filteredIntroBooked.length === 0 ? (
+            <EmptyState icon={Headphones} message="No intro calls booked" />
+          ) : (
+            filteredIntroBooked.map((lead) => (
+              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
+            ))
+          )}
+        </TabsContent>
+
+        {/* Strategy Booked */}
+        <TabsContent value="strategy-booked" className="space-y-2">
+          {filteredStrategyBooked.length === 0 ? (
+            <EmptyState icon={Video} message="No strategy calls booked" />
+          ) : (
+            filteredStrategyBooked.map((lead) => (
               <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
             ))
           )}
         </TabsContent>
 
         {/* All Contacts */}
-        <TabsContent value="all" className="space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search by name, email, or phone..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-background/50"
-            />
-          </div>
-          <div className="space-y-2">
-            {filteredAll.length === 0 ? (
-              <EmptyState icon={Users} message="No contacts found" />
-            ) : (
-              filteredAll.map((lead) => (
-                <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-              ))
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Lost / DQ */}
-        <TabsContent value="lost" className="space-y-2">
-          {data.lost.length === 0 ? (
-            <EmptyState icon={XCircle} message="None" />
+        <TabsContent value="all" className="space-y-2">
+          {filteredAll.length === 0 ? (
+            <EmptyState icon={Users} message="No contacts found" />
           ) : (
-            data.lost.map((lead) => (
+            filteredAll.map((lead) => (
               <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
             ))
           )}
         </TabsContent>
 
-        {/* Stats */}
-        <TabsContent value="stats" className="space-y-6">
+        {/* Lost / DQ */}
+        <TabsContent value="lost" className="space-y-2">
+          {filteredLost.length === 0 ? (
+            <EmptyState icon={XCircle} message="None" />
+          ) : (
+            filteredLost.map((lead) => (
+              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
+            ))
+          )}
+        </TabsContent>
+
+      </Tabs>
+
+      {/* Stats Section — below tabs */}
+      <details className="mt-6">
+        <summary className="flex items-center gap-2 cursor-pointer text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
+          <TrendingUp className="h-4 w-4" />
+          Stats & Reports
+        </summary>
+        <div className="mt-4 space-y-6">
           <CallerLeaderboard agentId={agentId} />
           <DailyWeeklyReport agentId={agentId} />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </details>
 
       {/* Discovery Call Sheet */}
       <DiscoveryCallSheet
@@ -267,6 +338,8 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         lead={selectedLead}
         agentId={agentId}
         schedulerLink={schedulerLink}
+        callbackCalendarId={callbackCalendarId}
+        subaccountId={subaccountId}
         onCallNext={handleCallNext}
         queueData={data}
       />

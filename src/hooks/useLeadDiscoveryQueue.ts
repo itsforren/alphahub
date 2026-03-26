@@ -32,6 +32,15 @@ export interface DiscoveryLead {
   // Booking
   strategy_booked_at: string | null;
   intro_scheduled_at: string | null;
+  booked_call_at: string | null;
+  // Premiums
+  target_premium: number | null;
+  submitted_premium: number | null;
+  approved_premium: number | null;
+  issued_premium: number | null;
+  submitted_at: string | null;
+  approved_at: string | null;
+  issued_at: string | null;
   // Pre-fill data
   interest: string | null;
   savings: string | null;
@@ -40,10 +49,12 @@ export interface DiscoveryLead {
 }
 
 export interface DiscoveryQueueData {
-  queue: DiscoveryLead[];       // new + attempt_1-4, delivered only
-  booked: DiscoveryLead[];      // booked stage
-  all: DiscoveryLead[];         // everything
-  lost: DiscoveryLead[];        // lost + long_term_nurture
+  queue: DiscoveryLead[];          // new + attempt_1-4, delivered only
+  callbacks: DiscoveryLead[];      // callback_scheduled
+  introBooked: DiscoveryLead[];    // intro_scheduled
+  strategyBooked: DiscoveryLead[]; // strategy_booked, booked
+  all: DiscoveryLead[];            // everything
+  lost: DiscoveryLead[];           // lost + long_term_nurture
   failedDelivery: DiscoveryLead[]; // delivery_status != 'delivered'
 }
 
@@ -53,7 +64,9 @@ const LEAD_SELECT = `
   last_call_attempt_at, call_attempt_count, last_attempted_by,
   last_attempted_by_id, currently_being_worked, work_started_at,
   lost_reason, delivery_status, delivered_at, ghl_contact_id,
-  strategy_booked_at, intro_scheduled_at,
+  strategy_booked_at, intro_scheduled_at, booked_call_at,
+  target_premium, submitted_premium, approved_premium, issued_premium,
+  submitted_at, approved_at, issued_at,
   interest, savings, investments, employment
 `;
 
@@ -101,7 +114,7 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
   return useQuery({
     queryKey: ['discovery-queue', agentId],
     queryFn: async (): Promise<DiscoveryQueueData> => {
-      if (!agentId) return { queue: [], booked: [], all: [], lost: [], failedDelivery: [] };
+      if (!agentId) return { queue: [], callbacks: [], introBooked: [], strategyBooked: [], all: [], lost: [], failedDelivery: [] };
 
       const { data, error } = await supabase
         .from('leads')
@@ -128,8 +141,11 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
       const activeStages: DiscoveryStage[] = [
         'new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4',
         'discovery_complete',  // qualified, needs strategy booking
+        'no_show',             // discovery no-show, back in queue
+        'strategy_no_show',    // strategy no-show, needs rebook (HIGH priority)
+        'cancelled',           // cancelled, needs follow-up
+        'reschedule_needed',   // needs rescheduling
       ];
-      const bookedStages: DiscoveryStage[] = ['strategy_booked', 'booked', 'intro_scheduled'];
       const lostStages: DiscoveryStage[] = ['lost', 'long_term_nurture'];
 
       return {
@@ -140,7 +156,9 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
               l.delivery_status === 'delivered'
           )
           .sort((a, b) => computePriorityScore(b) - computePriorityScore(a)),
-        booked: processed.filter((l) => bookedStages.includes(l.discovery_stage as DiscoveryStage)),
+        callbacks: processed.filter((l) => l.discovery_stage === 'callback_scheduled'),
+        introBooked: processed.filter((l) => l.discovery_stage === 'intro_scheduled'),
+        strategyBooked: processed.filter((l) => l.discovery_stage === 'strategy_booked' || l.discovery_stage === 'booked'),
         all: processed,
         lost: processed.filter((l) => lostStages.includes(l.discovery_stage as DiscoveryStage)),
         failedDelivery: processed.filter(
@@ -153,7 +171,15 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
   });
 }
 
-/** Fetch the current user's client record to get agent_id */
+// Team member mappings — maps user_id to agent config
+// This is the source of truth for who can access which agent's leads
+const TEAM_MEMBERS: Record<string, { agent_id: string; callback_calendar_id: string; role: string; name: string }> = {
+  '2145cc04-a44e-4dea-b51f-6d91a71447d8': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '7DRohwRVnVUA5QvMOiHN', role: 'closer', name: 'James Warren' },
+  'f12f4bfc-711a-4c20-bfd8-33f35017de65': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '8Plj0zg1g4QOHKuQ10MW', role: 'setter', name: 'Sierra Warren' },
+  'b5af9972-c8ed-43ef-a3a4-4487ea7c56a9': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '8Plj0zg1g4QOHKuQ10MW', role: 'setter', name: 'Sierra Smith' },
+};
+
+/** Fetch the current user's client record OR team membership to get agent_id */
 export function useMyClient() {
   return useQuery({
     queryKey: ['my-client'],
@@ -163,14 +189,39 @@ export function useMyClient() {
       } = await supabase.auth.getUser();
       if (!user) return null;
 
-      const { data, error } = await supabase
+      // Check team member mapping FIRST (handles Sierra and other setters)
+      const teamData = TEAM_MEMBERS[user.id];
+      if (teamData) {
+        const { data: agentClient } = await supabase
+          .from('clients')
+          .select('id, agent_id, name, scheduler_link, subaccount_id')
+          .eq('agent_id', teamData.agent_id)
+          .eq('status', 'active')
+          .limit(1)
+          .single();
+
+        if (agentClient) {
+          return {
+            ...agentClient,
+            callback_calendar_id: teamData.callback_calendar_id,
+            team_role: teamData.role,
+            team_member_name: teamData.name,
+          };
+        }
+      }
+
+      // Fallback: direct client record (agent owner)
+      const { data: clientData } = await supabase
         .from('clients')
         .select('id, agent_id, name, scheduler_link, subaccount_id')
         .eq('user_id', user.id)
+        .eq('status', 'active')
+        .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
-      return data;
+      if (clientData?.agent_id) return clientData;
+
+      return null;
     },
   });
 }

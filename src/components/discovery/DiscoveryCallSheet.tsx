@@ -3,11 +3,12 @@ import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Phone, Mail, MapPin, CheckCircle, PhoneMissed, PhoneOff, Clock, Loader2, AlertTriangle, RotateCcw, XCircle, PhoneForwarded, Sprout } from 'lucide-react';
+import { Phone, Mail, MapPin, CheckCircle, PhoneMissed, PhoneOff, Clock, Loader2, AlertTriangle, RotateCcw, XCircle, PhoneForwarded, Sprout, PhoneCall, Calendar, Video, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscoveryCallForm } from './DiscoveryCallForm';
 import { BadNumberHandler } from './BadNumberHandler';
 import { SlotPicker } from './SlotPicker';
+import { LeadDetailView } from './LeadDetailView';
 import { TemperatureBadge } from './TemperatureSelector';
 import { useSaveDiscoveryCall, useClaimLead, useReleaseLead, useDiscoveryCallsForLead } from '@/hooks/useDiscoveryCalls';
 import { OutcomeBadge } from './OutcomeSelector';
@@ -38,20 +39,28 @@ interface DiscoveryCallSheetProps {
   lead: DiscoveryLead | null;
   agentId: string;
   schedulerLink?: string | null;
+  callbackCalendarId?: string | null;
+  subaccountId?: string | null;
   onCallNext?: (lead: DiscoveryLead) => void;
   queueData?: import('@/hooks/useLeadDiscoveryQueue').DiscoveryQueueData;
 }
 
 type Step =
-  | 'answer'           // Did they answer?
-  | 'form'             // Full discovery form (the live script)
-  | 'bad_number'       // Bad number reason picker
-  | 'schedule_intro'   // Bad timing → schedule discovery call for later
-  | 'book_strategy'    // End of form → book strategy/zoom call
-  | 'lost_detail'      // Viewing a lost lead — show reason + reactivate options
-  | 'saved';           // Done
+  | 'detail'              // Lead detail view (has discovery data from previous call)
+  | 'answer'              // Did they answer?
+  | 'form'                // Full discovery form (the live script)
+  | 'bad_number'          // Bad number reason picker
+  | 'schedule_callback'   // Bad timing → quick callback on Callback calendar
+  | 'schedule_discovery'  // Reschedule full discovery call on Discovery calendar
+  | 'schedule_strategy'   // Reschedule strategy/zoom call on Strategy calendar
+  | 'book_strategy'       // End of form → book strategy/zoom call
+  | 'lost_detail'         // Viewing a lost lead — show reason + reactivate options
+  | 'saved';              // Done
 
-export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, queueData }: DiscoveryCallSheetProps) {
+// Stages that indicate a discovery form has been filled out at some point
+const ATTEMPT_STAGES = ['new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4'];
+
+export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalendarId, subaccountId, onCallNext, queueData }: DiscoveryCallSheetProps) {
   const [step, setStep] = useState<Step>('answer');
   const [booking, setBooking] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
@@ -62,6 +71,8 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
     discovery_data: DiscoveryFormData;
   } | null>(null);
   const [qualifies, setQualifies] = useState<string | null>(null);
+  const [dqReason, setDqReason] = useState<string | null>(null);
+  const [annuityOpportunity, setAnnuityOpportunity] = useState<string | null>(null);
   const [callBackDate, setCallBackDate] = useState<string>('');
   const [showCallBackPicker, setShowCallBackPicker] = useState(false);
 
@@ -72,12 +83,27 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
 
   useEffect(() => {
     if (open && lead) {
-      // If lead is lost, show the lost detail screen instead of the answer step
+      // Route to the right step based on current stage
       const isLost = lead.discovery_stage === 'lost' || lead.discovery_stage === 'long_term_nurture';
-      setStep(isLost ? 'lost_detail' : 'answer');
+      const isStrategyNoShow = lead.discovery_stage === 'strategy_no_show';
+      const hasDiscoveryData = !ATTEMPT_STAGES.includes(lead.discovery_stage || 'new');
+
+      let initialStep: Step = 'answer';
+      if (isLost) {
+        initialStep = 'lost_detail';
+      } else if (isStrategyNoShow) {
+        initialStep = 'book_strategy';
+      } else if (hasDiscoveryData) {
+        initialStep = 'detail';
+      }
+
+      setStep(initialStep);
+      if (isStrategyNoShow) setSavedMessage(''); // Clear for rebook flow
       setPendingFormData(null);
       setSavedMessage('');
       setQualifies(null);
+      setDqReason(null);
+      setAnnuityOpportunity(null);
       setCallBackDate('');
       setShowCallBackPicker(false);
       claimLead.mutate(lead.id);
@@ -102,8 +128,8 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
   // "Yes, let's go" → full discovery form
   const handleAnswered = () => setStep('form');
 
-  // "Yes, bad timing" → schedule intro call for later
-  const handleBadTiming = () => setStep('schedule_intro');
+  // "Yes, bad timing" → schedule callback
+  const handleBadTiming = () => setStep('schedule_callback');
 
   // "No answer"
   const handleNoAnswer = () => {
@@ -144,7 +170,43 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
     );
   };
 
-  // ── Intro Scheduling (bad timing path) ─────────────────────────────────────
+  // ── Callback Scheduling (bad timing path) ───────────────────────────────────
+
+  const handleCallbackSlotSelected = async (slot: string, _calendarId: string) => {
+    setBooking(true);
+    try {
+      saveCall.mutate({
+        lead_id: lead.id,
+        agent_id: agentId,
+        attempt_number: nextAttempt,
+        answered: true,
+        outcome: 'call_back',
+      });
+
+      await invokeEdgeFunction('book-discovery-appointment', {
+        lead_id: lead.id,
+        agent_id: agentId,
+        calendar_id: callbackCalendarId || _calendarId,
+        calendar_type: 'callback',
+        selected_slot: slot,
+        reschedule: true,
+        notes: `Callback scheduled from dial tracker. Lead answered but bad timing.`,
+      });
+
+      const timeStr = new Date(slot).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      });
+      toast.success(`Callback booked for ${timeStr}`);
+      setSavedMessage(`Callback booked for ${timeStr}`);
+      setStep('saved');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to book callback');
+    } finally {
+      setBooking(false);
+    }
+  };
+
+  // ── Intro Scheduling (reschedule discovery path) ───────────────────────────
 
   const handleIntroSlotSelected = async (slot: string, calendarId: string) => {
     setBooking(true);
@@ -158,14 +220,15 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
         outcome: 'intro_scheduled',
       });
 
-      // Book the appointment
+      // Book the appointment (reschedule cancels existing first)
       await invokeEdgeFunction('book-discovery-appointment', {
         lead_id: lead.id,
         agent_id: agentId,
         calendar_id: calendarId,
         calendar_type: 'discovery',
         selected_slot: slot,
-        notes: `Intro discovery call scheduled from dial tracker. Lead answered but couldn't talk.`,
+        reschedule: true,
+        notes: `Discovery call scheduled from dial tracker.`,
       });
 
       const timeStr = new Date(slot).toLocaleString('en-US', {
@@ -231,8 +294,13 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
         disc.notes ? `Notes: ${disc.notes}` : '',
       ].filter(Boolean).join('\n');
 
-      // Save the discovery call record first (include qualifies in discovery_data)
-      const enrichedData = { ...pendingFormData.discovery_data, ...(qualifies ? { qualifies } : {}) };
+      // Save the discovery call record first (include qualifies, dq_reason, annuity_opportunity in discovery_data)
+      const enrichedData = {
+        ...pendingFormData.discovery_data,
+        ...(qualifies ? { qualifies } : {}),
+        ...(dqReason ? { dq_reason: dqReason } : {}),
+        ...(annuityOpportunity ? { annuity_opportunity: annuityOpportunity } : {}),
+      };
       saveCall.mutate({
         lead_id: lead.id,
         agent_id: agentId,
@@ -244,13 +312,14 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
         appointment_datetime: slot,
       });
 
-      // Book the strategy appointment
+      // Book the strategy appointment (reschedule cancels existing first)
       await invokeEdgeFunction('book-discovery-appointment', {
         lead_id: lead.id,
         agent_id: agentId,
         calendar_id: calendarId,
         calendar_type: 'strategy',
         selected_slot: slot,
+        reschedule: true,
         notes: noteLines,
       });
 
@@ -275,6 +344,8 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
       const enrichedData = {
         ...pendingFormData.discovery_data,
         ...(qualifies ? { qualifies } : {}),
+        ...(dqReason ? { dq_reason: dqReason } : {}),
+        ...(annuityOpportunity ? { annuity_opportunity: annuityOpportunity } : {}),
         ...(callbackDate ? { callback_date: callbackDate } : {}),
       };
       updatePayload.discovery_data = enrichedData;
@@ -310,7 +381,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
         await invokeEdgeFunction('book-discovery-appointment', {
           lead_id: lead.id,
           agent_id: agentId,
-          calendar_id: '7DRohwRVnVUA5QvMOiHN', // Callback calendar
+          calendar_id: callbackCalendarId || '7DRohwRVnVUA5QvMOiHN', // Per-user callback calendar
           calendar_type: 'callback',
           selected_slot: callbackDate,
           notes: `Callback: ${leadName}\n${pendingFormData?.discovery_data?.notes || ''}`,
@@ -374,8 +445,8 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
         </SheetHeader>
 
         <div className="p-4">
-          {/* ── Call History ──────────────────────────────────────────────────── */}
-          {callHistory && callHistory.length > 0 && step !== 'saved' && (
+          {/* ── Call History (inline — hidden on detail + saved steps) ────────── */}
+          {callHistory && callHistory.length > 0 && step !== 'saved' && step !== 'detail' && (
             <div className="mb-4 p-3 rounded-lg bg-muted/20 border border-border/30">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">Previous Attempts</p>
               <div className="space-y-1.5">
@@ -397,6 +468,23 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
             </div>
           )}
 
+          {/* ── Step: Lead Detail View ──────────────────────────────────────── */}
+          {step === 'detail' && (
+            <LeadDetailView
+              lead={lead}
+              discoveryData={
+                // Find the most recent answered call's discovery data
+                callHistory?.find((c) => c.answered && c.discovery_data && Object.keys(c.discovery_data).length > 0)?.discovery_data || null
+              }
+              callHistory={callHistory || []}
+              onCallAgain={() => setStep('answer')}
+              onBookStrategy={() => setStep('book_strategy')}
+              onRescheduleStrategy={() => setStep('book_strategy')}
+              onClose={handleClose}
+              subaccountId={subaccountId}
+            />
+          )}
+
           {/* ── Step: Did they answer? ──────────────────────────────────────── */}
           {step === 'answer' && (
             <div className="space-y-5 text-center py-8">
@@ -407,11 +495,12 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                 <p className="text-sm font-semibold text-muted-foreground mt-2">Did they answer?</p>
               </div>
 
-              <div className="flex flex-col gap-3 max-w-sm mx-auto">
+              <div className="flex flex-col gap-4 max-w-sm mx-auto">
+                {/* Primary actions */}
                 <div className="flex gap-3">
                   <Button
                     size="lg"
-                    className="flex-1 h-14 text-base font-bold border-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-green-500/20"
+                    className="flex-1 h-14 text-base font-bold rounded-xl border-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
                     variant="outline"
                     onClick={handleAnswered}
                   >
@@ -420,7 +509,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                   </Button>
                   <Button
                     size="lg"
-                    className="flex-1 h-14 text-base font-bold border-2 border-rose-500 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                    className="flex-1 h-14 text-base font-bold rounded-xl border-2 border-rose-500 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
                     variant="outline"
                     onClick={handleNoAnswer}
                     disabled={saveCall.isPending}
@@ -430,24 +519,48 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                   </Button>
                 </div>
 
-                <Button
-                  size="lg"
-                  className="h-14 text-base font-bold border-2 border-amber-500 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                  variant="outline"
-                  onClick={handleBadTiming}
-                >
-                  <Clock className="h-5 w-5 mr-2" />
-                  Yes, but bad timing
-                </Button>
+                {/* Schedule section divider */}
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="flex-1 h-px bg-border/50" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Schedule</span>
+                  <div className="flex-1 h-px bg-border/50" />
+                </div>
 
-                <Button
-                  variant="outline"
-                  className="border-muted text-muted-foreground hover:border-red-500/40 hover:text-red-400"
+                {/* Schedule buttons row */}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-12 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors flex-col gap-0 px-2"
+                    onClick={handleBadTiming}
+                  >
+                    <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Callback</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-12 rounded-xl border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition-colors flex-col gap-0 px-2"
+                    onClick={() => setStep('schedule_discovery')}
+                  >
+                    <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Discovery</span>
+                    <span className="text-[9px] text-blue-400/50 font-normal">reschedule</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-12 rounded-xl border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors flex-col gap-0 px-2"
+                    onClick={() => setStep('schedule_strategy')}
+                  >
+                    <span className="flex items-center gap-1"><Video className="h-3.5 w-3.5" /> Strategy</span>
+                    <span className="text-[9px] text-purple-400/50 font-normal">reschedule</span>
+                  </Button>
+                </div>
+
+                {/* Bad number — subtle at bottom */}
+                <button
                   onClick={() => setStep('bad_number')}
+                  className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors mt-1 mx-auto"
                 >
-                  <PhoneOff className="h-4 w-4 mr-2" />
+                  <PhoneOff className="h-3.5 w-3.5" />
                   Bad Number
-                </Button>
+                </button>
               </div>
             </div>
           )}
@@ -463,25 +576,30 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
           )}
 
           {/* ── Step: Schedule Intro (bad timing) ──────────────────────────── */}
-          {step === 'schedule_intro' && (
+          {/* ── Step: Schedule Callback (bad timing → Callback calendar) ──── */}
+          {step === 'schedule_callback' && (
             <div className="py-4 space-y-4">
+              <button onClick={() => setStep('answer')} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
               <div className="text-center mb-4">
                 <p className="text-sm font-semibold text-muted-foreground">
-                  Schedule the discovery call for a better time
+                  Schedule a quick callback
                 </p>
               </div>
               {booking ? (
                 <div className="text-center py-12">
-                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-primary mb-3" />
-                  <p className="text-sm text-muted-foreground">Booking appointment...</p>
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-amber-400 mb-3" />
+                  <p className="text-sm text-muted-foreground">Booking callback...</p>
                 </div>
               ) : (
                 <SlotPicker
                   agentId={agentId}
-                  calendarType="discovery"
-                  onSlotSelected={handleIntroSlotSelected}
+                  calendarType="callback"
+                  calendarId={callbackCalendarId || undefined}
+                  onSlotSelected={handleCallbackSlotSelected}
                   onCancel={() => {
-                    // Skip booking, just save as bad_timing
                     saveCall.mutate(
                       {
                         lead_id: lead.id,
@@ -498,7 +616,81 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                       }
                     );
                   }}
+                  title="Schedule Callback"
+                />
+              )}
+            </div>
+          )}
+
+          {/* ── Step: Schedule Discovery (full discovery call → Discovery calendar) */}
+          {step === 'schedule_discovery' && (
+            <div className="py-4 space-y-4">
+              <button onClick={() => setStep('answer')} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
+              <div className="text-center mb-4">
+                <p className="text-sm font-semibold text-muted-foreground">
+                  Schedule the discovery call
+                </p>
+              </div>
+              {booking ? (
+                <div className="text-center py-12">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-blue-400 mb-3" />
+                  <p className="text-sm text-muted-foreground">Booking discovery call...</p>
+                </div>
+              ) : (
+                <SlotPicker
+                  agentId={agentId}
+                  calendarType="discovery"
+                  onSlotSelected={handleIntroSlotSelected}
+                  onCancel={() => {
+                    saveCall.mutate(
+                      {
+                        lead_id: lead.id,
+                        agent_id: agentId,
+                        attempt_number: nextAttempt,
+                        answered: true,
+                        outcome: 'bad_timing',
+                      },
+                      {
+                        onSuccess: () => {
+                          setSavedMessage('Saved — call back later');
+                          setStep('saved');
+                        },
+                      }
+                    );
+                  }}
                   title="Schedule Discovery Call"
+                />
+              )}
+            </div>
+          )}
+
+          {/* ── Step: Reschedule Strategy (Strategy/Zoom calendar) ──────────── */}
+          {step === 'schedule_strategy' && (
+            <div className="py-4 space-y-4">
+              <button onClick={() => setStep('answer')} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
+              <div className="text-center mb-4">
+                <p className="text-sm font-semibold text-muted-foreground">
+                  Reschedule the strategy call
+                </p>
+              </div>
+              {booking ? (
+                <div className="text-center py-12">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-purple-400 mb-3" />
+                  <p className="text-sm text-muted-foreground">Booking strategy call...</p>
+                </div>
+              ) : (
+                <SlotPicker
+                  agentId={agentId}
+                  calendarType="strategy"
+                  onSlotSelected={handleStrategySlotSelected}
+                  onCancel={() => setStep('answer')}
+                  title="Reschedule Strategy Call"
                 />
               )}
             </div>
@@ -506,23 +698,41 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
 
           {/* ── Step: Full Discovery Form (the live script) ────────────────── */}
           {step === 'form' && (
+            <div>
+              <button onClick={() => setStep('answer')} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground mb-4 transition-colors">
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back
+              </button>
             <DiscoveryCallForm
               lead={lead}
               agentId={agentId}
               onSave={handleFormSave}
               saving={saveCall.isPending}
             />
+            </div>
           )}
 
           {/* ── Step: Book Strategy Call (post-form) ───────────────────────── */}
           {step === 'book_strategy' && (
             <div className="py-4 space-y-6">
               <div className="text-center mb-2">
-                <CheckCircle className="h-10 w-10 mx-auto text-green-400 mb-2" />
-                <p className="text-lg font-bold text-foreground">Discovery saved!</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Schedule the strategy call
-                </p>
+                {lead.discovery_stage === 'strategy_no_show' ? (
+                  <>
+                    <AlertTriangle className="h-10 w-10 mx-auto text-red-400 mb-2" />
+                    <p className="text-lg font-bold text-foreground">Strategy Call No-Show</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Rebook the strategy call
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-10 w-10 mx-auto text-green-400 mb-2" />
+                    <p className="text-lg font-bold text-foreground">Discovery saved!</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Schedule the strategy call
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Qualifies toggle */}
@@ -536,7 +746,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                       'flex-1',
                       qualifies === 'yes' && 'border-green-500 bg-green-500/10 text-green-400'
                     )}
-                    onClick={() => setQualifies('yes')}
+                    onClick={() => { setQualifies('yes'); setDqReason(null); }}
                   >
                     Yes
                   </Button>
@@ -548,6 +758,66 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, onCallNext, q
                       qualifies === 'no' && 'border-rose-500 bg-rose-500/10 text-rose-400'
                     )}
                     onClick={() => setQualifies('no')}
+                  >
+                    No
+                  </Button>
+                </div>
+                {qualifies === 'no' && (
+                  <div className="mt-3 space-y-2">
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">DQ Reason</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        'Age (too young/old)',
+                        'Health conditions',
+                        'Income too low',
+                        'Not interested',
+                        'Already has coverage',
+                        'Tobacco/health risk',
+                        'Felony',
+                        'Other',
+                      ].map((reason) => (
+                        <button
+                          key={reason}
+                          type="button"
+                          onClick={() => setDqReason(reason)}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg border text-xs font-bold transition-all',
+                            dqReason === reason
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-400'
+                              : 'border-border bg-background/50 text-muted-foreground hover:border-rose-500/30'
+                          )}
+                        >
+                          {reason}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Annuity opportunity toggle */}
+              <div className="p-4 rounded-xl border border-border bg-card/50 space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">Potential Annuity Opportunity?</p>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      'flex-1',
+                      annuityOpportunity === 'yes' && 'border-green-500 bg-green-500/10 text-green-400'
+                    )}
+                    onClick={() => setAnnuityOpportunity('yes')}
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      'flex-1',
+                      annuityOpportunity === 'no' && 'border-rose-500 bg-rose-500/10 text-rose-400'
+                    )}
+                    onClick={() => setAnnuityOpportunity('no')}
                   >
                     No
                   </Button>

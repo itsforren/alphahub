@@ -22,6 +22,7 @@ import {
   BarChart3,
   Target,
   DollarSign,
+  PhoneCall,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -77,6 +78,7 @@ const mainNavSections: NavSection[] = [
     title: 'My Business',
     defaultOpen: true,
     items: [
+      { to: '/hub/leads', icon: PhoneCall, label: 'My Leads' },
       { to: '/hub/referrals', icon: UserPlus, label: 'Referrals' },
     ],
   },
@@ -286,12 +288,38 @@ export default function AgentHubLayout() {
     },
   ];
 
+  // Feature flag: only show "My Leads" for specific users (remove filter to enable for all)
+  const DISCOVERY_ENABLED_USERS = [
+    '2145cc04-a44e-4dea-b51f-6d91a71447d8', // James Warren (Forren)
+    'f12f4bfc-711a-4c20-bfd8-33f35017de65', // Sierra Warren (sierra@alphaagent.io)
+    'b5af9972-c8ed-43ef-a3a4-4487ea7c56a9', // Sierra Smith (sierrasmith@gmail.com)
+  ];
+  const showDiscovery = user && DISCOVERY_ENABLED_USERS.includes(user.id);
+
+  const filteredMainNav = showDiscovery
+    ? mainNavSections
+    : mainNavSections.map(section => ({
+        ...section,
+        items: section.items.filter(item => item.to !== '/hub/leads'),
+      }));
+
+  // Inject "My Leads" into admin nav if user is discovery-enabled
+  const adminSectionsWithLeads = showDiscovery
+    ? [
+        { title: null, items: [
+          { to: '/hub/admin/clients', icon: Users, label: 'All Clients' },
+          { to: '/hub/leads', icon: PhoneCall, label: 'My Leads' },
+        ]},
+        ...adminNavSections.slice(1),
+      ]
+    : adminNavSections;
+
   // Admins see admin pages, referrers see only referrals, regular users see full nav
-  const allSections = isAdmin 
-    ? [...adminOnlyMainSections, ...adminNavSections] 
+  const allSections = isAdmin
+    ? [...adminOnlyMainSections, ...adminSectionsWithLeads]
     : isReferrer
       ? referrerNavSections
-      : mainNavSections;
+      : filteredMainNav;
 
   return (
     <div className="min-h-screen bg-background flex w-full">

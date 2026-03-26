@@ -70,6 +70,7 @@ const ArchivedClients = lazy(() => import("./pages/portal/admin/ArchivedClients"
 // NEW: Unified Agent Hub (lazy loaded)
 const AgentHubLayout = lazy(() => import("./components/hub/AgentHubLayout"));
 const HubReferrals = lazy(() => import("./pages/hub/Referrals"));
+const HubLeads = lazy(() => import("./pages/hub/Leads"));
 const HubProfile = lazy(() => import("./pages/hub/Profile"));
 const HubSettings = lazy(() => import("./pages/hub/Settings"));
 const SignAgreement = lazy(() => import("./pages/hub/SignAgreement"));
@@ -157,7 +158,8 @@ const App = () => (
                     <Route path="performance" element={<Navigate to="/hub" replace />} />
                     <Route path="billing" element={<Navigate to="/hub" replace />} />
                     <Route path="referrals" element={<HubReferrals />} />
-                    
+                    <Route path="leads" element={<HubLeads />} />
+
                     {/* Learn */}
                     <Route path="courses" element={<Courses />} />
                     <Route path="courses/:courseId" element={<CourseDetail />} />

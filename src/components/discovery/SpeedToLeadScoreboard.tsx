@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { Zap, Phone, PhoneCall, Video, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Zap, Phone, PhoneCall, PhoneOff, Video, AlertTriangle, TrendingUp } from 'lucide-react';
 import type { DiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
 import type { DiscoveryQueueData } from '@/hooks/useLeadDiscoveryQueue';
 
@@ -43,6 +43,16 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
 
     return { count: leads.length, ageLabel };
   }, [queueData.queue]);
+
+  const badNumberStats = useMemo(() => {
+    const BAD_REASONS = ['bad_number', 'disconnected', 'wrong_number', 'not_in_service', 'no_ring', 'straight_to_vm'];
+    const total = queueData.all.length;
+    if (total === 0) return { count: 0, pct: 0 };
+    const badCount = queueData.lost.filter(
+      (l) => l.discovery_stage === 'lost' && BAD_REASONS.includes(l.lost_reason || '')
+    ).length;
+    return { count: badCount, pct: Math.round((badCount / total) * 100) };
+  }, [queueData.all, queueData.lost]);
 
   const pickupRate = todayStats.total > 0
     ? Math.round((todayStats.connected / todayStats.total) * 100)
@@ -90,6 +100,12 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
       {todayStats.connected > 0 && (
         <span className={cn('flex items-center gap-1 font-semibold', rateColor(bookingRate))}>
           {bookingRate}% booking
+        </span>
+      )}
+
+      {badNumberStats.count > 0 && (
+        <span className="flex items-center gap-1 font-semibold text-red-400">
+          <PhoneOff className="h-3 w-3" /> Bad #: {badNumberStats.pct}%
         </span>
       )}
     </div>

@@ -41,7 +41,7 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
   
   // Parse message content with clickable links
   const parsedMessage = useMemo(() => {
-    if (!message.message || message.message.startsWith('Sent ')) return null;
+    if (!message.message || message.message === 'Sent an image' || message.message === 'Sent a file') return null;
     return parseMessageWithLinks(message.message);
   }, [message.message]);
 
