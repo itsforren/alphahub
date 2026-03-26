@@ -1129,7 +1129,8 @@ export function useAdSpendIntelligence(startIso?: string, endIso?: string) {
         if (!trackStart) continue;
         const deposits = totalDepositsPerClient.get(clientId) || 0;
         const spend = totalSpendPerClient.get(clientId) || 0;
-        walletBalanceMap.set(clientId, deposits - spend);
+        const displayedSpend = spend * (1 + performancePct / 100);
+        walletBalanceMap.set(clientId, deposits - displayedSpend);
       }
 
       let totalWalletBalance = 0;

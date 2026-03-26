@@ -173,6 +173,55 @@ serve(async (req) => {
         const inGracePeriod = rechargeState?.grace_period_until &&
           new Date(rechargeState.grace_period_until) > new Date();
 
+        // Monthly cap enforcement: if monthly spend exceeds cap, trigger safe mode
+        const { data: walletForCap } = await supabase
+          .from('client_wallets')
+          .select('monthly_ad_spend_cap')
+          .eq('client_id', client.id)
+          .maybeSingle();
+
+        if (walletForCap?.monthly_ad_spend_cap && walletForCap.monthly_ad_spend_cap > 0) {
+          const now = new Date();
+          const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+          const { data: monthlySpendRows } = await supabase
+            .from('ad_spend_daily')
+            .select('cost')
+            .eq('client_id', client.id)
+            .gte('spend_date', monthStart);
+
+          const monthlySpend = (monthlySpendRows || []).reduce((sum: number, r: any) => sum + (r.cost || 0), 0);
+
+          if (monthlySpend >= walletForCap.monthly_ad_spend_cap && !inGracePeriod) {
+            console.log(`[check-low-balance] Client ${client.name}: Monthly spend $${monthlySpend.toFixed(2)} >= cap $${walletForCap.monthly_ad_spend_cap}, activating safe mode`);
+
+            if (!accessToken) {
+              accessToken = await getAccessToken();
+            }
+
+            await snapshotAndActivateSafeMode(supabase, client.id, accessToken, 'monthly_cap_exceeded');
+
+            await notify({
+              supabase,
+              clientId: client.id,
+              clientName: client.name,
+              severity: 'critical',
+              title: 'Monthly Cap Exceeded — Safe Mode',
+              message: `Monthly spend $${monthlySpend.toFixed(2)} exceeded cap $${walletForCap.monthly_ad_spend_cap}. Campaigns set to $0.01.`,
+              metadata: { monthly_spend: monthlySpend, monthly_cap: walletForCap.monthly_ad_spend_cap },
+            });
+
+            results.push({
+              client: client.name,
+              action: 'safe_mode_monthly_cap',
+              balance,
+              pessimisticBalance: effectiveBalance,
+              threshold: safeModeThreshold,
+            });
+            continue; // Skip balance threshold check — already in safe mode
+          }
+        }
+
         // RECH-03 + CAMP-06: Safe mode at safe_mode_threshold using pessimistic balance (skip if in grace period)
         if (effectiveBalance <= safeModeThreshold && !inGracePeriod) {
           console.log(`[check-low-balance] Client ${client.name}: Pessimistic balance $${Number(effectiveBalance).toFixed(2)} <= threshold $${safeModeThreshold}, activating safe mode`);

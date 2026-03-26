@@ -35,10 +35,10 @@ export function useVaultData() {
         .select('id, amount, due_date, charge_attempts, client_id, billing_type')
         .eq('status', 'pending');
       
-      // Fetch client wallets for ad spend balance
-      const { data: wallets } = await supabase
+      // Compute ad wallet balance via RPC (replaces deprecated ad_spend_balance field)
+      const { data: activeWalletClients } = await supabase
         .from('client_wallets')
-        .select('ad_spend_balance, client_id');
+        .select('client_id');
       
       // Fetch clients for names and LTV calc
       const { data: clients } = await supabase
@@ -51,8 +51,12 @@ export function useVaultData() {
         ?.filter(r => r.billing_type === 'management')
         .reduce((sum, r) => sum + (r.amount || 0), 0) || 0;
       
-      // Calculate Ad Wallet Balance (client deposits - their money)
-      const adWalletBalance = wallets?.reduce((sum, w) => sum + (w.ad_spend_balance || 0), 0) || 0;
+      // Calculate Ad Wallet Balance from computed balances (deposits - spend with performance markup)
+      let adWalletBalance = 0;
+      for (const w of (activeWalletClients || [])) {
+        const { data } = await supabase.rpc('compute_wallet_balance', { p_client_id: w.client_id });
+        adWalletBalance += data?.remaining_balance ?? 0;
+      }
       
       // Calculate LTV (average revenue per client)
       const totalRevenue = paidRecords?.reduce((sum, r) => sum + (r.amount || 0), 0) || 0;

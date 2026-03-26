@@ -427,33 +427,9 @@ export function useDeleteBillingRecord() {
 
       if (fetchError) throw fetchError;
 
-      // If it's a paid ad_spend record, we need to subtract from wallet balance
-      if (billingRecord?.billing_type === 'ad_spend' && billingRecord?.status === 'paid') {
-        // Get the wallet for this client
-        const { data: wallet, error: walletFetchError } = await supabase
-          .from('client_wallets')
-          .select('id, ad_spend_balance')
-          .eq('client_id', clientId)
-          .maybeSingle();
-
-        if (walletFetchError) throw walletFetchError;
-
-        if (wallet) {
-          // Subtract the amount from wallet balance
-          const newBalance = Number(wallet.ad_spend_balance) - Number(billingRecord.amount);
-          const { error: walletUpdateError } = await supabase
-            .from('client_wallets')
-            .update({ 
-              ad_spend_balance: Math.max(0, newBalance),
-              last_calculated_at: new Date().toISOString()
-            })
-            .eq('id', wallet.id);
-
-          if (walletUpdateError) throw walletUpdateError;
-        }
-      }
-
       // Delete any wallet_transactions referencing this billing record
+      // (wallet balance is computed from deposits - spend, so removing the
+      // transaction is sufficient — no need to touch the deprecated ad_spend_balance field)
       const { error: walletError } = await supabase
         .from('wallet_transactions')
         .delete()

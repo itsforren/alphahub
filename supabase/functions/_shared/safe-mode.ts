@@ -70,17 +70,10 @@ export async function snapshotAndActivateSafeMode(
   accessToken: string,
   triggeredBy: string,
 ): Promise<void> {
-  // RECH-11 guard: skip if already in safe mode (prevents re-snapshot of $0.01 budgets)
-  const alreadyInSafeMode = await isInSafeMode(supabase, clientId);
-  if (alreadyInSafeMode) {
-    console.log(`[safe-mode] Client ${clientId} already in safe mode, skipping re-snapshot`);
-    return;
-  }
-
   // Fetch ALL campaigns for this client with Google Ads IDs
   const { data: campaigns, error: campaignsError } = await supabase
     .from('campaigns')
-    .select('id, google_customer_id, google_campaign_id, current_daily_budget, status, ignored')
+    .select('id, google_customer_id, google_campaign_id, current_daily_budget, status, ignored, safe_mode')
     .eq('client_id', clientId)
     .not('google_campaign_id', 'is', null);
 
@@ -98,8 +91,28 @@ export async function snapshotAndActivateSafeMode(
 
   const activeCampaigns = (campaigns || []).filter((c: any) => !c.ignored);
 
-  if (activeCampaigns.length === 0) {
-    console.log(`[safe-mode] Client ${clientId} has no active campaigns to snapshot`);
+  // RECH-11 guard (improved): If ALL active campaigns are already in safe mode, skip.
+  // If some campaigns escaped safe mode (e.g. restored individually or added after),
+  // only process the non-safe-mode campaigns without re-snapshotting the ones already pennied.
+  const notInSafeMode = activeCampaigns.filter((c: any) => !c.safe_mode);
+  const alreadyInSafeMode = await isInSafeMode(supabase, clientId);
+
+  if (alreadyInSafeMode && notInSafeMode.length === 0) {
+    console.log(`[safe-mode] Client ${clientId} already fully in safe mode, skipping`);
+    return;
+  }
+
+  const isPartialFix = alreadyInSafeMode && notInSafeMode.length > 0;
+
+  if (isPartialFix) {
+    console.log(`[safe-mode] Client ${clientId} partially in safe mode — ${notInSafeMode.length} campaign(s) escaped. Fixing...`);
+  }
+
+  // Determine which campaigns to process
+  const campaignsToProcess = isPartialFix ? notInSafeMode : activeCampaigns;
+
+  if (campaignsToProcess.length === 0) {
+    console.log(`[safe-mode] Client ${clientId} has no campaigns to process`);
     // Still mark safe mode active in recharge_state for consistency
     await supabase
       .from('recharge_state')
@@ -110,45 +123,49 @@ export async function snapshotAndActivateSafeMode(
     return;
   }
 
-  // Build snapshot JSONB
-  const snapshotData = activeCampaigns.map((row: any) => ({
-    campaign_id: row.id,
-    campaign_name: row.google_campaign_id,
-    daily_budget: row.current_daily_budget,
-    status: row.status,
-  }));
+  // Only create a new snapshot for full safe mode entry (not partial fixes)
+  let snapshotId: string | null = null;
+  if (!isPartialFix) {
+    // Build snapshot JSONB
+    const snapshotData = activeCampaigns.map((row: any) => ({
+      campaign_id: row.id,
+      campaign_name: row.google_campaign_id,
+      daily_budget: row.current_daily_budget,
+      status: row.status,
+    }));
 
-  // Insert into campaign_budget_snapshots
-  const { data: snapshot, error: snapshotError } = await supabase
-    .from('campaign_budget_snapshots')
-    .insert({
-      client_id: clientId,
-      snapshot_type: 'safe_mode_entry',
-      campaign_budgets: snapshotData,
-      triggered_by: triggeredBy,
-    })
-    .select('id')
-    .single();
+    // Insert into campaign_budget_snapshots
+    const { data: snapshot, error: snapshotError } = await supabase
+      .from('campaign_budget_snapshots')
+      .insert({
+        client_id: clientId,
+        snapshot_type: 'safe_mode_entry',
+        campaign_budgets: snapshotData,
+        triggered_by: triggeredBy,
+      })
+      .select('id')
+      .single();
 
-  if (snapshotError) {
-    console.error(`[safe-mode] Failed to create snapshot for ${clientId}:`, snapshotError);
-    await notify({
-      supabase,
-      clientId,
-      severity: 'critical',
-      title: 'Safe Mode Failed - Snapshot Error',
-      message: `Could not create budget snapshot: ${snapshotError.message}`,
-    });
-    return;
+    if (snapshotError) {
+      console.error(`[safe-mode] Failed to create snapshot for ${clientId}:`, snapshotError);
+      await notify({
+        supabase,
+        clientId,
+        severity: 'critical',
+        title: 'Safe Mode Failed - Snapshot Error',
+        message: `Could not create budget snapshot: ${snapshotError.message}`,
+      });
+      return;
+    }
+
+    snapshotId = snapshot?.id;
+    console.log(`[safe-mode] Created snapshot ${snapshotId} for ${clientId} with ${activeCampaigns.length} campaigns`);
   }
-
-  const snapshotId = snapshot?.id;
-  console.log(`[safe-mode] Created snapshot ${snapshotId} for ${clientId} with ${activeCampaigns.length} campaigns`);
 
   // Set each campaign to safe mode budget via Google Ads API
   let campaignsAffected = 0;
 
-  for (const campaign of activeCampaigns) {
+  for (const campaign of campaignsToProcess) {
     const customerId = campaign.google_customer_id?.replace(/\D/g, '');
     const campaignId = campaign.google_campaign_id?.replace(/\D/g, '');
 

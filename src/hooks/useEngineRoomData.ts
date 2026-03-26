@@ -61,8 +61,15 @@ export function useEngineRoomData() {
         proposalsResult,
         proposalsWeekResult,
       ] = await Promise.all([
-        // Total wallet balances
-        supabase.from('client_wallets').select('ad_spend_balance'),
+        // Computed wallet balances via RPC for all active clients
+        supabase.from('clients').select('id').eq('status', 'active').then(async ({ data: activeClients }) => {
+          let totalBalance = 0;
+          for (const c of (activeClients || [])) {
+            const { data } = await supabase.rpc('compute_wallet_balance', { p_client_id: c.id });
+            totalBalance += data?.remaining_balance ?? 0;
+          }
+          return { data: [{ computed_total: totalBalance }], error: null };
+        }),
         
         // Campaign data
         supabase.from('campaigns').select(`
@@ -116,9 +123,9 @@ export function useEngineRoomData() {
           .gte('created_at', sevenDaysAgo),
       ]);
 
-      // Calculate wallet metrics - sum of all client wallet balances
+      // Computed wallet balance (sum of all active client balances with performance markup)
       const wallets = walletsResult.data || [];
-      const totalWalletBalance = wallets.reduce((sum, w) => sum + (w.ad_spend_balance || 0), 0);
+      const totalWalletBalance = wallets[0]?.computed_total ?? 0;
 
       // Campaign metrics
       const campaigns = campaignsResult.data || [];
