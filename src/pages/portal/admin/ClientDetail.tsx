@@ -23,6 +23,7 @@ import { OnboardingStageProgress } from '@/components/portal/onboarding';
 import { PillLinks } from '@/components/portal/PillLinks';
 import { LeadIntelPillInline } from '@/components/hub/LeadIntelModal';
 import { ChatPopup, ChatBubbleButton } from '@/components/portal/ChatPopup';
+import { DiscoveryStatsSection } from '@/components/discovery/DiscoveryStatsSection';
 import StatusBadge from '@/components/portal/StatusBadge';
 import { PackageTypeBadge } from '@/components/portal/PackageTypeBadge';
 import { ProfilePhotoUpload } from '@/components/portal/ProfilePhotoUpload';
@@ -814,45 +815,16 @@ export default function PortalAdminClientDetail() {
                     <span className="text-foreground font-medium">{client.team}</span>
                   </div>
                 )}
-                {campaigns.length > 0 ? (
-                  <CampaignPanel
-                    clientId={client.id}
-                    campaigns={campaigns as any}
-                    trackingStartDate={walletTrackingStartDate}
-                    onRefresh={handleRefresh}
-                    onUpdateStates={async (states) => {
-                      if (!id) return;
-                      await updateClient.mutateAsync({ clientId: id, updates: { states } });
-                    }}
-                  />
-                ) : (
-                  <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Daily Budget:</span>
-                      <span className="text-foreground font-medium">
-                        {client.target_daily_spend ? `$${client.target_daily_spend}` : '—'}
-                      </span>
-                      <EditBudgetDialog
-                        clientId={client.id}
-                        currentBudget={client.target_daily_spend}
-                        googleCampaignId={(client as any).google_campaign_id}
-                        onSuccess={handleRefresh}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">States:</span>
-                      <StateSelector
-                        value={client.states}
-                        clientId={client.id}
-                        googleCampaignId={(client as any).google_campaign_id}
-                        onSave={async (states) => {
-                          if (!id) return;
-                          await updateClient.mutateAsync({ clientId: id, updates: { states } });
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                <CampaignPanel
+                  clientId={client.id}
+                  campaigns={campaigns as any}
+                  trackingStartDate={walletTrackingStartDate}
+                  onRefresh={handleRefresh}
+                  onUpdateStates={async (states) => {
+                    if (!id) return;
+                    await updateClient.mutateAsync({ clientId: id, updates: { states } });
+                  }}
+                />
               </div>
             )}
 
@@ -942,6 +914,11 @@ export default function PortalAdminClientDetail() {
             {/* Leads Widget (visibility controlled) */}
             {showLeads && client.agent_id && (
               <LeadsWidget agentId={client.agent_id} />
+            )}
+
+            {/* Discovery Call Stats (admin only) */}
+            {!isClientView && client.agent_id && (
+              <DiscoveryStatsSection agentId={client.agent_id} />
             )}
           </TabsContent>
 

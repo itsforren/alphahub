@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw, Shield } from 'lucide-react';
+import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw, Shield, Zap } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -316,61 +316,74 @@ export function CampaignPanel({
         </Card>
       ))}
 
-      {/* Build/Add Campaign Button — only show if < 2 campaigns */}
-      {campaigns.length < 2 && (
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isBuilding} className="gap-2">
-                {isBuilding ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4" />
-                )}
-                Build Campaign
-                <ChevronDown className="h-3 w-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleBuildCampaign('primary')}>
-                Original (Standard Template)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleBuildCampaign('secondary')}>
-                Revamp (Secondary Template)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+      {/* Add Campaign to Track */}
+      <div className="flex flex-wrap items-center gap-2">
+        {showManualInput ? (
+          <div className="flex items-center gap-2">
+            <Input
+              value={manualCampaignId}
+              onChange={(e) => setManualCampaignId(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSaveManualCampaign()}
+              placeholder="Campaign ID or customerId:campaignId"
+              className="h-8 w-[280px] text-xs"
+              autoFocus
+            />
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleSaveManualCampaign}
+              disabled={isSavingManual}
+              className="h-8"
+            >
+              {isSavingManual ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Track'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setShowManualInput(false); setManualCampaignId(''); }}
+              className="h-8 text-xs text-muted-foreground"
+            >
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowManualInput(true)}
+            >
+              <Plus className="h-4 w-4" />
+              Add Campaign to Track
+            </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-xs text-muted-foreground"
-            onClick={() => setShowManualInput(!showManualInput)}
-          >
-            or add existing
-          </Button>
-
-          {showManualInput && (
-            <div className="flex items-center gap-2">
-              <Input
-                value={manualCampaignId}
-                onChange={(e) => setManualCampaignId(e.target.value)}
-                placeholder="customerId:campaignId"
-                className="h-8 w-[220px] text-xs"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSaveManualCampaign}
-                disabled={isSavingManual}
-                className="h-8"
-              >
-                {isSavingManual ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+            {campaigns.length < 2 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" disabled={isBuilding} className="gap-1 text-xs text-muted-foreground">
+                    {isBuilding ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Zap className="h-3 w-3" />
+                    )}
+                    Build New
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => handleBuildCampaign('primary')}>
+                    Original (Standard Template)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleBuildCampaign('secondary')}>
+                    Revamp (Secondary Template)
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
