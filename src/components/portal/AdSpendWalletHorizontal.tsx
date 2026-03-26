@@ -23,7 +23,7 @@ interface AdSpendWalletHorizontalProps {
   isAdmin?: boolean;
 }
 
-export function AdSpendWalletHorizontal({ clientId, isAdmin = true }: AdSpendWalletHorizontalProps) {
+export function AdSpendWalletHorizontal({ clientId, isAdmin = false }: AdSpendWalletHorizontalProps) {
   const queryClient = useQueryClient();
   const { data: wallet, isLoading: walletLoading } = useClientWallet(clientId);
   const {

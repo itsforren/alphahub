@@ -756,6 +756,7 @@ export default function PortalAdminClientDetail() {
         <AdSpendWalletHorizontal
           clientId={client.id}
           mtdAdSpend={client.mtd_ad_spend || 0}
+          isAdmin={!isClientView}
         />
       )}
 
