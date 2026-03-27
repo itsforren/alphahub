@@ -735,7 +735,7 @@ export default function PortalAdminClientDetail() {
             thankyouLink={isClientView ? undefined : (client as any).thankyou_link}
             nfiaLink={client.nfia_link}
             schedulerLink={(client as any).scheduler_link}
-            crmLink={client.crm_link}
+            crmLink={client.subaccount_id ? `https://app.alphaagentcrm.com/v2/location/${client.subaccount_id}` : client.crm_link}
             tfwpProfileLink={(client as any).tfwp_profile_link}
             agreementLink={(client as any).agreement_link}
           />
