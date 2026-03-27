@@ -212,6 +212,7 @@ async function createGHLContact(
     source: leadData.lead_source || 'AlphaHub',
     tags: ['alpha'], // Apply "alpha" tag to trigger automation
     customFields, // Always include custom fields (includes fallback with all data)
+    notes: [fallbackData], // Dump full survey summary into contact notes
   };
 
   // Auto-assign to GHL user if configured
@@ -265,18 +266,18 @@ async function createGHLContact(
       
       if (existingContactId) {
         console.log('Found existing contact ID from error response:', existingContactId);
-        // Add the alpha tag and update custom fields on existing contact
+        // Add the alpha tag, update custom fields, and add notes on existing contact
         await addTagToContact(existingContactId, accessToken, 'alpha');
-        await updateContactCustomFields(existingContactId, accessToken, customFields);
+        await updateContactCustomFields(existingContactId, accessToken, customFields, fallbackData);
         return { contactId: existingContactId, created: false };
       }
-      
+
       // Fallback: Try to find existing contact by email or phone
       const existingContact = await findExistingContact(locationId, accessToken, leadData.email, leadData.phone);
       if (existingContact) {
-        // Add the alpha tag and update custom fields on existing contact
+        // Add the alpha tag, update custom fields, and add notes on existing contact
         await addTagToContact(existingContact.id, accessToken, 'alpha');
-        await updateContactCustomFields(existingContact.id, accessToken, customFields);
+        await updateContactCustomFields(existingContact.id, accessToken, customFields, fallbackData);
         return { contactId: existingContact.id, created: false };
       }
     }
@@ -343,12 +344,16 @@ async function addTagToContact(contactId: string, accessToken: string, tag: stri
   }
 }
 
-// Update contact custom fields (for existing contacts that need lead data)
+// Update contact custom fields and notes (for existing contacts that need lead data)
 async function updateContactCustomFields(
-  contactId: string, 
-  accessToken: string, 
-  customFields: Array<{ id?: string; key?: string; value: string }>
+  contactId: string,
+  accessToken: string,
+  customFields: Array<{ id?: string; key?: string; value: string }>,
+  notes?: string,
 ): Promise<void> {
+  const body: Record<string, unknown> = { customFields };
+  if (notes) body.notes = [notes];
+
   const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
     method: 'PUT',
     headers: {
@@ -357,7 +362,7 @@ async function updateContactCustomFields(
       'Authorization': `Bearer ${accessToken}`,
       'Version': '2021-07-28',
     },
-    body: JSON.stringify({ customFields }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
