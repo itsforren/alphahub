@@ -1,5 +1,4 @@
-import { Globe, CheckCircle, BarChart3, Users, Calendar, MessageSquare, FileText, Rocket } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { ExternalLink, BarChart3, Calendar, Users, MessageSquare, FileText, Globe, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PillLinksProps {
@@ -17,25 +16,35 @@ interface PillLinksProps {
 interface LinkConfig {
   key: string;
   label: string;
-  icon: LucideIcon | 'google';
-  from: string;
-  to: string;
+  icon: typeof ExternalLink | 'google';
+  color: string;
 }
 
 const LINKS: LinkConfig[] = [
-  { key: 'lander', label: 'Landing Page', icon: Globe, from: 'rgba(16,185,129,0.25)', to: 'rgba(5,150,105,0.35)' },
-  { key: 'thankyou', label: 'Thank You', icon: CheckCircle, from: 'rgba(34,197,94,0.25)', to: 'rgba(22,163,74,0.35)' },
-  { key: 'google', label: 'Google Ads', icon: Rocket, from: 'rgba(66,133,244,0.25)', to: 'rgba(26,115,232,0.35)' },
-  { key: 'nfia', label: 'NFIA', icon: BarChart3, from: 'rgba(139,92,246,0.25)', to: 'rgba(124,58,237,0.35)' },
-  { key: 'tfwp', label: 'TFWP Profile', icon: Users, from: 'rgba(168,85,247,0.25)', to: 'rgba(147,51,234,0.35)' },
-  { key: 'scheduler', label: 'Scheduler', icon: Calendar, from: 'rgba(59,130,246,0.25)', to: 'rgba(37,99,235,0.35)' },
-  { key: 'crm', label: 'CRM', icon: MessageSquare, from: 'rgba(249,115,22,0.25)', to: 'rgba(234,88,12,0.35)' },
-  { key: 'agreement', label: 'Agreement', icon: FileText, from: 'rgba(107,114,128,0.25)', to: 'rgba(75,85,99,0.35)' },
+  { key: 'lander', label: 'Landing Page', icon: Globe, color: 'bg-cyan-500/15 text-cyan-600 hover:bg-cyan-500/25 border-cyan-500/30' },
+  { key: 'thankyou', label: 'Thank You', icon: CheckCircle, color: 'bg-green-500/15 text-green-600 hover:bg-green-500/25 border-green-500/30' },
+  { key: 'google', label: 'Google Ads', icon: 'google', color: 'bg-[#4285F4]/15 text-[#4285F4] hover:bg-[#4285F4]/25 border-[#4285F4]/30' },
+  { key: 'nfia', label: 'NFIA', icon: BarChart3, color: 'bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 border-emerald-500/30' },
+  { key: 'tfwp', label: 'TFWP Profile', icon: Users, color: 'bg-purple-500/15 text-purple-600 hover:bg-purple-500/25 border-purple-500/30' },
+  { key: 'scheduler', label: 'Scheduler', icon: Calendar, color: 'bg-blue-500/15 text-blue-600 hover:bg-blue-500/25 border-blue-500/30' },
+  { key: 'crm', label: 'CRM', icon: MessageSquare, color: 'bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 border-orange-500/30' },
+  { key: 'agreement', label: 'Agreement', icon: FileText, color: 'bg-slate-500/15 text-slate-600 hover:bg-slate-500/25 border-slate-500/30' },
 ];
 
+// Google "G" logo SVG component
+const GoogleIcon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+  </svg>
+);
+
 function buildGoogleAdsUrl(googleCampaignId: string): string {
-  const campaignId = googleCampaignId.includes(':')
-    ? googleCampaignId.split(':')[1]
+  // Format is "customerId:campaignId" - extract just the campaign ID
+  const campaignId = googleCampaignId.includes(':') 
+    ? googleCampaignId.split(':')[1] 
     : googleCampaignId;
   return `https://ads.google.com/aw/adgroups?campaignId=${campaignId}`;
 }
@@ -44,13 +53,22 @@ function ensureHttps(url: string | null | undefined): string | null {
   if (!url) return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    return trimmed;
+  }
   return `https://${trimmed}`;
 }
 
 export function PillLinks({
-  nfiaLink, schedulerLink, crmLink, tfwpProfileLink,
-  agreementLink, googleCampaignId, landerLink, thankyouLink, className,
+  nfiaLink,
+  schedulerLink,
+  crmLink,
+  tfwpProfileLink,
+  agreementLink,
+  googleCampaignId,
+  landerLink,
+  thankyouLink,
+  className
 }: PillLinksProps) {
   const linkValues: Record<string, string | null | undefined> = {
     lander: ensureHttps(landerLink),
@@ -64,48 +82,32 @@ export function PillLinks({
   };
 
   const activeLinks = LINKS.filter(link => linkValues[link.key]);
-  if (activeLinks.length === 0) return null;
+
+  if (activeLinks.length === 0) {
+    return null;
+  }
 
   return (
-    <div className={cn("flex items-center flex-wrap gap-3", className)}>
-      {activeLinks.map(({ key, label, icon: Icon, from, to }) => (
+    <div className={cn("flex items-center flex-wrap gap-2", className)}>
+      {activeLinks.map(({ key, label, icon: Icon, color }) => (
         <a
           key={key}
           href={linkValues[key] || '#'}
           target="_blank"
           rel="noopener noreferrer"
-          className="group relative h-[48px] w-[48px] hover:w-[180px] rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer"
-          style={{
-            '--gm-from': from,
-            '--gm-to': to,
-            background: 'rgba(15, 15, 15, 0.9)',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)',
-          } as React.CSSProperties}
+          className={cn(
+            "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium",
+            "border transition-all duration-200 shadow-sm",
+            "hover:shadow-md hover:scale-[1.02] active:scale-[0.98]",
+            color
+          )}
         >
-          {/* Gradient background on hover */}
-          <span
-            className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-500"
-            style={{ background: `linear-gradient(135deg, var(--gm-from), var(--gm-to))` }}
-          />
-          {/* Blur glow underneath */}
-          <span
-            className="absolute top-[6px] inset-x-0 h-full rounded-full blur-[12px] opacity-0 -z-10 group-hover:opacity-40 transition-all duration-500"
-            style={{ background: `linear-gradient(135deg, var(--gm-from), var(--gm-to))` }}
-          />
-
-          {/* Icon — visible when collapsed, shrinks on hover */}
-          <span className="relative z-10 transition-all duration-500 group-hover:scale-0 group-hover:opacity-0">
-            {Icon === 'google' ? (
-              <Rocket className="w-5 h-5 text-white/40" />
-            ) : (
-              <Icon className="w-5 h-5 text-white/40" />
-            )}
-          </span>
-
-          {/* Label — hidden when collapsed, appears on hover */}
-          <span className="absolute z-10 text-white font-semibold uppercase tracking-wider text-[11px] transition-all duration-500 scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-100 whitespace-nowrap">
-            {label}
-          </span>
+          {Icon === 'google' ? (
+            <GoogleIcon className="w-4 h-4" />
+          ) : (
+            <Icon className="w-4 h-4" />
+          )}
+          {label}
         </a>
       ))}
     </div>

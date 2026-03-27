@@ -31,10 +31,6 @@ export type DiscoveryStage =
   | 'discovery_complete'
   | 'strategy_booked'
   | 'booked'              // legacy
-  | 'no_show'
-  | 'strategy_no_show'
-  | 'cancelled'
-  | 'reschedule_needed'
   | 'completed'
   | 'long_term_nurture'
   | 'lost';
@@ -93,7 +89,6 @@ export interface SaveDiscoveryCallInput {
   temperature?: Temperature;
   discovery_data?: DiscoveryFormData;
   appointment_datetime?: string;
-  current_stage?: string;
 }
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -169,23 +164,12 @@ export function useSaveDiscoveryCall() {
         newStage = 'callback_scheduled';
       } else if (input.outcome === 'bad_timing') {
         // Bad timing but didn't schedule — keep in same attempt stage
-        // If lead is currently lost or nurture, don't change stage
-        if (['lost', 'long_term_nurture'].includes(input.current_stage || '')) {
-          newStage = input.current_stage as DiscoveryStage;
-        } else {
-          const nextAttempt = Math.min(input.attempt_number, 4);
-          newStage = nextAttempt > 0 ? (`attempt_${nextAttempt}` as DiscoveryStage) : 'new';
-        }
+        const nextAttempt = Math.min(input.attempt_number, 4);
+        newStage = nextAttempt > 0 ? (`attempt_${nextAttempt}` as DiscoveryStage) : 'new';
       } else {
         // voicemail, no_answer
-        // If lead is currently lost or nurture, don't change stage — just log the attempt
-        if (['lost', 'long_term_nurture'].includes(input.current_stage || '') &&
-            ['no_answer', 'voicemail', 'call_back'].includes(input.outcome || '')) {
-          newStage = input.current_stage as DiscoveryStage;
-        } else {
-          const nextAttempt = Math.min(input.attempt_number + 1, 4);
-          newStage = `attempt_${nextAttempt}` as DiscoveryStage;
-        }
+        const nextAttempt = Math.min(input.attempt_number + 1, 4);
+        newStage = `attempt_${nextAttempt}` as DiscoveryStage;
       }
 
       // 3. Update lead

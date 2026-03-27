@@ -33,7 +33,6 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import MetricCard from '@/components/portal/MetricCard';
-import { LiquidMetalButton } from '@/components/ui/liquid-metal-button';
 import StatusBadge from '@/components/portal/StatusBadge';
 import { PackageTypeBadge } from '@/components/portal/PackageTypeBadge';
 import ClientAvatar from '@/components/portal/ClientAvatar';
@@ -171,46 +170,48 @@ export default function PortalAdminClients() {
 
   if (isLoading) {
     return (
-      <div className="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
-        <Skeleton className="h-10 w-48 rounded-xl bg-white/[0.04]" />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl bg-white/[0.03]" />)}
+      <div className="p-6 lg:p-8 space-y-6">
+        <Skeleton className="h-12 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
-        <Skeleton className="h-16 rounded-2xl bg-white/[0.02]" />
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-52 rounded-2xl bg-white/[0.03]" />)}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-48" />)}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto">
+    <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-white/90 tracking-tight">Clients</h1>
-          <p className="text-sm text-white/35 mt-0.5">
-            {liveClients} active &middot; {totalClients} total
+          <h1 className="text-2xl font-bold text-foreground">Client Management</h1>
+          <p className="text-muted-foreground">
+            Manage and monitor all client accounts
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
+          <Button 
+            variant="outline" 
             onClick={() => navigate('/hub/admin/clients/archived')}
           >
             <Archive className="h-4 w-4 mr-2" />
             Archived
           </Button>
-          <Button
-            variant="outline"
+          <Button 
+            variant="outline" 
             onClick={() => refetch()}
             disabled={isFetching}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
             {isFetching ? 'Refreshing...' : 'Refresh'}
           </Button>
-          <LiquidMetalButton label="Settings" onClick={() => navigate('/hub/admin/settings')} />
+          <Button onClick={() => navigate('/hub/admin/settings')}>
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
         </div>
       </div>
 
@@ -249,28 +250,27 @@ export default function PortalAdminClients() {
       </div>
 
       {/* Filters Bar */}
-      <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-4 overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-        <div className="flex flex-col lg:flex-row gap-4 relative z-10">
+      <div className="frosted-card p-4">
+        <div className="flex flex-col lg:flex-row gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search by name, email, or agent ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 bg-background/50"
             />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[180px] justify-start">
-                  <Filter className="w-4 h-4 mr-2 text-white/30" />
-                  <span className="truncate text-white/60">
-                    {statusFilter.length === 0
-                      ? 'All Status'
-                      : statusFilter.length === STATUS_OPTIONS.length
+                <Button variant="outline" className="w-[180px] bg-background/50 justify-start">
+                  <Filter className="w-4 h-4 mr-2" />
+                  <span className="truncate">
+                    {statusFilter.length === 0 
+                      ? 'All Status' 
+                      : statusFilter.length === STATUS_OPTIONS.length 
                         ? 'All Status'
                         : `${statusFilter.length} selected`}
                   </span>
@@ -283,22 +283,22 @@ export default function PortalAdminClients() {
                     return (
                       <div
                         key={option.value}
-                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg hover:bg-white/[0.04] cursor-pointer transition-colors"
+                        className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent cursor-pointer"
                         onClick={() => toggleStatus(option.value)}
                       >
-                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-white/20'}`}>
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/40'}`}>
                           {isSelected && <Check className="w-3 h-3 text-primary-foreground" />}
                         </div>
-                        <span className={`w-2 h-2 rounded-full ${option.color}`} />
-                        <span className="text-sm font-medium text-white/70">{option.label}</span>
+                        <span className={`w-2.5 h-2.5 rounded-full ${option.color}`} />
+                        <span className="text-sm font-medium">{option.label}</span>
                       </div>
                     );
                   })}
-                  <div className="border-t border-white/[0.06] mt-2 pt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="w-full text-xs text-white/40"
+                  <div className="border-t border-border mt-2 pt-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full text-xs"
                       onClick={() => setStatusFilter([])}
                     >
                       Clear All
@@ -309,7 +309,7 @@ export default function PortalAdminClients() {
             </Popover>
 
             {/* Package Type Filter (Live/Aged) */}
-            <div className="flex rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5">
+            <div className="flex rounded-lg border border-border/50 bg-background/50 p-0.5">
               {PACKAGE_FILTER_OPTIONS.map((option) => {
                 const Icon = option.icon;
                 const isActive = packageFilter === option.value;
@@ -318,10 +318,10 @@ export default function PortalAdminClients() {
                     key={option.value}
                     onClick={() => setPackageFilter(option.value)}
                     className={cn(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
-                      isActive
-                        ? 'bg-white/[0.08] text-white/90 shadow-sm'
-                        : 'text-white/35 hover:text-white/60 hover:bg-white/[0.03]'
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all',
+                      isActive 
+                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     )}
                   >
                     <Icon className="w-3.5 h-3.5" />
@@ -332,7 +332,7 @@ export default function PortalAdminClients() {
             </div>
 
             <Select value={sortField} onValueChange={setSortField}>
-              <SelectTrigger className="w-[140px]">
+              <SelectTrigger className="w-[140px] bg-background/50">
                 <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
@@ -350,7 +350,7 @@ export default function PortalAdminClients() {
                 checked={renewalFilter}
                 onCheckedChange={setRenewalFilter}
               />
-              <Label htmlFor="renewal-filter" className="text-sm text-white/35 whitespace-nowrap">
+              <Label htmlFor="renewal-filter" className="text-sm text-muted-foreground whitespace-nowrap">
                 Renewals ≤7d
               </Label>
             </div>
@@ -377,13 +377,10 @@ export default function PortalAdminClients() {
 
       {/* Clients Display */}
       {filteredClients.length === 0 ? (
-        <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-16 text-center overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-          <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center mx-auto mb-5">
-            <Users className="w-7 h-7 text-white/20" />
-          </div>
-          <h3 className="text-lg font-medium text-white/70 mb-2">No Clients Found</h3>
-          <p className="text-sm text-white/30 mb-6 max-w-sm mx-auto">
+        <div className="frosted-card p-12 text-center">
+          <Users className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+          <h3 className="text-lg font-medium text-foreground mb-2">No Clients Found</h3>
+          <p className="text-muted-foreground mb-4">
             {searchQuery || statusFilter.length > 0 || renewalFilter
               ? 'Try adjusting your filters'
               : 'Get started by importing clients or setting up the onboarding webhook'}
@@ -400,18 +397,17 @@ export default function PortalAdminClients() {
           ))}
         </div>
       ) : (
-        <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+        <div className="frosted-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/[0.06]">
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">Client</th>
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">Status</th>
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">Leads</th>
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">Calls</th>
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">MTD Spend</th>
-                  <th className="text-left p-4 text-[11px] font-medium uppercase tracking-[0.12em] text-white/30">CPL</th>
+                <tr className="border-b border-white/5">
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">Client</th>
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">Status</th>
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">Leads</th>
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">Calls</th>
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">MTD Spend</th>
+                  <th className="text-left p-4 text-sm font-medium text-muted-foreground">CPL</th>
                 </tr>
               </thead>
               <tbody>
@@ -512,17 +508,12 @@ function ClientCard({ client }: { client: Client }) {
   };
 
   return (
-    <div
+    <div 
       onClick={() => navigate(`/hub/admin/clients/${client.id}`)}
-      className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 cursor-pointer transition-all duration-300 group hover:border-white/[0.1] hover:bg-white/[0.04] overflow-hidden"
+      className="frosted-card p-5 cursor-pointer hover:bg-white/5 transition-all group"
     >
-      {/* Top edge shine */}
-      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-      {/* Hover glow */}
-      <div className="absolute top-0 right-0 w-32 h-32 bg-primary/[0.03] rounded-full blur-3xl translate-x-12 -translate-y-12 group-hover:bg-primary/[0.07] transition-colors duration-500" />
-
       {/* Header */}
-      <div className="flex items-start gap-4 mb-4 relative z-10">
+      <div className="flex items-start gap-4 mb-4">
         <div className="relative">
           <ClientAvatar
             name={client.name}
@@ -531,19 +522,19 @@ function ClientCard({ client }: { client: Client }) {
             size="md"
           />
           {!client.profile_image_url && (
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center ring-2 ring-[rgba(8,8,8,0.9)]" title="No profile photo">
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-amber-500 rounded-full flex items-center justify-center" title="No profile photo">
               <span className="text-[8px] text-white font-bold">!</span>
             </div>
           )}
           {!client.phone && (
-            <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center ring-2 ring-[rgba(8,8,8,0.9)]" title="No phone number">
+            <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center" title="No phone number">
               <Phone className="w-2 h-2 text-white" />
             </div>
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-white/90 truncate group-hover:text-white transition-colors">{client.name}</h3>
-
+          <h3 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">{client.name}</h3>
+          
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge
@@ -561,53 +552,53 @@ function ClientCard({ client }: { client: Client }) {
       </div>
 
       {/* Content based on package type */}
-      <div className="relative z-10">
-        {isAgedPackage ? (
-          /* AGED Clients - Minimal display */
-          <div className="space-y-3">
-            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
-              <Archive className="w-7 h-7 mx-auto text-white/15 mb-2" />
-              <p className="text-sm font-medium text-white/40">Aged Leads Package</p>
-              <p className="text-xs text-white/20 mt-1">No live ad spend tracking</p>
+      {isAgedPackage ? (
+        /* AGED Clients - Minimal display */
+        <div className="space-y-3">
+          <div className="p-4 rounded-xl bg-muted/20 border border-border/30 text-center">
+            <Archive className="w-8 h-8 mx-auto text-muted-foreground/50 mb-2" />
+            <p className="text-sm font-medium text-muted-foreground">Aged Leads Package</p>
+            <p className="text-xs text-muted-foreground/70 mt-1">No live ad spend tracking</p>
+          </div>
+          
+        </div>
+      ) : (
+        /* LIVE Clients - Full metrics */
+        <>
+          {/* Compact Wallet Widget */}
+          <div className="mb-4">
+            <CompactWalletWidget
+              remainingBalance={walletBalance}
+              trackedSpend={walletTrackedSpend}
+              totalDeposits={walletDeposits}
+              threshold={walletThreshold}
+              trackingStartDate={walletTrackingDate}
+            />
+          </div>
+          
+          {/* Key Metrics */}
+          <p className="text-[10px] text-muted-foreground mb-1">Last 30 Days</p>
+          <div className="grid grid-cols-4 gap-2 text-sm mb-3">
+            <div className="text-center p-2 rounded-lg bg-background/30 hover:bg-background/50 transition-colors">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">CPL</p>
+              <p className="font-bold text-foreground">${cpl.toFixed(0)}</p>
+            </div>
+            <div className="text-center p-2 rounded-lg bg-background/30 hover:bg-background/50 transition-colors">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Leads</p>
+              <p className="font-bold text-foreground">{mtdLeads}</p>
+            </div>
+            <div className="text-center p-2 rounded-lg bg-background/30 hover:bg-background/50 transition-colors">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Calls</p>
+              <p className="font-bold text-foreground">{bookedCalls}</p>
+            </div>
+            <div className="text-center p-2 rounded-lg bg-background/30 hover:bg-background/50 transition-colors">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">L→C</p>
+              <p className="font-bold text-foreground">{leadToCallRate.toFixed(0)}%</p>
             </div>
           </div>
-        ) : (
-          /* LIVE Clients - Full metrics */
-          <>
-            {/* Compact Wallet Widget */}
-            <div className="mb-4">
-              <CompactWalletWidget
-                remainingBalance={walletBalance}
-                trackedSpend={walletTrackedSpend}
-                totalDeposits={walletDeposits}
-                threshold={walletThreshold}
-                trackingStartDate={walletTrackingDate}
-              />
-            </div>
-
-            {/* Key Metrics */}
-            <p className="text-[10px] text-white/25 mb-1.5 uppercase tracking-[0.1em]">Last 30 Days</p>
-            <div className="grid grid-cols-4 gap-1.5 text-sm mb-3">
-              <div className="text-center p-2 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.06] transition-colors">
-                <p className="text-[9px] text-white/25 uppercase tracking-wider">CPL</p>
-                <p className="font-semibold text-white/80 mt-0.5">${cpl.toFixed(0)}</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.06] transition-colors">
-                <p className="text-[9px] text-white/25 uppercase tracking-wider">Leads</p>
-                <p className="font-semibold text-white/80 mt-0.5">{mtdLeads}</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.06] transition-colors">
-                <p className="text-[9px] text-white/25 uppercase tracking-wider">Calls</p>
-                <p className="font-semibold text-white/80 mt-0.5">{bookedCalls}</p>
-              </div>
-              <div className="text-center p-2 rounded-lg bg-white/[0.03] border border-white/[0.04] hover:bg-white/[0.06] transition-colors">
-                <p className="text-[9px] text-white/25 uppercase tracking-wider">L→C</p>
-                <p className="font-semibold text-white/80 mt-0.5">{leadToCallRate.toFixed(0)}%</p>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
+          
+        </>
+      )}
     </div>
   );
 }
@@ -638,9 +629,9 @@ function ClientRow({ client, performancePercentage }: { client: Client; performa
   const displayedCpl = mtdLeads > 0 ? displayedMtdSpend / mtdLeads : 0;
 
   return (
-    <tr
+    <tr 
       onClick={() => navigate(`/hub/admin/clients/${client.id}`)}
-      className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] cursor-pointer transition-colors"
+      className="border-b border-white/5 last:border-0 hover:bg-white/5 cursor-pointer transition-colors"
     >
       <td className="p-4">
         <div className="flex items-center gap-3">

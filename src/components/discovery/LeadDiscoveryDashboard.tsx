@@ -28,19 +28,45 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
   const [selectedLead, setSelectedLead] = useState<DiscoveryLead | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState('queue');
   const [filterState, setFilterState] = useState<string>('');
   const [filterTemp, setFilterTemp] = useState<string>('');
   const [filterAssigned, setFilterAssigned] = useState<string>('');
 
-  // Map tab keys to data sections
-  const tabDataMap: Record<string, DiscoveryLead[]> = {
-    queue: data.queue,
-    callbacks: data.callbacks,
-    'intro-booked': data.introBooked,
-    'strategy-booked': data.strategyBooked,
-    all: data.all,
-    lost: data.lost,
+  // Search filter — works across all tabs
+  const filterBySearch = (leads: DiscoveryLead[]) => {
+    if (!searchQuery) return leads;
+    const q = searchQuery.toLowerCase();
+    return leads.filter((l) => {
+      const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
+      return (
+        name.includes(q) ||
+        (l.email || '').toLowerCase().includes(q) ||
+        (l.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
+        (l.state || '').toLowerCase().includes(q) ||
+        (l.lost_reason || '').toLowerCase().replace(/_/g, ' ').includes(q)
+      );
+    });
+  };
+
+  // Apply filters to a list of leads
+  const applyFilters = (leads: DiscoveryLead[]) => {
+    let result = leads;
+    if (filterState) result = result.filter((l) => l.state === filterState);
+    if (filterTemp) {
+      result = result.filter((l) => {
+        if (!l.discovery_temperature) return false;
+        const n = parseInt(l.discovery_temperature, 10);
+        // Support legacy string values
+        if (isNaN(n)) return l.discovery_temperature === filterTemp;
+        // Numeric range filters
+        if (filterTemp === 'cold') return n <= 3;
+        if (filterTemp === 'warm') return n >= 4 && n <= 6;
+        if (filterTemp === 'hot') return n >= 7;
+        return l.discovery_temperature === filterTemp;
+      });
+    }
+    if (filterAssigned) result = result.filter((l) => l.last_attempted_by === filterAssigned);
+    return filterBySearch(result);
   };
 
   // Unique states for filter dropdown
@@ -55,63 +81,21 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
     return Array.from(assignees).sort();
   }, [data.all]);
 
-  // Apply dropdown filters (state, temp, assigned) — always applied
-  function applyDropdownFilters(leads: DiscoveryLead[]): DiscoveryLead[] {
-    let result = leads;
-    if (filterState) result = result.filter((l) => l.state === filterState);
-    if (filterTemp) {
-      result = result.filter((l) => {
-        if (!l.discovery_temperature) return false;
-        const n = parseInt(l.discovery_temperature, 10);
-        if (isNaN(n)) return l.discovery_temperature === filterTemp;
-        if (filterTemp === 'cold') return n <= 3;
-        if (filterTemp === 'warm') return n >= 4 && n <= 6;
-        if (filterTemp === 'hot') return n >= 7;
-        return l.discovery_temperature === filterTemp;
-      });
-    }
-    if (filterAssigned) result = result.filter((l) => l.last_attempted_by === filterAssigned);
-    return result;
-  }
+  // Flat priority-sorted queue (with filters applied)
+  const filteredQueue = useMemo(() => applyFilters(data.queue), [data.queue, filterState, filterTemp, filterAssigned, searchQuery]);
 
-  // Search filter — only applied to the active tab
-  function applySearchFilter(leads: DiscoveryLead[]): DiscoveryLead[] {
-    if (!searchQuery) return leads;
-    const q = searchQuery.toLowerCase();
-    return leads.filter((l) => {
-      const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
-      return (
-        name.includes(q) ||
-        (l.email || '').toLowerCase().includes(q) ||
-        (l.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-        (l.state || '').toLowerCase().includes(q) ||
-        (l.lost_reason || '').toLowerCase().replace(/_/g, ' ').includes(q)
-      );
-    });
-  }
+  // Filter callbacks by search + filters
+  const filteredCallbacks = useMemo(() => applyFilters(data.callbacks), [data.callbacks, filterState, filterTemp, filterAssigned, searchQuery]);
 
-  // Badge counts: dropdown filters apply to all tabs, search only to active tab
-  function getFilteredForTab(tabKey: string): DiscoveryLead[] {
-    const base = applyDropdownFilters(tabDataMap[tabKey] || []);
-    return tabKey === activeTab ? applySearchFilter(base) : base;
-  }
+  // Filter intro booked + strategy booked by search + filters
+  const filteredIntroBooked = useMemo(() => applyFilters(data.introBooked), [data.introBooked, filterState, filterTemp, filterAssigned, searchQuery]);
+  const filteredStrategyBooked = useMemo(() => applyFilters(data.strategyBooked), [data.strategyBooked, filterState, filterTemp, filterAssigned, searchQuery]);
 
-  const filteredQueue = getFilteredForTab('queue');
-  const filteredCallbacks = getFilteredForTab('callbacks');
-  const filteredIntroBooked = getFilteredForTab('intro-booked');
-  const filteredStrategyBooked = getFilteredForTab('strategy-booked');
-  const filteredAll = getFilteredForTab('all');
-  const filteredLost = getFilteredForTab('lost');
+  // Filter all contacts by search + filters
+  const filteredAll = useMemo(() => applyFilters(data.all), [data.all, filterState, filterTemp, filterAssigned, searchQuery]);
 
-  // The active tab's unfiltered-by-search count (for "Showing X of Y")
-  const activeTabTotal = applyDropdownFilters(tabDataMap[activeTab] || []).length;
-  const activeTabFiltered = getFilteredForTab(activeTab).length;
-
-  // Tab label for status text
-  const tabLabels: Record<string, string> = {
-    queue: 'Dial', callbacks: 'Callbacks', 'intro-booked': 'Intro',
-    'strategy-booked': 'Strategy', all: 'All', lost: 'Lost',
-  };
+  // Filter lost by search + filters
+  const filteredLost = useMemo(() => applyFilters(data.lost), [data.lost, filterState, filterTemp, filterAssigned, searchQuery]);
 
   const handleLeadClick = (lead: DiscoveryLead) => {
     setSelectedLead(lead);
@@ -135,34 +119,18 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
       {/* Speed-to-Lead Scoreboard */}
       <SpeedToLeadScoreboard stats={stats} queueData={data} />
 
-      {/* Search Bar — scoped to current tab */}
-      <div className="space-y-1">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            placeholder={`Search ${tabLabels[activeTab] || 'leads'} by name, email, phone, state...`}
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); }}
-            className="flex h-10 w-full rounded-md border border-input bg-background/50 pl-10 pr-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-        {searchQuery && (
-          <p className="text-xs text-muted-foreground px-1">
-            Showing {activeTabFiltered} of {activeTabTotal} in {tabLabels[activeTab]} for "{searchQuery}"
-          </p>
-        )}
+      {/* Global Search Bar */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, email, phone, state, or lost reason..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 bg-background/50"
+        />
       </div>
 
-      <Tabs defaultValue="queue" value={activeTab} onValueChange={(v) => { setActiveTab(v); setSearchQuery(''); }} className="space-y-4">
+      <Tabs defaultValue="queue" className="space-y-4">
         <TabsList className="bg-background/50 border border-border/50">
           <TabsTrigger value="queue" className="gap-2">
             <PhoneCall className="h-4 w-4" />

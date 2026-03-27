@@ -116,15 +116,12 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
     queryFn: async (): Promise<DiscoveryQueueData> => {
       if (!agentId) return { queue: [], callbacks: [], introBooked: [], strategyBooked: [], all: [], lost: [], failedDelivery: [] };
 
-      console.log('[leads] fetching for agent_id:', agentId);
-
       const { data, error } = await supabase
         .from('leads')
         .select(LEAD_SELECT)
         .eq('agent_id', agentId)
         .order('lead_date', { ascending: false });
 
-      console.log('[leads] result:', data?.length, 'leads, error:', error?.message || 'none');
       if (error) throw error;
 
       const leads = (data || []) as DiscoveryLead[];
@@ -190,12 +187,10 @@ export function useMyClient() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      console.log('[my-client] auth user:', user?.id, user?.email);
       if (!user) return null;
 
       // Check team member mapping FIRST (handles Sierra and other setters)
       const teamData = TEAM_MEMBERS[user.id];
-      console.log('[my-client] team match:', teamData ? teamData.name : 'none');
       if (teamData) {
         const { data: agentClient } = await supabase
           .from('clients')

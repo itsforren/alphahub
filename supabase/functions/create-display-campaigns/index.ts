@@ -203,9 +203,12 @@ async function createDisplayCampaign(
         .map(s => ({
           create: {
             campaign: campaignResourceName,
-            location: {
-              geoTargetConstant: `geoTargetConstants/${STATE_TO_GEO_CONSTANT[s.trim().toUpperCase()]}`,
+            criterion: {
+              location: {
+                geoTargetConstant: `geoTargetConstants/${STATE_TO_GEO_CONSTANT[s.trim().toUpperCase()]}`,
+              },
             },
+            negative: false,
           },
         }));
 
@@ -221,8 +224,10 @@ async function createDisplayCampaign(
         operations: [{
           create: {
             campaign: campaignResourceName,
-            userList: {
-              userList: `customers/${customerId}/userLists/${ALL_CONVERTERS_AUDIENCE_ID}`,
+            criterion: {
+              userList: {
+                userList: `customers/${customerId}/userLists/${ALL_CONVERTERS_AUDIENCE_ID}`,
+              },
             },
             negative: true,
           },
@@ -239,8 +244,10 @@ async function createDisplayCampaign(
         operations: [{
           create: {
             campaign: campaignResourceName,
-            mobileAppCategory: {
-              mobileAppCategoryConstant: `mobileAppCategoryConstants/${MOBILE_APP_CATEGORY}`,
+            criterion: {
+              mobileAppCategory: {
+                mobileAppCategoryConstant: `mobileAppCategoryConstants/${MOBILE_APP_CATEGORY}`,
+              },
             },
             negative: true,
           },
@@ -293,23 +300,23 @@ async function createDisplayCampaign(
 
       if (templateCriteria.length > 0) {
         const audienceOps = templateCriteria.map((tc: any) => {
-          const create: any = {
-            adGroup: agResourceName,
-            negative: tc.adGroupCriterion?.negative || false,
-          };
-
+          const criterion: any = {};
           if (tc.adGroupCriterion?.userList?.userList) {
-            create.userList = { userList: tc.adGroupCriterion.userList.userList };
+            criterion.userList = { userList: tc.adGroupCriterion.userList.userList };
           } else if (tc.adGroupCriterion?.userInterest?.userInterestCategory) {
-            create.userInterest = { userInterestCategory: tc.adGroupCriterion.userInterest.userInterestCategory };
+            criterion.userInterest = { userInterestCategory: tc.adGroupCriterion.userInterest.userInterestCategory };
           } else if (tc.adGroupCriterion?.customAudience?.customAudience) {
-            create.customAudience = { customAudience: tc.adGroupCriterion.customAudience.customAudience };
-          } else {
-            return null;
+            criterion.customAudience = { customAudience: tc.adGroupCriterion.customAudience.customAudience };
           }
 
-          return { create };
-        }).filter(Boolean);
+          return {
+            create: {
+              adGroup: agResourceName,
+              criterion,
+              negative: tc.adGroupCriterion?.negative || false,
+            },
+          };
+        }).filter((op: any) => Object.keys(op.create.criterion).length > 0);
 
         if (audienceOps.length > 0) {
           try {

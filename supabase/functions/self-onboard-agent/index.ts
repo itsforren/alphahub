@@ -95,49 +95,16 @@ Deno.serve(async (req) => {
     const fullName = `${first_name.trim()} ${last_name.trim()}`;
     const statesCsv = states_licensed.join(', ');
 
-    // ── Check for existing client (handle retries gracefully) ──
+    // ── Check for existing client ──
     const { data: existingClient } = await supabase
       .from('clients')
-      .select('id, user_id, agent_id')
+      .select('id')
       .ilike('email', normalizedEmail)
       .maybeSingle();
 
     if (existingClient) {
-      // Client already exists — return success so retries don't fail
-      console.log('Client already exists for', normalizedEmail, '— returning existing data');
-
-      // Find existing agreement
-      const { data: existingAgreement } = await supabase
-        .from('agreements')
-        .select('id')
-        .eq('client_id', existingClient.id)
-        .maybeSingle();
-
-      // Find existing automation run
-      const { data: existingRun } = await supabase
-        .from('onboarding_automation_runs')
-        .select('id')
-        .eq('client_id', existingClient.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      // Update password if auth user exists
-      if (existingClient.user_id) {
-        await supabase.auth.admin.updateUserById(existingClient.user_id, { password });
-      }
-
-      return new Response(JSON.stringify({
-        success: true,
-        client_id: existingClient.id,
-        agent_id: existingClient.agent_id,
-        user_id: existingClient.user_id,
-        agreement_id: existingAgreement?.id || null,
-        automation_run_id: existingRun?.id || null,
-        billing_created: {},
-        referral_linked: false,
-        _retry: true,
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'An account with this email already exists', code: 'DUPLICATE_EMAIL' }),
+        { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ── Generate agent ID ──
@@ -186,7 +153,7 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    const managementFee = onboardingSettings?.default_management_fee || 1497; // $1,497
+    const managementFee = onboardingSettings?.default_management_fee || 149700; // $1,497 in cents
     const adSpendBudget = onboardingSettings?.default_ad_spend_budget || 0;
 
     // ── Create client record ──

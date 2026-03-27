@@ -50,7 +50,7 @@ export default function ClientAvatar({ src, imageUrl, name, size = 'md', classNa
           img.src = defaultAvatar;
         }
       }}
-      className={cn('rounded-full object-cover aspect-square ring-1 ring-white/[0.08]', sizeClasses[size], className)}
+      className={cn('rounded-full object-cover aspect-square ring-2 ring-border', sizeClasses[size], className)}
     />
   );
 }
