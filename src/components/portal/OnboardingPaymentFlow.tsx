@@ -472,6 +472,7 @@ function AdSpendForm({
         auto_billing_enabled: !isTest,
         billing_mode: isTest ? 'manual' : 'auto_stripe',
         monthly_ad_spend_cap: capValue,
+        tracking_start_date: new Date().toISOString().split('T')[0],
       });
 
       // Only charge if balance is below threshold

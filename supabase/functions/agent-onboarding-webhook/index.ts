@@ -855,7 +855,7 @@ Deno.serve(async (req) => {
       if (adSpendInvoice) billingCreated.ad_spend_invoice_id = adSpendInvoice.id;
     }
 
-    const { data: wallet } = await supabase.from('client_wallets').insert({ client_id: client.id, ad_spend_balance: 0, low_balance_threshold: 150 }).select('id').single();
+    const { data: wallet } = await supabase.from('client_wallets').insert({ client_id: client.id, ad_spend_balance: 0, low_balance_threshold: 150, tracking_start_date: new Date().toISOString().split('T')[0] }).select('id').single();
     if (wallet) billingCreated.wallet_id = wallet.id;
 
     // === DEDUPLICATION: Check if a run was created in the last 60 seconds ===
