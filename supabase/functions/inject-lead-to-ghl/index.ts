@@ -212,7 +212,6 @@ async function createGHLContact(
     source: leadData.lead_source || 'AlphaHub',
     tags: ['alpha'], // Apply "alpha" tag to trigger automation
     customFields, // Always include custom fields (includes fallback with all data)
-    notes: [fallbackData], // Dump full survey summary into contact notes
   };
 
   // Auto-assign to GHL user if configured
@@ -344,16 +343,13 @@ async function addTagToContact(contactId: string, accessToken: string, tag: stri
   }
 }
 
-// Update contact custom fields and notes (for existing contacts that need lead data)
+// Update contact custom fields (for existing contacts that need lead data)
 async function updateContactCustomFields(
   contactId: string,
   accessToken: string,
   customFields: Array<{ id?: string; key?: string; value: string }>,
-  notes?: string,
+  notesText?: string,
 ): Promise<void> {
-  const body: Record<string, unknown> = { customFields };
-  if (notes) body.notes = [notes];
-
   const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
     method: 'PUT',
     headers: {
@@ -362,7 +358,7 @@ async function updateContactCustomFields(
       'Authorization': `Bearer ${accessToken}`,
       'Version': '2021-07-28',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ customFields }),
   });
 
   if (!response.ok) {
@@ -370,6 +366,40 @@ async function updateContactCustomFields(
     console.log('Failed to update contact custom fields:', error);
   } else {
     console.log('Successfully updated custom fields on existing contact');
+  }
+
+  // Add notes via separate endpoint
+  if (notesText) {
+    await addNoteToContact(contactId, accessToken, notesText);
+  }
+}
+
+// Add a note to a GHL contact via the notes endpoint
+async function addNoteToContact(
+  contactId: string,
+  accessToken: string,
+  body: string,
+): Promise<void> {
+  try {
+    const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/notes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+        'Version': '2021-07-28',
+      },
+      body: JSON.stringify({ body }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.warn('Failed to add note to contact:', error);
+    } else {
+      console.log('Successfully added survey notes to contact');
+    }
+  } catch (e) {
+    console.warn('Error adding note to contact (non-fatal):', e);
   }
 }
 
@@ -504,10 +534,14 @@ serve(async (req) => {
     // Get cached field mappings for this client (uses ID-based mappings if available)
     const fieldMappings = await getCachedFieldMappings(supabase, client.id);
 
-    // Create contact in GHL with all fields, custom fields, and notes fallback
+    // Create contact in GHL with all fields and custom fields
     const { contactId, created } = await createGHLContact(locationId, accessToken, lead as LeadData, client.ghl_user_id, fieldMappings);
 
     console.log(`GHL contact ${created ? 'created' : 'found'}: ${contactId}`);
+
+    // Add survey summary as a note on the contact (separate API call)
+    const fallbackNotes = buildFallbackData(lead as LeadData);
+    await addNoteToContact(contactId, accessToken, fallbackNotes);
 
     // Log successful delivery
     await logDeliveryAttempt(supabase, lead.id, locationId, 'success', contactId, null);
