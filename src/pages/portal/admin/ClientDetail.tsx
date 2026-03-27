@@ -863,21 +863,36 @@ export default function PortalAdminClientDetail() {
               />
             )}
 
-            {/* Read-only Campaign Info for Clients */}
+            {/* Read-only Campaign Summary for Clients */}
             {isClientView && client && (
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-3 py-3 rounded-lg bg-muted/30 border border-border/50">
+                <div className="flex items-center gap-2">
+                  <Rocket className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-foreground font-medium">Alpha Agent Google Ads Campaign</span>
+                </div>
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-4 h-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Daily Budget:</span>
                   <span className="text-foreground font-medium">
-                    {client.target_daily_spend ? `$${client.target_daily_spend}` : 'Not set'}
+                    ${campaigns.length > 0
+                      ? `$${campaigns.reduce((sum: number, c: any) => sum + (c.current_daily_budget || 0), 0).toFixed(0)}`
+                      : client.target_daily_spend ? `$${client.target_daily_spend}` : 'Not set'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-muted-foreground" />
                   <span className="text-muted-foreground">Target States:</span>
                   <span className="text-foreground font-medium">
-                    {client.states || 'Not set'}
+                    {(() => {
+                      const allStates = campaigns
+                        .map((c: any) => c.states || '')
+                        .join(', ')
+                        .split(/[,\s]+/)
+                        .map((s: string) => s.trim())
+                        .filter(Boolean);
+                      const unique = [...new Set(allStates)].sort();
+                      return unique.length > 0 ? unique.join(', ') : (client.states || 'Not set');
+                    })()}
                   </span>
                 </div>
               </div>
