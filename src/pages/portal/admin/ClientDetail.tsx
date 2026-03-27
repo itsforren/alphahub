@@ -38,7 +38,6 @@ import { AdSpendWalletHorizontal } from '@/components/portal/AdSpendWalletHorizo
 import { UpcomingPaymentsWidget } from '@/components/portal/UpcomingPaymentsWidget';
 import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { DailySpendChart } from '@/components/portal/DailySpendChart';
-import { TargetingGlobe } from '@/components/portal/TargetingGlobe';
 import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -900,32 +899,10 @@ export default function PortalAdminClientDetail() {
                       </div>
                     </div>
                   </div>
-                  {/* Targeting Globe */}
-                  {client.states && (
-                    <div className="flex-shrink-0">
-                      <TargetingGlobe states={client.states} size="w-[180px] h-[180px]" />
-                    </div>
-                  )}
                 </div>
               </div>
             )}
 
-            {/* Targeting Globe for Admin View */}
-            {!isClientView && client.states && (
-              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-                <div className="flex items-center gap-6">
-                  <div className="flex-shrink-0">
-                    <TargetingGlobe states={client.states} size="w-[200px] h-[200px]" />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] text-white/25 uppercase tracking-[0.12em]">Ad Targeting</p>
-                    <p className="text-white/70 text-sm font-medium">{client.states}</p>
-                    <p className="text-[11px] text-white/25">{client.states.split(',').length} states targeted</p>
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* Performance Metrics */}
             {metrics && showPerformance && (

@@ -627,7 +627,12 @@ Deno.serve(async (req) => {
       phone: phone,
       states: normalizedStatesCsv,
       profile_image_url: payload.headshot_url || payload.profile_image_url || payload.avatar_url || payload.headshot,
-      management_fee: parseNumber(payload.management_fee || payload.ManagementFee || payload['Management Fee']),
+      management_fee: (() => {
+        const raw = parseNumber(payload.management_fee || payload.ManagementFee || payload['Management Fee']);
+        // GHL sometimes sends cents (149700) instead of dollars (1497). Auto-fix.
+        if (raw && raw > 10000) return Math.round(raw / 100);
+        return raw;
+      })(),
       ad_spend_budget: parseNumber(payload.ad_spend_budget || payload.AdSpendBudget || payload['Ad Spend Budget']),
       npn: npn || null,
       team: payload.team || payload.Team,
