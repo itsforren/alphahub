@@ -38,6 +38,7 @@ import { AdSpendWalletHorizontal } from '@/components/portal/AdSpendWalletHorizo
 import { UpcomingPaymentsWidget } from '@/components/portal/UpcomingPaymentsWidget';
 import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { DailySpendChart } from '@/components/portal/DailySpendChart';
+import { TargetingGlobe } from '@/components/portal/TargetingGlobe';
 import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -865,35 +866,63 @@ export default function PortalAdminClientDetail() {
 
             {/* Read-only Campaign Summary for Clients */}
             {isClientView && client && (
-              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm px-3 py-3 rounded-lg bg-muted/30 border border-border/50">
-                <div className="flex items-center gap-2">
-                  <Rocket className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-foreground font-medium">Alpha Agent Google Ads Campaign</span>
+              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="flex-1 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Rocket className="w-4 h-4 text-primary/60" />
+                      <span className="text-white/80 font-medium">Google Ads Campaign</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1">Daily Budget</p>
+                        <p className="text-lg font-semibold text-white/85">
+                          {campaigns.length > 0
+                            ? `$${campaigns.reduce((sum: number, c: any) => sum + (c.current_daily_budget || 0), 0).toFixed(0)}`
+                            : client.target_daily_spend ? `$${client.target_daily_spend}` : 'Not set'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1">Target States</p>
+                        <p className="text-sm font-medium text-white/70">
+                          {(() => {
+                            const allStates = campaigns
+                              .map((c: any) => c.states || '')
+                              .join(', ')
+                              .split(/[,\s]+/)
+                              .map((s: string) => s.trim())
+                              .filter(Boolean);
+                            const unique = [...new Set(allStates)].sort();
+                            return unique.length > 0 ? unique.join(', ') : (client.states || 'Not set');
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {/* Targeting Globe */}
+                  {client.states && (
+                    <div className="flex-shrink-0">
+                      <TargetingGlobe states={client.states} size="w-[180px] h-[180px]" />
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Daily Budget:</span>
-                  <span className="text-foreground font-medium">
-                    ${campaigns.length > 0
-                      ? `$${campaigns.reduce((sum: number, c: any) => sum + (c.current_daily_budget || 0), 0).toFixed(0)}`
-                      : client.target_daily_spend ? `$${client.target_daily_spend}` : 'Not set'}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">Target States:</span>
-                  <span className="text-foreground font-medium">
-                    {(() => {
-                      const allStates = campaigns
-                        .map((c: any) => c.states || '')
-                        .join(', ')
-                        .split(/[,\s]+/)
-                        .map((s: string) => s.trim())
-                        .filter(Boolean);
-                      const unique = [...new Set(allStates)].sort();
-                      return unique.length > 0 ? unique.join(', ') : (client.states || 'Not set');
-                    })()}
-                  </span>
+              </div>
+            )}
+
+            {/* Targeting Globe for Admin View */}
+            {!isClientView && client.states && (
+              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+                <div className="flex items-center gap-6">
+                  <div className="flex-shrink-0">
+                    <TargetingGlobe states={client.states} size="w-[200px] h-[200px]" />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-white/25 uppercase tracking-[0.12em]">Ad Targeting</p>
+                    <p className="text-white/70 text-sm font-medium">{client.states}</p>
+                    <p className="text-[11px] text-white/25">{client.states.split(',').length} states targeted</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -945,7 +974,19 @@ export default function PortalAdminClientDetail() {
           {/* Billing Tab */}
           <TabsContent value="billing" className="space-y-6">
             {isClientView ? (
-              <ClientBillingSection clientId={client.id} />
+              <>
+                {/* Payment Setup Flow for clients */}
+                {client.id && (
+                  <OnboardingPaymentFlow
+                    clientId={client.id}
+                    hasSignedAgreement={hasSignedAgreement}
+                    clientEmail={client.email}
+                    open={paymentWizardOpen}
+                    onOpenChange={setPaymentWizardOpen}
+                  />
+                )}
+                <ClientBillingSection clientId={client.id} />
+              </>
             ) : (
               <>
                 {/* Onboarding Payment Flow */}
