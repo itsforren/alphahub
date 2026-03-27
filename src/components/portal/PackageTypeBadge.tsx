@@ -14,8 +14,8 @@ interface PackageTypeBadgeProps {
 }
 
 const packageOptions = [
-  { value: 'full_management', label: 'Full Mgmt', className: 'bg-blue-500/10 text-blue-600 border border-blue-500/20' },
-  { value: 'aged', label: 'Aged', className: 'bg-slate-500/10 text-slate-500 border border-slate-500/20' },
+  { value: 'full_management', label: 'Full Mgmt', bgColor: 'bg-blue-500/10', textColor: 'text-blue-400', borderColor: 'border-blue-500/20' },
+  { value: 'aged', label: 'Aged', bgColor: 'bg-white/[0.04]', textColor: 'text-white/45', borderColor: 'border-white/[0.08]' },
 ];
 
 export function PackageTypeBadge({ packageType, className, editable = false, onPackageTypeChange }: PackageTypeBadgeProps) {
@@ -31,9 +31,11 @@ export function PackageTypeBadge({ packageType, className, editable = false, onP
       onPointerDown={editable ? stop : undefined}
       onClick={editable ? stop : undefined}
       className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium tracking-wide uppercase",
-        currentOption.className,
-        editable && 'cursor-pointer hover:opacity-80 transition-opacity',
+        "inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-wider uppercase border",
+        currentOption.bgColor,
+        currentOption.textColor,
+        currentOption.borderColor,
+        editable && 'cursor-pointer hover:brightness-125 transition-all',
         className
       )}
     >
@@ -60,13 +62,15 @@ export function PackageTypeBadge({ packageType, className, editable = false, onP
             }}
             className={cn(
               'cursor-pointer',
-              (packageType === option.value || (!packageType && option.value === 'full_management')) && 'bg-accent'
+              (packageType === option.value || (!packageType && option.value === 'full_management')) && 'bg-white/[0.06]'
             )}
           >
             <span
               className={cn(
-                'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium tracking-wide uppercase mr-2',
-                option.className
+                'inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-wider uppercase border mr-2',
+                option.bgColor,
+                option.textColor,
+                option.borderColor,
               )}
             >
               {option.label}

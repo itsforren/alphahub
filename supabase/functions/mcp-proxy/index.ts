@@ -88,6 +88,7 @@ serve(async (req) => {
       case "get_stripe_subscriptions": result = await getStripeSubscriptions(params ?? {}); break;
       case "get_stripe_charges": result = await getStripeCharges(params ?? {}); break;
       case "get_stripe_payouts": result = await getStripePayouts(params ?? {}); break;
+      case "get_stripe_disputes": result = await getStripeDisputes(params ?? {}); break;
       default:
         result = `Unknown tool: ${tool}. Use list_tools to see available tools.`;
     }
@@ -1007,6 +1008,7 @@ function listTools(): string {
     { name: "get_stripe_subscriptions", type: "read", description: "Active Stripe subscriptions with MRR and billing details", params: "account? (management/ad_spend/both), status? (active/past_due/canceled/all), limit? (default 20)" },
     { name: "get_stripe_charges", type: "read", description: "Recent Stripe charges/payments with refund info", params: "account? (management/ad_spend/both), customer_id?, limit? (default 20)" },
     { name: "get_stripe_payouts", type: "read", description: "Stripe payout history — amounts sent to your bank", params: "account? (management/ad_spend/both), limit? (default 10)" },
+    { name: "get_stripe_disputes", type: "read", description: "Stripe disputes/chargebacks across both accounts with charge details", params: "account? (management/ad_spend/both), limit? (default 100)" },
   ];
   return JSON.stringify(tools);
 }
@@ -2635,6 +2637,52 @@ async function getStripePayouts(params: any): Promise<string> {
         if (p.status === "paid") totalPaid += p.amount;
       }
       s.push(`\n**Total Paid Out:** ${centsToUsd(totalPaid)}`);
+      s.push("");
+    } catch (e) {
+      s.push(`## ${acct} Account\n- Error: ${(e as Error).message}\n`);
+    }
+  }
+  return s.join("\n");
+}
+
+async function getStripeDisputes(params: any): Promise<string> {
+  const accounts = resolveAccounts(params.account);
+  const limit = params.limit ?? 100;
+  const s: string[] = ["# Stripe Disputes\n"];
+
+  for (const acct of accounts) {
+    try {
+      const data = await stripeFetch(acct, `/disputes?limit=${limit}&expand[]=data.charge`);
+      const label = acct === "management" ? "Management" : "Ad Spend";
+
+      let totalAmount = 0;
+      s.push(`## ${label} Account (${data.data.length} disputes)`);
+      if (data.data.length === 0) {
+        s.push("- No disputes found\n");
+        continue;
+      }
+      for (const d of data.data) {
+        const amount = d.amount / 100;
+        totalAmount += amount;
+        const created = new Date(d.created * 1000).toLocaleString();
+        const statusIcon = d.status === "won" ? "✅" : d.status === "lost" ? "❌" : d.status === "needs_response" ? "⚠️" : "⚪";
+        const charge = typeof d.charge === "object" ? d.charge : null;
+        const chargeDate = charge ? new Date(charge.created * 1000).toLocaleString() : "N/A";
+        const desc = charge?.description ?? "N/A";
+        const custId = charge?.customer ?? (typeof d.charge === "string" ? "see charge" : "N/A");
+        const custEmail = charge?.receipt_email ?? charge?.billing_details?.email ?? "";
+        s.push(`- ${statusIcon} **${d.id}**`);
+        s.push(`  - Amount: $${amount.toFixed(2)} | Status: ${d.status} | Reason: ${d.reason}`);
+        s.push(`  - Dispute Created: ${created}`);
+        s.push(`  - Charge: ${charge?.id ?? d.charge} | Charge Date: ${chargeDate}`);
+        s.push(`  - Description: ${desc}`);
+        s.push(`  - Customer: ${custId}${custEmail ? ` (${custEmail})` : ""}`);
+        if (d.evidence_details?.due_by) {
+          s.push(`  - Evidence Due: ${new Date(d.evidence_details.due_by * 1000).toLocaleString()}`);
+        }
+        s.push("");
+      }
+      s.push(`**Total Disputed:** $${totalAmount.toFixed(2)}`);
       s.push("");
     } catch (e) {
       s.push(`## ${acct} Account\n- Error: ${(e as Error).message}\n`);

@@ -866,62 +866,78 @@ export default function PortalAdminClientDetail() {
 
             {/* Read-only Campaign Summary for Clients */}
             {isClientView && client && (
-              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
+              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-                <div className="flex flex-col md:flex-row gap-6">
-                  <div className="flex-1 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Rocket className="w-4 h-4 text-primary/60" />
-                      <span className="text-white/80 font-medium">Google Ads Campaign</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1">Daily Budget</p>
-                        <p className="text-lg font-semibold text-white/85">
-                          {campaigns.length > 0
-                            ? `$${campaigns.reduce((sum: number, c: any) => sum + (c.current_daily_budget || 0), 0).toFixed(0)}`
-                            : client.target_daily_spend ? `$${client.target_daily_spend}` : 'Not set'}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1">Target States</p>
-                        <p className="text-sm font-medium text-white/70">
-                          {(() => {
-                            const allStates = campaigns
-                              .map((c: any) => c.states || '')
-                              .join(', ')
-                              .split(/[,\s]+/)
-                              .map((s: string) => s.trim())
-                              .filter(Boolean);
-                            const unique = [...new Set(allStates)].sort();
-                            return unique.length > 0 ? unique.join(', ') : (client.states || 'Not set');
-                          })()}
-                        </p>
-                      </div>
+
+                {/* Globe centered as hero */}
+                {client.states && (
+                  <div className="flex justify-center pt-6 pb-2">
+                    <div className="opacity-80">
+                      <TargetingGlobe states={client.states} size="w-[220px] h-[220px]" />
                     </div>
                   </div>
-                  {/* Targeting Globe */}
-                  {client.states && (
-                    <div className="flex-shrink-0">
-                      <TargetingGlobe states={client.states} size="w-[180px] h-[180px]" />
-                    </div>
-                  )}
+                )}
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 divide-x divide-white/[0.04] px-2 pb-5">
+                  <div className="text-center px-4 py-3">
+                    <p className="text-[9px] text-white/25 uppercase tracking-[0.15em] mb-1">Daily Budget</p>
+                    <p className="text-xl font-semibold text-luxury">
+                      {campaigns.length > 0
+                        ? `$${campaigns.reduce((sum: number, c: any) => sum + (c.current_daily_budget || 0), 0).toFixed(0)}`
+                        : client.target_daily_spend ? `$${client.target_daily_spend}` : '--'}
+                    </p>
+                  </div>
+                  <div className="text-center px-4 py-3">
+                    <p className="text-[9px] text-white/25 uppercase tracking-[0.15em] mb-1">States</p>
+                    <p className="text-xl font-semibold text-luxury">
+                      {(() => {
+                        const allStates = campaigns
+                          .map((c: any) => c.states || '')
+                          .join(', ')
+                          .split(/[,\s]+/)
+                          .map((s: string) => s.trim())
+                          .filter(Boolean);
+                        const unique = [...new Set(allStates)];
+                        return unique.length > 0 ? unique.length : (client.states?.split(',').length || 0);
+                      })()}
+                    </p>
+                  </div>
+                  <div className="text-center px-4 py-3">
+                    <p className="text-[9px] text-white/25 uppercase tracking-[0.15em] mb-1">Campaigns</p>
+                    <p className="text-xl font-semibold text-luxury">{campaigns.length || 1}</p>
+                  </div>
+                </div>
+
+                {/* States list */}
+                <div className="px-5 pb-5">
+                  <p className="text-[9px] text-white/20 uppercase tracking-[0.15em] mb-2 text-center">Target States</p>
+                  <p className="text-xs text-white/40 text-center leading-relaxed">
+                    {(() => {
+                      const allStates = campaigns
+                        .map((c: any) => c.states || '')
+                        .join(', ')
+                        .split(/[,\s]+/)
+                        .map((s: string) => s.trim())
+                        .filter(Boolean);
+                      const unique = [...new Set(allStates)].sort();
+                      return unique.length > 0 ? unique.join('  ·  ') : (client.states || 'Not set');
+                    })()}
+                  </p>
                 </div>
               </div>
             )}
 
             {/* Targeting Globe for Admin View */}
             {!isClientView && client.states && (
-              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
+              <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-6 overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-                <div className="flex items-center gap-6">
-                  <div className="flex-shrink-0">
-                    <TargetingGlobe states={client.states} size="w-[200px] h-[200px]" />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] text-white/25 uppercase tracking-[0.12em]">Ad Targeting</p>
-                    <p className="text-white/70 text-sm font-medium">{client.states}</p>
-                    <p className="text-[11px] text-white/25">{client.states.split(',').length} states targeted</p>
+                <div className="flex flex-col items-center text-center gap-4">
+                  <TargetingGlobe states={client.states} size="w-[260px] h-[260px]" />
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] text-white/25 uppercase tracking-[0.15em]">Ad Targeting</p>
+                    <p className="text-white/60 text-sm font-medium max-w-md">{client.states}</p>
+                    <p className="text-[11px] text-white/20">{client.states.split(',').length} states targeted</p>
                   </div>
                 </div>
               </div>
