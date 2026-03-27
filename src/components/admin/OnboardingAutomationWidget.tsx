@@ -359,7 +359,7 @@ export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomat
                   Retry from Step {failedStepForRetry}
                 </Button>
               ) : null}
-              {status !== 'completed' && (
+              {(status === 'paused' || status === 'failed') && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -376,7 +376,7 @@ export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomat
                 </Button>
               )}
 
-              {automationRun && status !== 'completed' && (
+              {automationRun && status !== 'completed' && currentStep <= 11 && !stepsCompleted.includes(11) && (
                 <Button
                   variant="outline"
                   size="sm"

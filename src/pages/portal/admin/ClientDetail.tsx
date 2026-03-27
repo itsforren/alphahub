@@ -455,7 +455,11 @@ export default function PortalAdminClientDetail() {
       }
 
       await updateClient.mutateAsync({ clientId: id, updates });
-      toast.success(key === 'subaccount_id' ? 'Sub-account ID and CRM link updated' : 'Field updated successfully');
+      const toastMessages: Record<string, string> = {
+        subaccount_id: 'Sub-account ID updated — CRM link and lead delivery will use this location',
+        ghl_user_id: 'GHL User ID updated — future leads will auto-assign to this user',
+      };
+      toast.success(toastMessages[key] || 'Field updated successfully');
     } catch (error) {
       toast.error('Failed to update field');
       throw error;
