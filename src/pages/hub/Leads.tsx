@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { PhoneCall } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { LeadDiscoveryDashboard } from '@/components/discovery/LeadDiscoveryDashboard';
+import { NewLeadPopup } from '@/components/discovery/NewLeadPopup';
 import { useLeadDiscoveryQueue, useMyClient } from '@/hooks/useLeadDiscoveryQueue';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -15,8 +16,10 @@ export default function Leads() {
   const { isAdmin } = useAuth();
   const { data: myClient, isLoading: clientLoading } = useMyClient();
   const queryClient = useQueryClient();
+  const [newLeadPopup, setNewLeadPopup] = useState<any>(null);
 
-  const agentId = myClient?.agent_id || null;
+  // Admin fallback: if no client record found, use James Warren's agent_id
+  const agentId = myClient?.agent_id || (isAdmin ? 'EIx4YsVXAfD6hoIX2ixz' : null);
   const isEnabled = agentId && (isAdmin || DISCOVERY_ENABLED_AGENTS.includes(agentId));
   const { data: queueData, isLoading: queueLoading } = useLeadDiscoveryQueue(isEnabled ? agentId : null);
 
@@ -38,11 +41,18 @@ export default function Leads() {
         },
         (payload) => {
           const lead = payload.new as any;
+
+          // Show the popup
+          setNewLeadPopup(lead);
+
+          // Also show a toast as backup
           const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'New Lead';
-          toast(`New lead: ${name}`, {
-            description: [lead.state, lead.email].filter(Boolean).join(' · '),
-            duration: 8000,
+          toast.success(`NEW LEAD: ${name}`, {
+            description: [lead.state, lead.email, lead.phone].filter(Boolean).join(' · '),
+            duration: 15000,
+            important: true,
           });
+
           // Refresh the queue
           queryClient.invalidateQueries({ queryKey: ['discovery-queue'] });
         }
@@ -53,6 +63,11 @@ export default function Leads() {
       supabase.removeChannel(channel);
     };
   }, [agentId, isEnabled, queryClient]);
+
+  const handleViewNewLead = useCallback(() => {
+    setNewLeadPopup(null);
+    // The queue will have refreshed by now — the lead is in the Dial tab
+  }, []);
 
   if (clientLoading) {
     return (
@@ -80,7 +95,7 @@ export default function Leads() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-amber-500 bg-clip-text text-transparent">
-          My Leads
+          Dial Tracker
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Discovery calls & lead management
@@ -104,6 +119,13 @@ export default function Leads() {
           ))}
         </div>
       )}
+
+      {/* New Lead Popup */}
+      <NewLeadPopup
+        lead={newLeadPopup}
+        onView={handleViewNewLead}
+        onDismiss={() => setNewLeadPopup(null)}
+      />
     </div>
   );
 }

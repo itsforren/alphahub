@@ -16,51 +16,83 @@ interface StatusBadgeProps {
   onStatusChange?: (newStatus: string) => void;
 }
 
-const statusConfig: Record<string, { label: string; className: string }> = {
+const statusConfig: Record<string, { label: string; dotColor: string; bgColor: string; textColor: string; borderColor: string }> = {
   active: {
     label: 'ACTIVE',
-    className: 'bg-green-600 text-white border-green-700',
+    dotColor: 'bg-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    textColor: 'text-emerald-400',
+    borderColor: 'border-emerald-500/20',
   },
   live: {
     label: 'ACTIVE',
-    className: 'bg-green-600 text-white border-green-700',
+    dotColor: 'bg-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    textColor: 'text-emerald-400',
+    borderColor: 'border-emerald-500/20',
   },
   inactive: {
     label: 'INACTIVE',
-    className: 'bg-amber-500 text-white border-amber-600',
+    dotColor: 'bg-amber-400',
+    bgColor: 'bg-amber-500/10',
+    textColor: 'text-amber-400',
+    borderColor: 'border-amber-500/20',
   },
   onboarding: {
     label: 'ONBOARDING',
-    className: 'bg-blue-600 text-white border-blue-700',
+    dotColor: 'bg-blue-400',
+    bgColor: 'bg-blue-500/10',
+    textColor: 'text-blue-400',
+    borderColor: 'border-blue-500/20',
   },
   paused: {
     label: 'PAUSED',
-    className: 'bg-slate-500 text-white border-slate-600',
+    dotColor: 'bg-white/30',
+    bgColor: 'bg-white/[0.04]',
+    textColor: 'text-white/50',
+    borderColor: 'border-white/[0.08]',
   },
   'pending reactivation': {
-    label: 'PENDING REACTIVATION',
-    className: 'bg-slate-400 text-slate-800 border-slate-500',
+    label: 'PENDING',
+    dotColor: 'bg-white/25',
+    bgColor: 'bg-white/[0.03]',
+    textColor: 'text-white/40',
+    borderColor: 'border-white/[0.06]',
   },
   pending: {
     label: 'PENDING',
-    className: 'bg-amber-500 text-white border-amber-600',
+    dotColor: 'bg-amber-400',
+    bgColor: 'bg-amber-500/10',
+    textColor: 'text-amber-400',
+    borderColor: 'border-amber-500/20',
   },
   cancelled: {
     label: 'CANCELLED',
-    className: 'bg-red-600 text-white border-red-700',
+    dotColor: 'bg-red-400',
+    bgColor: 'bg-red-500/10',
+    textColor: 'text-red-400',
+    borderColor: 'border-red-500/20',
   },
-  // Ticket statuses (keeping for support page)
   open: {
     label: 'OPEN',
-    className: 'bg-blue-600 text-white border-blue-700',
+    dotColor: 'bg-blue-400',
+    bgColor: 'bg-blue-500/10',
+    textColor: 'text-blue-400',
+    borderColor: 'border-blue-500/20',
   },
   waiting: {
     label: 'WAITING',
-    className: 'bg-amber-500 text-white border-amber-600',
+    dotColor: 'bg-amber-400',
+    bgColor: 'bg-amber-500/10',
+    textColor: 'text-amber-400',
+    borderColor: 'border-amber-500/20',
   },
   resolved: {
     label: 'RESOLVED',
-    className: 'bg-slate-500 text-white border-slate-600',
+    dotColor: 'bg-white/30',
+    bgColor: 'bg-white/[0.04]',
+    textColor: 'text-white/50',
+    borderColor: 'border-white/[0.08]',
   },
 };
 
@@ -70,7 +102,10 @@ export default function StatusBadge({ status, size = 'md', className, editable =
   const normalizedStatus = status.toLowerCase();
   const config = statusConfig[normalizedStatus] || {
     label: status.toUpperCase(),
-    className: 'bg-gray-500 text-white border-gray-600',
+    dotColor: 'bg-white/30',
+    bgColor: 'bg-white/[0.04]',
+    textColor: 'text-white/50',
+    borderColor: 'border-white/[0.08]',
   };
 
   const stop = (e: any) => {
@@ -82,13 +117,16 @@ export default function StatusBadge({ status, size = 'md', className, editable =
       onPointerDown={editable ? stop : undefined}
       onClick={editable ? stop : undefined}
       className={cn(
-        'inline-flex items-center rounded border font-semibold uppercase tracking-wide',
-        size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-xs',
-        config.className,
-        editable && 'cursor-pointer hover:opacity-80 transition-opacity',
+        'inline-flex items-center gap-1.5 rounded-full border font-semibold uppercase tracking-wider',
+        size === 'sm' ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[10px]',
+        config.bgColor,
+        config.textColor,
+        config.borderColor,
+        editable && 'cursor-pointer hover:brightness-125 transition-all',
         className
       )}
     >
+      <span className={cn('w-1.5 h-1.5 rounded-full', config.dotColor)} />
       {config.label}
     </span>
   );
@@ -112,14 +150,17 @@ export default function StatusBadge({ status, size = 'md', className, editable =
                 stop(e);
                 onStatusChange(statusOption);
               }}
-              className={cn('cursor-pointer', normalizedStatus === statusOption && 'bg-accent')}
+              className={cn('cursor-pointer', normalizedStatus === statusOption && 'bg-white/[0.06]')}
             >
               <span
                 className={cn(
-                  'inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-semibold uppercase mr-2',
-                  statusConf.className
+                  'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[9px] font-semibold uppercase tracking-wider mr-2',
+                  statusConf.bgColor,
+                  statusConf.textColor,
+                  statusConf.borderColor
                 )}
               >
+                <span className={cn('w-1.5 h-1.5 rounded-full', statusConf.dotColor)} />
                 {statusConf.label}
               </span>
             </DropdownMenuItem>

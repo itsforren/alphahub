@@ -42,6 +42,11 @@ import NotQualifiedBudget from "./pages/NotQualifiedBudget";
 import Apply from "./pages/Apply";
 import Onboarding from "./pages/Onboarding";
 
+// SEO Comparison pages
+import BestIulLeads from "./pages/BestIulLeads";
+import AlphaAgentVsJucebox from "./pages/AlphaAgentVsJucebox";
+import ExclusiveVsAgedLeads from "./pages/ExclusiveVsAgedLeads";
+
 // Auth pages (lazy loaded)
 const Login = lazy(() => import("./pages/auth/Login"));
 const ForgotPassword = lazy(() => import("./pages/auth/ForgotPassword"));
@@ -120,6 +125,9 @@ const App = () => (
                   <Route path="/blog" element={<Blog />} />
                   <Route path="/blog/:slug" element={<BlogPost />} />
                   <Route path="/pricing" element={<Pricing />} />
+                  <Route path="/best-iul-leads" element={<BestIulLeads />} />
+                  <Route path="/alpha-agent-vs-jucebox" element={<AlphaAgentVsJucebox />} />
+                  <Route path="/exclusive-vs-aged-leads" element={<ExclusiveVsAgedLeads />} />
                   <Route path="/partner" element={<Partner />} />
                   <Route path="/partner-pricing" element={<PartnerPricing />} />
                   <Route path="/book-partner-call" element={<BookPartnerCall />} />

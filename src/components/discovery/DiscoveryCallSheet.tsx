@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { LocationMap } from '@/components/ui/expand-map';
+import { AnimatedActionButton } from '@/components/ui/animated-action-button';
 import { Phone, Mail, MapPin, CheckCircle, PhoneMissed, PhoneOff, Clock, Loader2, AlertTriangle, RotateCcw, XCircle, PhoneForwarded, Sprout, PhoneCall, Calendar, Video, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscoveryCallForm } from './DiscoveryCallForm';
@@ -57,8 +59,75 @@ type Step =
   | 'lost_detail'         // Viewing a lost lead — show reason + reactivate options
   | 'saved';              // Done
 
+const stageConfig: Record<string, { label: string; color: string }> = {
+  new: { label: 'New', color: 'bg-blue-500/15 text-blue-400 border-blue-500/40' },
+  attempt_1: { label: 'Attempt 1', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
+  attempt_2: { label: 'Attempt 2', color: 'bg-orange-500/15 text-orange-400 border-orange-500/40' },
+  attempt_3: { label: 'Attempt 3', color: 'bg-red-500/15 text-red-400 border-red-500/40' },
+  attempt_4: { label: 'Attempt 4', color: 'bg-red-600/15 text-red-300 border-red-600/40' },
+  intro_scheduled: { label: 'Intro Booked', color: 'bg-blue-500/15 text-blue-400 border-blue-500/40' },
+  callback_scheduled: { label: 'Callback', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
+  discovery_complete: { label: 'Needs Booking', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
+  strategy_booked: { label: 'Strategy Booked', color: 'bg-green-500/15 text-green-400 border-green-500/40' },
+  booked: { label: 'Booked', color: 'bg-green-500/15 text-green-400 border-green-500/40' },
+  no_show: { label: 'No-Show', color: 'bg-red-500/15 text-red-400 border-red-500/40' },
+  strategy_no_show: { label: 'Zoom No-Show', color: 'bg-red-600/20 text-red-300 border-red-600/40' },
+  cancelled: { label: 'Cancelled', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
+  reschedule_needed: { label: 'Reschedule', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
+  lost: { label: 'Lost', color: 'bg-muted/50 text-muted-foreground border-border' },
+  long_term_nurture: { label: 'Nurture', color: 'bg-purple-500/15 text-purple-400 border-purple-500/40' },
+  completed: { label: 'Completed', color: 'bg-green-500/15 text-green-400 border-green-500/40' },
+};
+
 // Stages that indicate a discovery form has been filled out at some point
 const ATTEMPT_STAGES = ['new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4'];
+
+const STATE_DATA: Record<string, { name: string; coords: string }> = {
+  AL: { name: 'Alabama', coords: '32.81° N, 86.79° W' }, AK: { name: 'Alaska', coords: '61.37° N, 152.40° W' },
+  AZ: { name: 'Arizona', coords: '33.73° N, 111.43° W' }, AR: { name: 'Arkansas', coords: '34.97° N, 92.37° W' },
+  CA: { name: 'California', coords: '36.12° N, 119.68° W' }, CO: { name: 'Colorado', coords: '39.06° N, 105.31° W' },
+  CT: { name: 'Connecticut', coords: '41.60° N, 72.76° W' }, DE: { name: 'Delaware', coords: '39.32° N, 75.51° W' },
+  DC: { name: 'Washington DC', coords: '38.90° N, 77.03° W' }, FL: { name: 'Florida', coords: '27.77° N, 81.69° W' },
+  GA: { name: 'Georgia', coords: '33.04° N, 83.64° W' }, HI: { name: 'Hawaii', coords: '21.09° N, 157.50° W' },
+  ID: { name: 'Idaho', coords: '44.24° N, 114.48° W' }, IL: { name: 'Illinois', coords: '40.35° N, 88.99° W' },
+  IN: { name: 'Indiana', coords: '39.85° N, 86.26° W' }, IA: { name: 'Iowa', coords: '42.01° N, 93.21° W' },
+  KS: { name: 'Kansas', coords: '38.53° N, 96.73° W' }, KY: { name: 'Kentucky', coords: '37.67° N, 84.67° W' },
+  LA: { name: 'Louisiana', coords: '31.17° N, 91.87° W' }, ME: { name: 'Maine', coords: '44.69° N, 69.38° W' },
+  MD: { name: 'Maryland', coords: '39.06° N, 76.80° W' }, MA: { name: 'Massachusetts', coords: '42.23° N, 71.53° W' },
+  MI: { name: 'Michigan', coords: '43.33° N, 84.54° W' }, MN: { name: 'Minnesota', coords: '45.69° N, 93.90° W' },
+  MS: { name: 'Mississippi', coords: '32.74° N, 89.68° W' }, MO: { name: 'Missouri', coords: '38.46° N, 92.29° W' },
+  MT: { name: 'Montana', coords: '46.92° N, 110.45° W' }, NE: { name: 'Nebraska', coords: '41.13° N, 98.27° W' },
+  NV: { name: 'Nevada', coords: '38.31° N, 117.06° W' }, NH: { name: 'New Hampshire', coords: '43.45° N, 71.56° W' },
+  NJ: { name: 'New Jersey', coords: '40.30° N, 74.52° W' }, NM: { name: 'New Mexico', coords: '34.84° N, 106.25° W' },
+  NY: { name: 'New York', coords: '42.17° N, 74.95° W' }, NC: { name: 'North Carolina', coords: '35.63° N, 79.81° W' },
+  ND: { name: 'North Dakota', coords: '47.53° N, 99.78° W' }, OH: { name: 'Ohio', coords: '40.39° N, 82.76° W' },
+  OK: { name: 'Oklahoma', coords: '35.57° N, 96.93° W' }, OR: { name: 'Oregon', coords: '44.57° N, 122.07° W' },
+  PA: { name: 'Pennsylvania', coords: '40.59° N, 77.21° W' }, RI: { name: 'Rhode Island', coords: '41.68° N, 71.51° W' },
+  SC: { name: 'South Carolina', coords: '33.86° N, 80.95° W' }, SD: { name: 'South Dakota', coords: '44.30° N, 99.44° W' },
+  TN: { name: 'Tennessee', coords: '35.75° N, 86.69° W' }, TX: { name: 'Texas', coords: '31.05° N, 97.56° W' },
+  UT: { name: 'Utah', coords: '40.15° N, 111.86° W' }, VT: { name: 'Vermont', coords: '44.05° N, 72.71° W' },
+  VA: { name: 'Virginia', coords: '37.77° N, 78.17° W' }, WA: { name: 'Washington', coords: '47.40° N, 121.49° W' },
+  WV: { name: 'West Virginia', coords: '38.49° N, 80.95° W' }, WI: { name: 'Wisconsin', coords: '44.27° N, 89.62° W' },
+  WY: { name: 'Wyoming', coords: '42.76° N, 107.30° W' },
+};
+
+// Reverse lookup: full name → abbreviation (case-insensitive)
+const STATE_NAME_TO_ABBR: Record<string, string> = {};
+for (const [abbr, data] of Object.entries(STATE_DATA)) {
+  STATE_NAME_TO_ABBR[data.name.toLowerCase()] = abbr;
+}
+
+function resolveState(raw: string | null): { name: string; coords: string } | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  // Try abbreviation first (e.g. "FL")
+  const upper = trimmed.toUpperCase();
+  if (STATE_DATA[upper]) return STATE_DATA[upper];
+  // Try full name (e.g. "Florida")
+  const abbr = STATE_NAME_TO_ABBR[trimmed.toLowerCase()];
+  if (abbr && STATE_DATA[abbr]) return STATE_DATA[abbr];
+  return null;
+}
 
 export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalendarId, subaccountId, onCallNext, queueData }: DiscoveryCallSheetProps) {
   const [step, setStep] = useState<Step>('answer');
@@ -71,7 +140,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
     discovery_data: DiscoveryFormData;
   } | null>(null);
   const [qualifies, setQualifies] = useState<string | null>(null);
-  const [dqReason, setDqReason] = useState<string | null>(null);
+  const [dqReasons, setDqReasons] = useState<string[]>([]);
   const [annuityOpportunity, setAnnuityOpportunity] = useState<string | null>(null);
   const [callBackDate, setCallBackDate] = useState<string>('');
   const [showCallBackPicker, setShowCallBackPicker] = useState(false);
@@ -102,13 +171,28 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
       setPendingFormData(null);
       setSavedMessage('');
       setQualifies(null);
-      setDqReason(null);
+      setDqReasons([]);
       setAnnuityOpportunity(null);
       setCallBackDate('');
       setShowCallBackPicker(false);
       claimLead.mutate(lead.id);
     }
   }, [open, lead?.id]);
+
+  // Pre-fill qualifies + annuity from most recent answered call (async loaded)
+  useEffect(() => {
+    if (callHistory && callHistory.length > 0 && lead) {
+      const lastAnswered = callHistory.find((c) => c.answered && c.discovery_data);
+      if (lastAnswered?.discovery_data) {
+        if (lastAnswered.discovery_data.qualifies && !qualifies) setQualifies(lastAnswered.discovery_data.qualifies);
+        if (lastAnswered.discovery_data.annuity_opportunity && !annuityOpportunity) setAnnuityOpportunity(lastAnswered.discovery_data.annuity_opportunity);
+        if (lastAnswered.discovery_data.dq_reason && dqReasons.length === 0) {
+          const reasons = lastAnswered.discovery_data.dq_reason.split(', ').filter(Boolean);
+          if (reasons.length > 0) setDqReasons(reasons);
+        }
+      }
+    }
+  }, [callHistory, lead?.id]);
 
   const handleClose = () => {
     if (lead && step !== 'saved') {
@@ -119,7 +203,8 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
   if (!lead) return null;
 
-  const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Unknown';
+  const rawName = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Unknown';
+  const name = rawName.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
   const currentAttempt = lead.call_attempt_count || 0;
   const nextAttempt = currentAttempt + 1;
 
@@ -140,6 +225,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
         attempt_number: nextAttempt,
         answered: false,
         outcome: 'no_answer',
+        current_stage: lead.discovery_stage || undefined,
       },
       {
         onSuccess: () => {
@@ -277,7 +363,44 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
   // ── Strategy Booking (post-form) ───────────────────────────────────────────
 
   const handleStrategySlotSelected = async (slot: string, calendarId: string) => {
-    if (!pendingFormData) return;
+    if (!pendingFormData) {
+      // Direct rebook (no form data) — e.g., from strategy_no_show
+      setBooking(true);
+      try {
+        saveCall.mutate({
+          lead_id: lead.id,
+          agent_id: agentId,
+          attempt_number: nextAttempt,
+          answered: true,
+          outcome: 'strategy_booked',
+          ...(qualifies ? { discovery_data: { qualifies, ...(annuityOpportunity ? { annuity_opportunity: annuityOpportunity } : {}), ...(dqReasons.length > 0 ? { dq_reason: dqReasons.join(', ') } : {}) } } : {}),
+          appointment_datetime: slot,
+        });
+
+        await invokeEdgeFunction('book-discovery-appointment', {
+          lead_id: lead.id,
+          agent_id: agentId,
+          calendar_id: calendarId,
+          calendar_type: 'strategy',
+          selected_slot: slot,
+          reschedule: true,
+          notes: 'Strategy call rebooked after no-show',
+        });
+
+        const timeStr = new Date(slot).toLocaleString('en-US', {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+        toast.success(`Strategy call booked for ${timeStr}!`);
+        setSavedMessage(`Strategy call booked for ${timeStr}`);
+        setStep('saved');
+      } catch (err: any) {
+        toast.error(err.message || 'Failed to book strategy call');
+      } finally {
+        setBooking(false);
+      }
+      return;
+    }
+
     setBooking(true);
 
     try {
@@ -298,7 +421,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
       const enrichedData = {
         ...pendingFormData.discovery_data,
         ...(qualifies ? { qualifies } : {}),
-        ...(dqReason ? { dq_reason: dqReason } : {}),
+        ...(dqReasons.length > 0 ? { dq_reason: dqReasons.join(', ') } : {}),
         ...(annuityOpportunity ? { annuity_opportunity: annuityOpportunity } : {}),
       };
       saveCall.mutate({
@@ -344,7 +467,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
       const enrichedData = {
         ...pendingFormData.discovery_data,
         ...(qualifies ? { qualifies } : {}),
-        ...(dqReason ? { dq_reason: dqReason } : {}),
+        ...(dqReasons.length > 0 ? { dq_reason: dqReasons.join(', ') } : {}),
         ...(annuityOpportunity ? { annuity_opportunity: annuityOpportunity } : {}),
         ...(callbackDate ? { callback_date: callbackDate } : {}),
       };
@@ -408,43 +531,76 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const stateInfo = resolveState(lead.state);
+
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && handleClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto p-0">
-        {/* Header */}
-        <SheetHeader className="sticky top-0 z-10 bg-background/95 backdrop-blur-xl border-b border-border p-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <SheetTitle className="text-lg font-bold flex items-center gap-2">
-                {name}
-                <TemperatureBadge temp={lead.discovery_temperature} />
-              </SheetTitle>
-              <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl rounded-2xl">
+        {/* Header with Location Map */}
+        <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl">
+          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
+          <div className="flex gap-5 p-5">
+            {/* Location Map */}
+            {stateInfo && (
+              <div className="flex-shrink-0 hidden sm:block">
+                <LocationMap
+                  location={stateInfo.name}
+                  coordinates={stateInfo.coords}
+                />
+              </div>
+            )}
+
+            {/* Lead Info */}
+            <div className="flex-1 min-w-0">
+              <DialogHeader className="space-y-0 p-0">
+                <DialogTitle className="text-xl font-semibold text-luxury tracking-tight flex items-center gap-3">
+                  {name}
+                  <TemperatureBadge temp={lead.discovery_temperature} />
+                  {lead.delivery_status !== 'delivered' && (
+                    <Badge variant="destructive" className="text-[10px]">CRM Error</Badge>
+                  )}
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3">
                 {lead.phone && (
-                  <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-1 hover:text-primary transition-colors">
-                    <Phone className="h-3 w-3" /> {lead.phone}
+                  <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-primary transition-colors">
+                    <Phone className="h-3.5 w-3.5 text-white/25" /> {lead.phone}
                   </a>
                 )}
                 {lead.email && (
-                  <span className="inline-flex items-center gap-1">
-                    <Mail className="h-3 w-3" /> {lead.email}
+                  <span className="inline-flex items-center gap-2 text-sm text-white/50 truncate">
+                    <Mail className="h-3.5 w-3.5 text-white/25" /> {lead.email}
                   </span>
                 )}
-                {lead.age && <span>Age {lead.age}</span>}
+                {lead.age && (
+                  <span className="inline-flex items-center gap-2 text-sm text-white/50">
+                    <span className="text-white/25 text-xs">AGE</span> {lead.age}
+                  </span>
+                )}
                 {lead.state && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3 w-3" /> {lead.state}
+                  <span className="inline-flex items-center gap-2 text-sm text-white/50">
+                    <MapPin className="h-3.5 w-3.5 text-white/25" /> {lead.state}
                   </span>
                 )}
               </div>
-            </div>
-            {lead.delivery_status !== 'delivered' && (
-              <Badge variant="destructive" className="text-xs">CRM Error</Badge>
-            )}
-          </div>
-        </SheetHeader>
 
-        <div className="p-4">
+              {/* Quick status badges */}
+              <div className="flex items-center gap-2 mt-3">
+                <Badge variant="outline" className={cn('text-[10px] font-bold', stageConfig[lead.discovery_stage || 'new']?.color || stageConfig.new.color)}>
+                  {stageConfig[lead.discovery_stage || 'new']?.label || 'New'}
+                </Badge>
+                {lead.status && lead.status !== 'new' && (
+                  <Badge variant="outline" className="text-[10px] font-bold bg-white/[0.04] text-white/50 border-white/[0.08]">
+                    {lead.status}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
           {/* ── Call History (inline — hidden on detail + saved steps) ────────── */}
           {callHistory && callHistory.length > 0 && step !== 'saved' && step !== 'detail' && (
             <div className="mb-4 p-3 rounded-lg bg-muted/20 border border-border/30">
@@ -487,76 +643,75 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
           {/* ── Step: Did they answer? ──────────────────────────────────────── */}
           {step === 'answer' && (
-            <div className="space-y-5 text-center py-8">
+            <div className="space-y-6 text-center py-8">
               <div>
-                <div className="text-3xl font-black bg-gradient-to-r from-pink-400 to-amber-500 bg-clip-text text-transparent">
+                <div className="text-3xl font-black text-luxury">
                   Attempt {nextAttempt}
                 </div>
-                <p className="text-sm font-semibold text-muted-foreground mt-2">Did they answer?</p>
+                <p className="text-sm font-medium text-white/35 mt-2">Did they answer?</p>
               </div>
 
-              <div className="flex flex-col gap-4 max-w-sm mx-auto">
+              <div className="flex flex-col gap-4 max-w-md mx-auto">
                 {/* Primary actions */}
                 <div className="flex gap-3">
-                  <Button
-                    size="lg"
-                    className="flex-1 h-14 text-base font-bold rounded-xl border-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors"
-                    variant="outline"
+                  <AnimatedActionButton
+                    label="Yes, let's go"
+                    icon={CheckCircle}
                     onClick={handleAnswered}
-                  >
-                    <CheckCircle className="h-5 w-5 mr-2" />
-                    Yes, let's go
-                  </Button>
-                  <Button
+                    highlightHueDeg={140}
                     size="lg"
-                    className="flex-1 h-14 text-base font-bold rounded-xl border-2 border-rose-500 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-colors"
-                    variant="outline"
+                    fullWidth
+                  />
+                  <AnimatedActionButton
+                    label="No Answer"
+                    icon={PhoneMissed}
                     onClick={handleNoAnswer}
+                    highlightHueDeg={0}
+                    size="lg"
+                    fullWidth
                     disabled={saveCall.isPending}
-                  >
-                    <PhoneMissed className="h-5 w-5 mr-2" />
-                    No Answer
-                  </Button>
+                  />
                 </div>
 
                 {/* Schedule section divider */}
-                <div className="flex items-center gap-3 mt-1">
-                  <div className="flex-1 h-px bg-border/50" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50">Schedule</span>
-                  <div className="flex-1 h-px bg-border/50" />
+                <div className="flex items-center gap-3 mt-2">
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/20">Schedule</span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
                 </div>
 
-                {/* Schedule buttons row */}
+                {/* Schedule buttons */}
                 <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-colors flex-col gap-0 px-2"
+                  <AnimatedActionButton
+                    label="Callback"
+                    icon={Clock}
                     onClick={handleBadTiming}
-                  >
-                    <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> Callback</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 rounded-xl border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 transition-colors flex-col gap-0 px-2"
+                    highlightHueDeg={40}
+                    size="sm"
+                    fullWidth
+                  />
+                  <AnimatedActionButton
+                    label="Discovery"
+                    icon={Calendar}
                     onClick={() => setStep('schedule_discovery')}
-                  >
-                    <span className="flex items-center gap-1"><Calendar className="h-3.5 w-3.5" /> Discovery</span>
-                    <span className="text-[9px] text-blue-400/50 font-normal">reschedule</span>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 h-12 rounded-xl border border-purple-500/40 text-purple-400 hover:bg-purple-500/10 transition-colors flex-col gap-0 px-2"
+                    highlightHueDeg={210}
+                    size="sm"
+                    fullWidth
+                  />
+                  <AnimatedActionButton
+                    label="Strategy"
+                    icon={Video}
                     onClick={() => setStep('schedule_strategy')}
-                  >
-                    <span className="flex items-center gap-1"><Video className="h-3.5 w-3.5" /> Strategy</span>
-                    <span className="text-[9px] text-purple-400/50 font-normal">reschedule</span>
-                  </Button>
+                    highlightHueDeg={270}
+                    size="sm"
+                    fullWidth
+                  />
                 </div>
 
                 {/* Bad number — subtle at bottom */}
                 <button
                   onClick={() => setStep('bad_number')}
-                  className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-red-400 transition-colors mt-1 mx-auto"
+                  className="flex items-center justify-center gap-1.5 text-xs text-white/20 hover:text-red-400 transition-colors mt-2 mx-auto"
                 >
                   <PhoneOff className="h-3.5 w-3.5" />
                   Bad Number
@@ -607,6 +762,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                         attempt_number: nextAttempt,
                         answered: true,
                         outcome: 'bad_timing',
+                        current_stage: lead.discovery_stage || undefined,
                       },
                       {
                         onSuccess: () => {
@@ -652,6 +808,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                         attempt_number: nextAttempt,
                         answered: true,
                         outcome: 'bad_timing',
+                        current_stage: lead.discovery_stage || undefined,
                       },
                       {
                         onSuccess: () => {
@@ -746,7 +903,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                       'flex-1',
                       qualifies === 'yes' && 'border-green-500 bg-green-500/10 text-green-400'
                     )}
-                    onClick={() => { setQualifies('yes'); setDqReason(null); }}
+                    onClick={() => { setQualifies('yes'); setDqReasons([]); }}
                   >
                     Yes
                   </Button>
@@ -774,15 +931,18 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                         'Already has coverage',
                         'Tobacco/health risk',
                         'Felony',
+                        'Wrong state',
                         'Other',
                       ].map((reason) => (
                         <button
                           key={reason}
                           type="button"
-                          onClick={() => setDqReason(reason)}
+                          onClick={() => setDqReasons((prev) =>
+                            prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+                          )}
                           className={cn(
                             'px-3 py-1.5 rounded-lg border text-xs font-bold transition-all',
-                            dqReason === reason
+                            dqReasons.includes(reason)
                               ? 'border-rose-500 bg-rose-500/10 text-rose-400'
                               : 'border-border bg-background/50 text-muted-foreground hover:border-rose-500/30'
                           )}
@@ -964,13 +1124,13 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                       lost_reason: null,
                       call_attempt_count: 0,
                     }).eq('id', lead.id);
-                    toast.success('Lead moved back to Follow Up queue');
-                    setSavedMessage('Lead reactivated — back in Follow Up queue');
+                    toast.success('Lead moved back to Dial queue');
+                    setSavedMessage('Lead reactivated — back in Dial queue');
                     setStep('saved');
                   }}
                 >
                   <RotateCcw className="h-5 w-5 mr-2" />
-                  Move Back to Follow Up
+                  Move Back to Dial
                 </Button>
 
                 <Button
@@ -992,36 +1152,39 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
           {/* ── Step: Saved ────────────────────────────────────────────────── */}
           {step === 'saved' && (
-            <div className="text-center py-12 space-y-4">
-              <CheckCircle className="h-16 w-16 mx-auto text-green-400" />
-              <p className="text-lg font-bold text-foreground">{savedMessage || 'Call Saved'}</p>
+            <div className="text-center py-12 space-y-5">
+              <CheckCircle className="h-16 w-16 mx-auto text-green-400" style={{ filter: 'drop-shadow(0 0 20px rgba(34, 197, 94, 0.4))' }} />
+              <p className="text-lg font-semibold text-white/80">{savedMessage || 'Call Saved'}</p>
               <div className="flex flex-col gap-3 max-w-sm mx-auto mt-4">
-                {/* Call Next Lead */}
                 {queueData && (() => {
                   const nextLead = queueData.queue.find(l => l.id !== lead?.id);
                   if (!nextLead) return null;
                   const nextName = [nextLead.first_name, nextLead.last_name].filter(Boolean).join(' ') || 'Next Lead';
                   return (
-                    <Button
-                      size="lg"
-                      className="w-full h-14 text-base font-bold border-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                      variant="outline"
+                    <AnimatedActionButton
+                      label={`Call Next: ${nextName}`}
+                      icon={PhoneCall}
                       onClick={() => onCallNext?.(nextLead)}
-                    >
-                      <PhoneCall className="h-5 w-5 mr-2" />
-                      Call Next: {nextName}
-                    </Button>
+                      highlightHueDeg={140}
+                      size="lg"
+                      fullWidth
+                    />
                   );
                 })()}
-                <Button variant="outline" onClick={handleClose}>
-                  Back to Dashboard
-                </Button>
+                <AnimatedActionButton
+                  label="Back to Dashboard"
+                  icon={ArrowLeft}
+                  onClick={handleClose}
+                  highlightHueDeg={220}
+                  size="md"
+                  fullWidth
+                />
               </div>
             </div>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1034,6 +1197,8 @@ function formatLostReasonLong(reason: string): string {
     not_in_service: 'Phone number not in service',
     no_ring: "Phone number doesn't ring",
     straight_to_vm: 'Goes straight to voicemail',
+    not_approved: 'Application was not approved',
+    wrong_state: 'Lead is in wrong state for licensing',
   };
   return map[reason] || `Reason: ${reason.replace(/_/g, ' ')}`;
 }
