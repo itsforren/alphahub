@@ -537,6 +537,27 @@ async function handleSubscriptionInvoicePaid(
     }
   }
 
+  // Auto-archive any unlinked legacy billing records for this client + type.
+  // These are records created manually before the Stripe subscription existed.
+  const { data: legacyRecords } = await supabase
+    .from('billing_records')
+    .select('id')
+    .eq('client_id', localSub.client_id)
+    .eq('billing_type', localSub.billing_type)
+    .is('stripe_subscription_id', null)
+    .is('stripe_invoice_id', null)
+    .is('archived_at', null)
+    .in('status', ['pending', 'overdue']);
+
+  if (legacyRecords?.length) {
+    const ids = legacyRecords.map((r: any) => r.id);
+    await supabase
+      .from('billing_records')
+      .update({ archived_at: new Date().toISOString(), notes: 'Auto-archived: replaced by active Stripe subscription' })
+      .in('id', ids);
+    console.log(`Auto-archived ${ids.length} legacy billing record(s) for client ${localSub.client_id}`);
+  }
+
   // Process referral commission for management fees
   if (localSub.billing_type === 'management') {
     try {
