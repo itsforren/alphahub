@@ -38,6 +38,7 @@ import { AdSpendWalletHorizontal } from '@/components/portal/AdSpendWalletHorizo
 import { UpcomingPaymentsWidget } from '@/components/portal/UpcomingPaymentsWidget';
 import { GoogleAdsSyncButton } from '@/components/portal/GoogleAdsSyncButton';
 import { DailySpendChart } from '@/components/portal/DailySpendChart';
+import { TargetingGlobe } from '@/components/portal/TargetingGlobe';
 import { EditBudgetDialog } from '@/components/portal/EditBudgetDialog';
 import { StateSelector } from '@/components/portal/StateSelector';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1555,8 +1556,31 @@ export default function PortalAdminClientDetail() {
                       const newFreq = e.target.value;
                       try {
                         await supabase.from('clients').update({ billing_frequency: newFreq } as any).eq('id', client.id);
+
+                        // Update pending management billing records to match new frequency amount
+                        const mgmtFee = client.management_fee || 1497;
+                        const newAmount = newFreq === 'bi_weekly' ? mgmtFee / 2 : mgmtFee;
+                        const newRecurrence = newFreq === 'bi_weekly' ? 'bi_weekly' : 'monthly';
+
+                        const { data: pendingMgmt } = await supabase
+                          .from('billing_records')
+                          .select('id')
+                          .eq('client_id', client.id)
+                          .eq('billing_type', 'management')
+                          .in('status', ['pending', 'overdue'])
+                          .is('archived_at', null);
+
+                        if (pendingMgmt?.length) {
+                          await supabase
+                            .from('billing_records')
+                            .update({ amount: newAmount, recurrence_type: newRecurrence })
+                            .in('id', pendingMgmt.map(r => r.id));
+                        }
+
                         queryClient.invalidateQueries({ queryKey: ['client', client.id] });
-                        toast.success(`Billing frequency updated to ${newFreq === 'bi_weekly' ? 'Bi-Weekly' : 'Monthly'}`);
+                        queryClient.invalidateQueries({ queryKey: ['billing-records', client.id] });
+                        queryClient.invalidateQueries({ queryKey: ['upcoming-payments', client.id] });
+                        toast.success(`Billing frequency updated to ${newFreq === 'bi_weekly' ? 'Bi-Weekly' : 'Monthly'} — ${pendingMgmt?.length || 0} pending record(s) updated to ${formatCurrency(newAmount)}`);
                       } catch (err: any) {
                         toast.error('Failed to update billing frequency');
                       }
