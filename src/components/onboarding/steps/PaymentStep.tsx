@@ -31,6 +31,39 @@ export default function PaymentStep({ clientId, paymentComplete, dispatch }: Pro
     });
   }, []);
 
+  // When dialog closes, verify payment was actually made before advancing
+  const verifyPaymentOnClose = async () => {
+    if (!clientId) return;
+    try {
+      const { supabase } = await import('@/integrations/supabase/client');
+      // Check if there's a paid management billing record OR a wallet deposit
+      const [{ data: paidMgmt }, { data: walletTx }] = await Promise.all([
+        supabase
+          .from('billing_records')
+          .select('id')
+          .eq('client_id', clientId)
+          .eq('billing_type', 'management')
+          .eq('status', 'paid')
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('wallet_transactions')
+          .select('id')
+          .eq('client_id', clientId)
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      if (paidMgmt || walletTx) {
+        dispatch({ type: 'PAYMENT_COMPLETE' });
+        dispatch({ type: 'NEXT_STEP' });
+      }
+      // If no payment found, just close the dialog — don't advance
+    } catch {
+      // On error, don't advance
+    }
+  };
+
   if (paymentComplete) {
     return (
       <motion.div
@@ -94,9 +127,7 @@ export default function PaymentStep({ clientId, paymentComplete, dispatch }: Pro
           onOpenChange={(open: boolean) => {
             setShowPayment(open);
             if (!open) {
-              // Assume payment was completed when dialog closes
-              dispatch({ type: 'PAYMENT_COMPLETE' });
-              dispatch({ type: 'NEXT_STEP' });
+              verifyPaymentOnClose();
             }
           }}
           clientId={clientId}
