@@ -1093,8 +1093,42 @@ async function handlePaymentIntentSucceeded(supabase: any, pi: any, stripeAccoun
     if (record) {
       billingRecordId = record.id;
     } else {
-      console.log('PaymentIntent has no billing_record_id metadata and no matching record, skipping');
-      return jsonResponse({ received: true, no_metadata: true });
+      // Fallback 2: match by Stripe customer → client → pending billing record with same amount
+      // Handles manual charges created directly in Stripe dashboard
+      const customerId = pi.customer;
+      const amountDollars = (pi.amount || 0) / 100;
+
+      if (customerId && amountDollars > 0) {
+        const { data: pm } = await supabase
+          .from('client_payment_methods')
+          .select('client_id')
+          .eq('stripe_customer_id', customerId)
+          .limit(1)
+          .maybeSingle();
+
+        if (pm?.client_id) {
+          const { data: pendingRecord } = await supabase
+            .from('billing_records')
+            .select('id')
+            .eq('client_id', pm.client_id)
+            .eq('billing_type', stripeAccount === 'management' ? 'management' : 'ad_spend')
+            .in('status', ['pending', 'charging'])
+            .is('archived_at', null)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (pendingRecord) {
+            billingRecordId = pendingRecord.id;
+            console.log(`Matched manual charge to pending record ${billingRecordId} via customer ${customerId}`);
+          }
+        }
+      }
+
+      if (!billingRecordId) {
+        console.log('PaymentIntent has no billing_record_id metadata and no matching record, skipping');
+        return jsonResponse({ received: true, no_metadata: true });
+      }
     }
   }
 
