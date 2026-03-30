@@ -365,13 +365,38 @@ async function handleSubscriptionInvoicePaid(
   }
 
   // Try to find a pending record for this subscription + period
-  const { data: pendingRecord } = await supabase
+  let { data: pendingRecord } = await supabase
     .from('billing_records')
     .select('*')
     .eq('stripe_subscription_id', subscriptionId)
     .eq('billing_period_start', periodStart)
     .in('status', ['pending', 'overdue', 'charging'])
     .maybeSingle();
+
+  // Fallback: find any unlinked pending record for this client + billing type
+  // This handles records created before the Stripe subscription was set up
+  if (!pendingRecord) {
+    const { data: unlinkdRecord } = await supabase
+      .from('billing_records')
+      .select('*')
+      .eq('client_id', localSub.client_id)
+      .eq('billing_type', localSub.billing_type)
+      .is('stripe_subscription_id', null)
+      .in('status', ['pending', 'overdue'])
+      .order('due_date', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (unlinkdRecord) {
+      console.log(`Found unlinked pending record ${unlinkdRecord.id} (due ${unlinkdRecord.due_date}) — linking to subscription ${subscriptionId}`);
+      pendingRecord = unlinkdRecord;
+      // Link the record to this subscription for future matching
+      await supabase
+        .from('billing_records')
+        .update({ stripe_subscription_id: subscriptionId })
+        .eq('id', unlinkdRecord.id);
+    }
+  }
 
   let recordId: string;
 

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { addDays, addMonths } from 'date-fns';
+import { useEffect } from 'react';
 
 export type BillingType = 'ad_spend' | 'management';
 export type BillingStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
@@ -84,6 +85,34 @@ function calculateNextDueDate(recurrenceType: RecurrenceType, currentDueDate: Da
 }
 
 export function useBillingRecords(clientId?: string, showArchived = false) {
+  const queryClient = useQueryClient();
+
+  // Subscribe to realtime changes on billing_records for this client
+  useEffect(() => {
+    if (!clientId) return;
+
+    const channel = supabase
+      .channel(`billing-records-${clientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'billing_records',
+          filter: `client_id=eq.${clientId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['billing-records', clientId] });
+          queryClient.invalidateQueries({ queryKey: ['upcoming-payments', clientId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [clientId, queryClient]);
+
   return useQuery({
     queryKey: ['billing-records', clientId, showArchived],
     queryFn: async () => {

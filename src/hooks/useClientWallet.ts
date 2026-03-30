@@ -127,6 +127,7 @@ export function useCreateOrUpdateWallet() {
             auto_billing_enabled: fields.auto_billing_enabled ?? false,
             monthly_ad_spend_cap: fields.monthly_ad_spend_cap,
             billing_mode: fields.billing_mode ?? 'manual',
+            tracking_start_date: new Date().toISOString().split('T')[0],
           })
           .select()
           .single();

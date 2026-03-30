@@ -1,6 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { differenceInDays, parseISO } from 'date-fns';
+import { useEffect } from 'react';
 
 export interface UpcomingPayment {
   id: string;
@@ -12,6 +13,34 @@ export interface UpcomingPayment {
 }
 
 export function useUpcomingPayments(clientId?: string) {
+  const queryClient = useQueryClient();
+
+  // Subscribe to realtime changes on billing_records for this client
+  useEffect(() => {
+    if (!clientId) return;
+
+    const channel = supabase
+      .channel(`billing-records-upcoming-${clientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'billing_records',
+          filter: `client_id=eq.${clientId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['upcoming-payments', clientId] });
+          queryClient.invalidateQueries({ queryKey: ['billing-records', clientId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [clientId, queryClient]);
+
   return useQuery({
     queryKey: ['upcoming-payments', clientId],
     queryFn: async () => {
@@ -20,24 +49,26 @@ export function useUpcomingPayments(clientId?: string) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Fetch next pending ad_spend billing record
+      // Fetch next pending ad_spend billing record (exclude archived)
       const { data: adSpendData } = await supabase
         .from('billing_records')
         .select('id, billing_type, amount, due_date, status, credit_amount_used')
         .eq('client_id', clientId)
         .eq('billing_type', 'ad_spend')
         .eq('status', 'pending')
+        .is('archived_at', null)
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(1)
         .single();
 
-      // Fetch next pending management billing record
+      // Fetch next pending management billing record (exclude archived)
       const { data: managementData } = await supabase
         .from('billing_records')
         .select('id, billing_type, amount, due_date, status, credit_amount_used')
         .eq('client_id', clientId)
         .eq('billing_type', 'management')
         .eq('status', 'pending')
+        .is('archived_at', null)
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(1)
         .single();

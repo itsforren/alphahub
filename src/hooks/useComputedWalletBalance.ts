@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffect, useRef } from 'react';
 import { usePerformancePercentage, applyPerformancePercentage } from '@/hooks/usePerformancePercentage';
@@ -17,8 +17,37 @@ export interface ComputedWalletBalance {
 const DEFAULT_LOW_BALANCE_THRESHOLD = 150;
 
 export function useComputedWalletBalance(clientId?: string) {
+  const queryClient = useQueryClient();
   // Track if we've already triggered the low balance check for this client
   const lowBalanceCheckedRef = useRef<string | null>(null);
+
+  // Subscribe to realtime changes on wallet_transactions for this client
+  useEffect(() => {
+    if (!clientId) return;
+
+    const channel = supabase
+      .channel(`wallet-realtime-${clientId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wallet_transactions',
+          filter: `client_id=eq.${clientId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['wallet-deposits', clientId] });
+          queryClient.invalidateQueries({ queryKey: ['computed-wallet-balance-rpc', clientId] });
+          queryClient.invalidateQueries({ queryKey: ['client-wallet-tracking', clientId] });
+          queryClient.invalidateQueries({ queryKey: ['wallet-transactions', clientId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [clientId, queryClient]);
 
   // Fetch performance percentage setting
   const { data: performancePercentage, isLoading: percentageLoading } = usePerformancePercentage();
@@ -31,7 +60,7 @@ export function useComputedWalletBalance(clientId?: string) {
       
       const { data, error } = await supabase
         .from('client_wallets')
-        .select('id, tracking_start_date, low_balance_threshold')
+        .select('id, tracking_start_date, low_balance_threshold, created_at')
         .eq('client_id', clientId)
         .maybeSingle();
 
@@ -109,7 +138,9 @@ export function useComputedWalletBalance(clientId?: string) {
   const pct = performancePercentage ?? 0;
   const displayedSpend = applyPerformancePercentage(trackedSpend, pct);
   const remainingBalance = balanceQuery.data ?? 0;
-  const trackingStartDate = walletQuery.data?.tracking_start_date ?? null;
+  // Use tracking_start_date if set, otherwise fall back to wallet created_at date
+  const trackingStartDate = walletQuery.data?.tracking_start_date
+    ?? (walletQuery.data?.created_at ? walletQuery.data.created_at.split('T')[0] : null);
   // Use per-client threshold or default
   const lowBalanceThreshold = walletQuery.data?.low_balance_threshold ?? DEFAULT_LOW_BALANCE_THRESHOLD;
 
