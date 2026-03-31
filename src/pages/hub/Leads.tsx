@@ -91,7 +91,7 @@ export default function Leads() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6 overflow-x-hidden">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6 overflow-x-hidden w-full min-w-0">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-white/90 to-white/60 bg-clip-text text-transparent">

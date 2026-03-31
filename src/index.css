@@ -95,9 +95,16 @@
     @apply border-border;
   }
 
+  html {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
   body {
     @apply bg-background text-foreground font-montserrat antialiased;
     line-height: 1.7;
+    overflow-x: hidden;
+    max-width: 100%;
   }
 
   h1, h2, h3, h4, h5, h6 {

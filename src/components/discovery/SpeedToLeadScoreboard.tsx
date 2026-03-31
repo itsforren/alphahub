@@ -26,7 +26,6 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
   const untouched = useMemo(() => {
     const leads = queueData.queue.filter((l) => (l.call_attempt_count || 0) === 0);
     if (leads.length === 0) return null;
-    // Find oldest untouched lead
     let oldestMs = Infinity;
     leads.forEach((l) => {
       if (l.lead_date) {
@@ -40,7 +39,6 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
     if (ageMinutes < 60) ageLabel = `${Math.round(ageMinutes)}m`;
     else if (ageMinutes < 1440) ageLabel = `${Math.round(ageMinutes / 60)}h`;
     else ageLabel = `${Math.round(ageMinutes / 1440)}d`;
-
     return { count: leads.length, ageLabel };
   }, [queueData.queue]);
 
@@ -65,49 +63,85 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
     rate >= 30 ? 'text-green-400' : rate >= 15 ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <div className="flex items-center gap-x-4 gap-y-1.5 px-3 sm:px-4 py-2.5 rounded-xl bg-muted/20 border border-border/30 text-xs flex-wrap overflow-hidden">
-      {/* Untouched alert */}
-      {untouched && (
-        <span className="flex items-center gap-1.5 font-bold text-red-400">
-          <AlertTriangle className="h-3.5 w-3.5 animate-pulse" />
-          {untouched.count} untouched
-          <span className="text-red-400/60">(oldest: {untouched.ageLabel})</span>
+    <>
+      {/* ═══ MOBILE (compact 2-row) ═══ */}
+      <div className="sm:hidden px-3 py-2 rounded-xl bg-muted/20 border border-border/30 text-xs space-y-1">
+        {untouched && (
+          <div className="flex items-center gap-1.5 font-bold text-red-400">
+            <AlertTriangle className="h-3 w-3 animate-pulse flex-shrink-0" />
+            <span>{untouched.count} untouched · oldest: {untouched.ageLabel}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="flex items-center gap-1 font-semibold text-muted-foreground">
+            <Zap className="h-3 w-3 text-amber-400" />Today
+          </span>
+          <span className="flex items-center gap-1 font-semibold text-foreground">
+            <Phone className="h-3 w-3 text-muted-foreground" />{todayStats.total}
+          </span>
+          <span className="flex items-center gap-1 text-green-400 font-semibold">
+            <PhoneCall className="h-3 w-3" />{todayStats.connected}
+          </span>
+          <span className={cn('flex items-center gap-1 font-semibold', rateColor(pickupRate))}>
+            <TrendingUp className="h-3 w-3" />{pickupRate}%
+          </span>
+          {todayStats.booked > 0 && (
+            <span className="flex items-center gap-1 text-purple-400 font-semibold">
+              <Video className="h-3 w-3" />{todayStats.booked} booked
+            </span>
+          )}
+          {badNumberStats.count > 0 && (
+            <span className="flex items-center gap-1 font-semibold text-red-400">
+              <PhoneOff className="h-3 w-3" />{badNumberStats.pct}% bad
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ DESKTOP (original full bar) ═══ */}
+      <div className="hidden sm:flex items-center gap-x-4 gap-y-1.5 px-4 py-2.5 rounded-xl bg-muted/20 border border-border/30 text-xs flex-wrap overflow-hidden">
+        {untouched && (
+          <span className="flex items-center gap-1.5 font-bold text-red-400">
+            <AlertTriangle className="h-3.5 w-3.5 animate-pulse" />
+            {untouched.count} untouched
+            <span className="text-red-400/60">(oldest: {untouched.ageLabel})</span>
+          </span>
+        )}
+
+        <span className="flex items-center gap-1.5 font-bold text-muted-foreground">
+          <Zap className="h-3.5 w-3.5 text-amber-400" /> Today
         </span>
-      )}
 
-      <span className="flex items-center gap-1.5 font-bold text-muted-foreground">
-        <Zap className="h-3.5 w-3.5 text-amber-400" /> Today
-      </span>
-
-      <span className="flex items-center gap-1 text-foreground font-semibold">
-        <Phone className="h-3 w-3 text-muted-foreground" /> {todayStats.total} calls
-      </span>
-
-      <span className="flex items-center gap-1 text-green-400 font-semibold">
-        <PhoneCall className="h-3 w-3" /> {todayStats.connected} connected
-      </span>
-
-      {todayStats.booked > 0 && (
-        <span className="flex items-center gap-1 text-purple-400 font-semibold">
-          <Video className="h-3 w-3" /> {todayStats.booked} booked
+        <span className="flex items-center gap-1 text-foreground font-semibold">
+          <Phone className="h-3 w-3 text-muted-foreground" /> {todayStats.total} calls
         </span>
-      )}
 
-      <span className={cn('flex items-center gap-1 font-semibold', rateColor(pickupRate))}>
-        <TrendingUp className="h-3 w-3" /> {pickupRate}% pickup
-      </span>
-
-      {todayStats.connected > 0 && (
-        <span className={cn('flex items-center gap-1 font-semibold', rateColor(bookingRate))}>
-          {bookingRate}% booking
+        <span className="flex items-center gap-1 text-green-400 font-semibold">
+          <PhoneCall className="h-3 w-3" /> {todayStats.connected} connected
         </span>
-      )}
 
-      {badNumberStats.count > 0 && (
-        <span className="flex items-center gap-1 font-semibold text-red-400">
-          <PhoneOff className="h-3 w-3" /> Bad #: {badNumberStats.pct}%
+        {todayStats.booked > 0 && (
+          <span className="flex items-center gap-1 text-purple-400 font-semibold">
+            <Video className="h-3 w-3" /> {todayStats.booked} booked
+          </span>
+        )}
+
+        <span className={cn('flex items-center gap-1 font-semibold', rateColor(pickupRate))}>
+          <TrendingUp className="h-3 w-3" /> {pickupRate}% pickup
         </span>
-      )}
-    </div>
+
+        {todayStats.connected > 0 && (
+          <span className={cn('flex items-center gap-1 font-semibold', rateColor(bookingRate))}>
+            {bookingRate}% booking
+          </span>
+        )}
+
+        {badNumberStats.count > 0 && (
+          <span className="flex items-center gap-1 font-semibold text-red-400">
+            <PhoneOff className="h-3 w-3" /> Bad #: {badNumberStats.pct}%
+          </span>
+        )}
+      </div>
+    </>
   );
 }

@@ -111,7 +111,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 pointer-events-none z-10" />
           <input
             type="text"
-            placeholder={`Search ${tabLabels[activeTab] || 'leads'} by name, email, phone, state...`}
+            placeholder={`Search by name, phone, state...`}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); }}
             className="flex h-10 w-full rounded-lg border border-white/[0.08] bg-white/[0.03] pl-10 pr-8 py-2 text-sm text-foreground placeholder:text-white/30 focus:outline-none focus:border-white/[0.15] focus:ring-2 focus:ring-primary/15 transition-all duration-200"
@@ -128,54 +128,56 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
 
         {searchQuery && (
           <p className="text-[11px] text-white/30 px-1">
-            Showing {activeTabFiltered} of {activeTabTotal} in {tabLabels[activeTab]}
+            {activeTabFiltered} of {activeTabTotal} in {tabLabels[activeTab]}
           </p>
         )}
 
-        {/* Filters Row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="h-3 w-3 text-white/15" />
-          <Select value={filterState} onValueChange={(v) => setFilterState(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[90px]">
-              <SelectValue placeholder="State" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">All States</SelectItem>
-              {availableStates.map((s) => (
-                <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterTemp} onValueChange={(v) => setFilterTemp(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[100px]">
-              <SelectValue placeholder="Temperature" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">All Temps</SelectItem>
-              <SelectItem value="hot" className="text-xs">Hot (7-10)</SelectItem>
-              <SelectItem value="warm" className="text-xs">Warm (4-6)</SelectItem>
-              <SelectItem value="cold" className="text-xs">Cold (1-3)</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterAssigned} onValueChange={(v) => setFilterAssigned(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[110px]">
-              <SelectValue placeholder="Assigned To" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all" className="text-xs">All Assignees</SelectItem>
-              {availableAssignees.map((a) => (
-                <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {hasActiveFilters && (
-            <button
-              onClick={() => { setFilterState(''); setFilterTemp(''); setFilterAssigned(''); }}
-              className="text-[10px] text-white/25 hover:text-primary transition-colors"
-            >
-              Clear filters
-            </button>
-          )}
+        {/* Filters Row — scrollable strip, never overflows page */}
+        <div className="overflow-x-auto scrollbar-hide -mx-3 sm:-mx-4 px-3 sm:px-4">
+          <div className="flex items-center gap-2 min-w-max">
+            <Filter className="h-3 w-3 text-white/15 flex-shrink-0" />
+            <Select value={filterState} onValueChange={(v) => setFilterState(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-auto min-w-[80px]">
+                <SelectValue placeholder="State" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All States</SelectItem>
+                {availableStates.map((s) => (
+                  <SelectItem key={s} value={s} className="text-xs">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterTemp} onValueChange={(v) => setFilterTemp(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-auto min-w-[90px]">
+                <SelectValue placeholder="Temp" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All Temps</SelectItem>
+                <SelectItem value="hot" className="text-xs">Hot (7-10)</SelectItem>
+                <SelectItem value="warm" className="text-xs">Warm (4-6)</SelectItem>
+                <SelectItem value="cold" className="text-xs">Cold (1-3)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={filterAssigned} onValueChange={(v) => setFilterAssigned(v === 'all' ? '' : v)}>
+              <SelectTrigger className="h-7 text-xs w-auto min-w-[100px]">
+                <SelectValue placeholder="Assigned" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all" className="text-xs">All Assignees</SelectItem>
+                {availableAssignees.map((a) => (
+                  <SelectItem key={a} value={a} className="text-xs">{a}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hasActiveFilters && (
+              <button
+                onClick={() => { setFilterState(''); setFilterTemp(''); setFilterAssigned(''); }}
+                className="text-[10px] text-white/25 hover:text-primary transition-colors flex-shrink-0"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
