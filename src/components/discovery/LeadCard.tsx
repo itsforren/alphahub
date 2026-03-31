@@ -16,6 +16,42 @@ interface LeadCardProps {
   subaccountId?: string | null;
 }
 
+// Abbreviated stage labels for mobile badges (keep short)
+const mobileStageLabel: Record<string, string> = {
+  new: 'New',
+  attempt_1: 'Att.1',
+  attempt_2: 'Att.2',
+  attempt_3: 'Att.3',
+  attempt_4: 'Att.4',
+  intro_scheduled: 'Intro',
+  callback_scheduled: 'CB',
+  discovery_complete: 'Book',
+  strategy_booked: 'Strategy',
+  booked: 'Booked',
+  no_show: 'No-Show',
+  strategy_no_show: 'No-Show',
+  cancelled: 'Cancelled',
+  reschedule_needed: 'Reschedule',
+  lost: 'Lost',
+  long_term_nurture: 'Nurture',
+  completed: 'Done',
+};
+
+const avatarColors = [
+  'bg-emerald-500/20 text-emerald-400',
+  'bg-blue-500/20 text-blue-400',
+  'bg-purple-500/20 text-purple-400',
+  'bg-amber-500/20 text-amber-400',
+  'bg-rose-500/20 text-rose-400',
+  'bg-cyan-500/20 text-cyan-400',
+  'bg-violet-500/20 text-violet-400',
+];
+
+function getAvatarColor(name: string): string {
+  const idx = (name.charCodeAt(0) || 0) % avatarColors.length;
+  return avatarColors[idx];
+}
+
 const stageConfig: Record<string, { label: string; color: string }> = {
   new: { label: 'New', color: 'bg-blue-500/15 text-blue-400 border-blue-500/40' },
   attempt_1: { label: 'Attempt 1', color: 'bg-amber-500/15 text-amber-400 border-amber-500/40' },
@@ -170,7 +206,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
       onClick={isWorkedByOther ? undefined : onClick}
       disabled={isWorkedByOther}
       className={cn(
-        'w-full text-left rounded-xl border transition-all duration-200 group overflow-hidden',
+        'w-full min-w-0 text-left rounded-xl border transition-all duration-200 group overflow-hidden',
         isWorkedByOther
           ? 'opacity-50 cursor-not-allowed border-border bg-muted/20'
           : badNumber
@@ -178,52 +214,76 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
             : 'border-border/50 bg-card/50 hover:bg-card hover:border-primary/20 hover:shadow-[0_0_20px_hsl(var(--primary)/0.08)] cursor-pointer'
       )}
     >
-      {/* ═══ MOBILE LAYOUT (compact single-row) ═══ */}
-      <div className="sm:hidden p-2.5">
-        {/* Row 1: dot + name + freshness + stage badge + chevron */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', freshness.dot)} />
-          <span className="font-semibold text-sm text-foreground truncate flex-1">{name}</span>
-          <span className={cn('text-[10px] font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
-          <TemperatureBadge temp={lead.discovery_temperature} />
-          <Badge variant="outline" className={cn('text-[9px] font-bold px-1.5 py-0 flex-shrink-0', stage.color)}>
-            {stage.label}
-          </Badge>
-          <span className="text-muted-foreground/40 text-sm flex-shrink-0">›</span>
+      {/* ═══ MOBILE LAYOUT ═══ */}
+      <div className="sm:hidden p-3">
+        <div className="flex items-center gap-2.5 min-w-0 overflow-hidden">
+          {/* Avatar */}
+          <div className={cn(
+            'w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-black',
+            badNumber ? 'bg-red-500/20 text-red-400' : getAvatarColor(name)
+          )}>
+            {name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?'}
+          </div>
+
+          {/* Center: name + secondary */}
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {/* Name row */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', freshness.dot)} />
+              <span className="font-semibold text-sm text-foreground truncate min-w-0">{name}</span>
+            </div>
+            {/* Phone · state · age */}
+            <div className="flex items-center gap-1 mt-0.5 min-w-0 overflow-hidden">
+              {lead.phone && (
+                <a
+                  href={`tel:${lead.phone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-[11px] text-muted-foreground hover:text-primary truncate"
+                >
+                  {lead.phone}
+                </a>
+              )}
+              {stateAbbr && <span className="text-[11px] text-white/25 flex-shrink-0">· {stateAbbr}</span>}
+              {lead.age && <span className="text-[11px] text-white/25 flex-shrink-0">· {lead.age}y</span>}
+            </div>
+          </div>
+
+          {/* Right: stage badge + freshness + chevron */}
+          <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
+            <div className="flex items-center gap-1">
+              <Badge variant="outline" className={cn('text-[9px] font-bold px-1.5 py-0 leading-5', stage.color)}>
+                {mobileStageLabel[lead.discovery_stage || 'new'] || stage.label}
+              </Badge>
+              <span className="text-muted-foreground/30 text-base leading-none">›</span>
+            </div>
+            {freshness.label && (
+              <span className={cn('text-[10px] font-semibold', freshness.text)}>{freshness.label}</span>
+            )}
+          </div>
         </div>
 
-        {/* Row 2: phone · state · age — single line */}
-        <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground truncate">
-          {lead.phone && (
-            <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 hover:text-primary flex-shrink-0">
-              <Phone className="h-2.5 w-2.5" />{lead.phone}
-            </a>
-          )}
-          {stateAbbr && <span className="flex-shrink-0">{stateAbbr}</span>}
-          {lead.age && <span className="flex-shrink-0">Age {lead.age}</span>}
-        </div>
-
-        {/* Row 3: contextual info — only show what's critical */}
-        {(appointmentTime || (lead.discovery_stage === 'lost' && lead.lost_reason) || isActiveStage || isWorkedByOther) && (
-          <div className="mt-1">
-            {appointmentTime && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-green-400 font-medium">
-                <CalendarDays className="h-2.5 w-2.5" />{appointmentTime}
-              </span>
-            )}
-            {lead.discovery_stage === 'lost' && lead.lost_reason && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-red-400/80">
-                <AlertTriangle className="h-2.5 w-2.5" />{formatLostReason(lead.lost_reason)}
-              </span>
-            )}
-            {isActiveStage && (
-              <CadenceSuggestion attemptCount={lead.call_attempt_count || 0} lastAttemptAt={lead.last_call_attempt_at} />
-            )}
-            {isWorkedByOther && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
-                <Loader2 className="h-2.5 w-2.5 animate-spin" />Being worked by {lead.last_attempted_by}
-              </span>
-            )}
+        {/* Sub-row: appointment / cadence / lost reason — always truncated */}
+        {appointmentTime && (
+          <div className="flex items-center gap-1 mt-1.5 ml-[46px] text-[10px] text-green-400 font-medium min-w-0 overflow-hidden">
+            <CalendarDays className="h-2.5 w-2.5 flex-shrink-0" />
+            <span className="truncate">{appointmentTime}</span>
+          </div>
+        )}
+        {!appointmentTime && isActiveStage && (
+          <div className="mt-1 ml-[46px] min-w-0 overflow-hidden">
+            <CadenceSuggestion attemptCount={lead.call_attempt_count || 0} lastAttemptAt={lead.last_call_attempt_at} />
+          </div>
+        )}
+        {lead.discovery_stage === 'lost' && lead.lost_reason && (
+          <div className="flex items-center gap-1 mt-1 ml-[46px] text-[10px] text-red-400/70 min-w-0 overflow-hidden">
+            <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" />
+            <span className="truncate">{formatLostReason(lead.lost_reason)}</span>
+          </div>
+        )}
+        {isWorkedByOther && (
+          <div className="flex items-center gap-1 mt-1 ml-[46px] text-[10px] text-amber-400 min-w-0 overflow-hidden">
+            <Loader2 className="h-2.5 w-2.5 animate-spin flex-shrink-0" />
+            <span className="truncate">Being worked by {lead.last_attempted_by}</span>
           </div>
         )}
       </div>

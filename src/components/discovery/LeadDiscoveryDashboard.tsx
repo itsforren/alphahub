@@ -217,7 +217,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         </TabsList>
 
         {/* Dial Queue */}
-        <TabsContent value="queue" className="space-y-3">
+        <TabsContent value="queue" className="space-y-3 min-w-0 overflow-hidden">
           {data.failedDelivery.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-sm">
               <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
@@ -248,27 +248,27 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           )}
         </TabsContent>
 
-        <TabsContent value="callbacks" className="space-y-2">
+        <TabsContent value="callbacks" className="space-y-2 min-w-0 overflow-hidden">
           {filteredCallbacks.length === 0 ? <EmptyState icon={PhoneForwarded} message="No callbacks scheduled" /> :
             filteredCallbacks.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="intro-booked" className="space-y-2">
+        <TabsContent value="intro-booked" className="space-y-2 min-w-0 overflow-hidden">
           {filteredIntroBooked.length === 0 ? <EmptyState icon={Headphones} message="No intro calls booked" /> :
             filteredIntroBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="strategy-booked" className="space-y-2">
+        <TabsContent value="strategy-booked" className="space-y-2 min-w-0 overflow-hidden">
           {filteredStrategyBooked.length === 0 ? <EmptyState icon={Video} message="No strategy calls booked" /> :
             filteredStrategyBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="all" className="space-y-2">
+        <TabsContent value="all" className="space-y-2 min-w-0 overflow-hidden">
           {filteredAll.length === 0 ? <EmptyState icon={Users} message="No contacts found" /> :
             filteredAll.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="lost" className="space-y-2">
+        <TabsContent value="lost" className="space-y-2 min-w-0 overflow-hidden">
           {filteredLost.length === 0 ? <EmptyState icon={XCircle} message="None" /> :
             filteredLost.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
