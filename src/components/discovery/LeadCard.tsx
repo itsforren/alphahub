@@ -166,7 +166,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
       onClick={isWorkedByOther ? undefined : onClick}
       disabled={isWorkedByOther}
       className={cn(
-        'w-full text-left p-4 rounded-xl border transition-all duration-200 group',
+        'w-full text-left p-3 sm:p-4 rounded-xl border transition-all duration-200 group overflow-hidden',
         isWorkedByOther
           ? 'opacity-50 cursor-not-allowed border-border bg-muted/20'
           : badNumber
@@ -184,27 +184,27 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
             <TemperatureBadge temp={lead.discovery_temperature} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs text-muted-foreground overflow-hidden">
             {lead.phone && (
               <a
                 href={`tel:${lead.phone}`}
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 hover:text-primary transition-colors"
+                className="inline-flex items-center gap-1 hover:text-primary transition-colors flex-shrink-0"
               >
-                <Phone className="h-3 w-3" />
-                {lead.phone}
+                <Phone className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{lead.phone}</span>
               </a>
             )}
             {lead.email && (
-              <span className="inline-flex items-center gap-1 truncate max-w-[140px] sm:max-w-[200px]">
+              <span className="inline-flex items-center gap-1 min-w-0">
                 <Mail className="h-3 w-3 flex-shrink-0" />
-                {lead.email}
+                <span className="truncate max-w-[120px] sm:max-w-[200px]">{lead.email}</span>
               </span>
             )}
-            {lead.age && <span>Age {lead.age}</span>}
+            {lead.age && <span className="flex-shrink-0">Age {lead.age}</span>}
             {lead.state && (
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1 flex-shrink-0">
+                <MapPin className="h-3 w-3 flex-shrink-0" />
                 {lead.state}
               </span>
             )}

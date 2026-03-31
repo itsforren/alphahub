@@ -103,7 +103,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
       <SpeedToLeadScoreboard stats={stats} queueData={data} />
 
       {/* Search + Filters */}
-      <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-4 space-y-3 overflow-hidden">
+      <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-3 sm:p-4 space-y-3 overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
 
         {/* Search */}
@@ -181,7 +181,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
 
       {/* Tabs */}
       <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="w-full justify-start overflow-x-auto">
+        <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide -mx-1 px-1">
           <TabsTrigger value="queue" className="gap-1.5">
             <PhoneCall className="h-3.5 w-3.5" />
             Dial

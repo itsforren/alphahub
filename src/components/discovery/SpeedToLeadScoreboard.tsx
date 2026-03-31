@@ -65,7 +65,7 @@ export function SpeedToLeadScoreboard({ stats, queueData }: SpeedToLeadScoreboar
     rate >= 30 ? 'text-green-400' : rate >= 15 ? 'text-amber-400' : 'text-red-400';
 
   return (
-    <div className="flex items-center gap-4 px-4 py-2.5 rounded-xl bg-muted/20 border border-border/30 text-xs flex-wrap">
+    <div className="flex items-center gap-x-4 gap-y-1.5 px-3 sm:px-4 py-2.5 rounded-xl bg-muted/20 border border-border/30 text-xs flex-wrap overflow-hidden">
       {/* Untouched alert */}
       {untouched && (
         <span className="flex items-center gap-1.5 font-bold text-red-400">
