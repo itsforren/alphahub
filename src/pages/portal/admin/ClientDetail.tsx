@@ -907,6 +907,15 @@ export default function PortalAdminClientDetail() {
             )}
 
 
+            {/* Discovery Call Stats — above ad performance metrics */}
+            {client.agent_id && (
+              <div className="space-y-4">
+                <DiscoveryStatsSection agentId={client.agent_id} />
+                <CallerLeaderboard agentId={client.agent_id} />
+                {!isClientView && <DailyWeeklyReport agentId={client.agent_id} />}
+              </div>
+            )}
+
             {/* Performance Metrics */}
             {metrics && showPerformance && (
               <div className="space-y-3">
@@ -924,15 +933,6 @@ export default function PortalAdminClientDetail() {
                   <MetricCard label="LTSA Cost" value={metrics.ltsaCost} format="currency" />
                   <MetricCard label="LTSA %" value={metrics.ltsaPercentage} format="percent" />
                 </div>
-              </div>
-            )}
-
-            {/* Discovery Call Stats — pickup rate, connection rate, booking rate */}
-            {client.agent_id && (
-              <div className="space-y-4">
-                <DiscoveryStatsSection agentId={client.agent_id} />
-                <CallerLeaderboard agentId={client.agent_id} />
-                {!isClientView && <DailyWeeklyReport agentId={client.agent_id} />}
               </div>
             )}
 
