@@ -95,7 +95,7 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
   const totalLeads = pieData.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+    <div className="relative rounded-2xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-xl overflow-hidden">
       {/* Top shine */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.10] to-transparent" />
 
@@ -124,7 +124,7 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
         {/* Pipeline + Activity */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Donut chart */}
-          <div className="relative rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="relative rounded-xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-sm p-4">
             <p className="text-xs font-semibold text-foreground mb-3">Pipeline Distribution</p>
             <div className="flex items-center gap-4">
               {/* Donut */}
@@ -174,7 +174,7 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
           </div>
 
           {/* Recent Activity */}
-          <div className="relative rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="relative rounded-xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-sm p-4">
             <p className="text-xs font-semibold text-foreground mb-3">Recent Activity</p>
             {stats.recentActivity.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">No calls yet</p>
@@ -224,7 +224,7 @@ function KpiCard({
   color: string;
 }) {
   return (
-    <div className="glass-panel-premium p-4 group transition-all duration-300 hover:border-white/[0.1] cursor-default">
+    <div className="glass-panel-premium p-4 group transition-all duration-300 hover:border-white/[0.1] cursor-default" style={{ background: 'rgba(255,255,255,0.008)' }}>
       {/* Corner glow */}
       <div className="absolute top-0 left-0 w-24 h-24 bg-primary/[0.03] rounded-full blur-3xl -translate-x-8 -translate-y-8 group-hover:bg-primary/[0.06] transition-colors duration-700" />
       <div className="flex items-start justify-between relative z-10">
