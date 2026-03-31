@@ -534,11 +534,11 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl rounded-2xl">
+      <DialogContent className="max-w-3xl w-full sm:w-[95vw] h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-y-auto p-0 gap-0 border-0 sm:border sm:border-white/[0.06] bg-[rgba(8,8,8,0.98)] sm:bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl rounded-none sm:rounded-2xl">
         {/* Header with Location Map */}
         <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
-          <div className="flex gap-5 p-5">
+          <div className="flex gap-5 p-4 sm:p-5">
             {/* Location Map */}
             {stateInfo && (
               <div className="flex-shrink-0 hidden sm:block">
@@ -561,7 +561,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 mt-3">
                 {lead.phone && (
                   <a href={`tel:${lead.phone}`} className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-primary transition-colors">
                     <Phone className="h-3.5 w-3.5 text-white/25" /> {lead.phone}

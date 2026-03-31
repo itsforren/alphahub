@@ -376,7 +376,7 @@ export function DiscoveryCallForm({ lead, agentId, onSave, saving }: DiscoveryCa
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 h-12 font-bold text-base bg-gradient-to-r from-pink-600 via-pink-700 to-amber-700 hover:from-pink-500 hover:via-pink-600 hover:to-amber-600 shadow-lg"
+            className="flex-1 h-12 font-bold text-base bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 shadow-lg"
           >
             {saving ? 'Saving...' : 'Save & Continue'}
           </Button>

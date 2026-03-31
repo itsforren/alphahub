@@ -54,20 +54,20 @@ export function NewLeadPopup({ lead, onView, onDismiss }: NewLeadPopupProps) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -20, scale: 0.95 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed top-4 right-4 z-[999] w-[340px] rounded-2xl border border-primary/30 bg-background/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_0_0_1px_rgba(244,114,182,0.1)] overflow-hidden"
+          className="fixed top-4 right-4 z-[999] w-[340px] rounded-2xl border border-emerald-500/30 bg-background/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_0_0_1px_rgba(16,185,129,0.1)] overflow-hidden"
         >
           {/* Gradient accent bar */}
-          <div className="h-1 bg-gradient-to-r from-pink-500 via-amber-500 to-pink-500 animate-pulse" />
+          <div className="h-1 bg-gradient-to-r from-emerald-500 via-amber-500 to-emerald-500 animate-pulse" />
 
           <div className="p-4">
             {/* Header */}
             <div className="flex items-start justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-pink-500 to-amber-500 flex items-center justify-center">
+                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-emerald-500 to-amber-500 flex items-center justify-center">
                   <PhoneCall className="h-4 w-4 text-white" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-pink-400">New Lead</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">New Lead</p>
                   <p className="text-base font-bold text-foreground">{name}</p>
                 </div>
               </div>
@@ -108,7 +108,7 @@ export function NewLeadPopup({ lead, onView, onDismiss }: NewLeadPopupProps) {
                 setVisible(false);
                 onView();
               }}
-              className="w-full h-9 font-bold text-sm bg-gradient-to-r from-pink-600 to-amber-600 hover:from-pink-500 hover:to-amber-500"
+              className="w-full h-9 font-bold text-sm bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600"
             >
               <PhoneCall className="h-4 w-4 mr-2" />
               View Lead

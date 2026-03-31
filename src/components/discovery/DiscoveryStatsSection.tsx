@@ -64,7 +64,7 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
           icon={ListTodo}
           label="Queue Depth"
           value={String(stats.queueDepth.reduce((sum, d) => sum + d.count, 0))}
-          accent="pink"
+          accent="blue"
         />
         <StatCard
           icon={XCircle}

@@ -94,7 +94,7 @@ export default function Leads() {
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-amber-500 bg-clip-text text-transparent">
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-white/90 to-white/60 bg-clip-text text-transparent">
           Dial Tracker
         </h1>
         <p className="text-sm text-muted-foreground mt-1">

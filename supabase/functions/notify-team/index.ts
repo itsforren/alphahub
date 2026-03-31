@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
           ${lead.email ? `<tr><td style="padding: 4px 0; color: #999;">Email</td><td style="padding: 4px 0;">${escapeHtml(lead.email)}</td></tr>` : ''}
           ${lead.interest ? `<tr><td style="padding: 4px 0; color: #999;">Interest</td><td style="padding: 4px 0;">${escapeHtml(lead.interest)}</td></tr>` : ''}
         </table>
-        <a href="${dialLink}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #ec4899, #f59e0b); color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 16px;">
+        <a href="${dialLink}" style="display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #059669, #10b981); color: white; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 16px;">
           Open Dial Tracker
         </a>
       </div>
