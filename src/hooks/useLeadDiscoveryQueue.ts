@@ -22,6 +22,7 @@ export interface DiscoveryLead {
   call_attempt_count: number;
   last_attempted_by: string | null;
   last_attempted_by_id: string | null;
+  assigned_to: string | null;
   currently_being_worked: boolean;
   work_started_at: string | null;
   lost_reason: string | null;
@@ -67,7 +68,8 @@ const LEAD_SELECT = `
   strategy_booked_at, intro_scheduled_at, booked_call_at,
   target_premium, submitted_premium, approved_premium, issued_premium,
   submitted_at, approved_at, issued_at,
-  interest, savings, investments, employment
+  interest, savings, investments, employment,
+  assigned_to
 `;
 
 const STALE_WORK_MINUTES = 30;

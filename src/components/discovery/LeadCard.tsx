@@ -259,6 +259,9 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
             {freshness.label && (
               <span className={cn('text-[10px] font-semibold', freshness.text)}>{freshness.label}</span>
             )}
+            {lead.assigned_to && (
+              <span className="text-[9px] text-white/25 font-medium">{lead.assigned_to.split(' ')[0]}</span>
+            )}
           </div>
         </div>
 
@@ -402,6 +405,11 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
               <span className="text-muted-foreground/50 group-hover:text-primary transition-colors text-lg">›</span>
             </div>
             {isActiveStage && <AttemptProgressBar attempts={lead.call_attempt_count || 0} />}
+            {lead.assigned_to && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-white/40 font-medium">
+                {lead.assigned_to}
+              </span>
+            )}
           </div>
         </div>
       </div>

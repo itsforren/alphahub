@@ -224,6 +224,31 @@ serve(async (req) => {
 
     console.log('Lead created successfully:', newLead.id);
 
+    // ── Round-robin assignment (scoped to specific agents only) ──────────────
+    const ROUND_ROBIN_CONFIG: Record<string, string[]> = {
+      'EIx4YsVXAfD6hoIX2ixz': ['Forren', 'Sierra'],
+    };
+    const rrCallers = ROUND_ROBIN_CONFIG[leadData.agent_id];
+    if (rrCallers && rrCallers.length > 1) {
+      try {
+        const { data: lastAssigned } = await supabase
+          .from('leads')
+          .select('assigned_to')
+          .eq('agent_id', leadData.agent_id)
+          .not('assigned_to', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const lastIdx = rrCallers.indexOf(lastAssigned?.assigned_to || '');
+        const nextIdx = (lastIdx + 1) % rrCallers.length;
+        const assignedTo = rrCallers[nextIdx];
+        await supabase.from('leads').update({ assigned_to: assignedTo }).eq('id', newLead.id);
+        console.log(`Round-robin assigned lead ${newLead.id} to: ${assignedTo}`);
+      } catch (rrErr) {
+        console.error('Round-robin assignment failed (non-fatal):', rrErr);
+      }
+    }
+
     // Track pipeline metric: stored
     try {
       await supabase.rpc('increment_pipeline_metric', {
