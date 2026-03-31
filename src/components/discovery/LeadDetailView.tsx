@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { LocationMap } from '@/components/ui/location-map';
-import { AnimatedActionButton } from '@/components/ui/animated-action-button';
 import {
   Phone, Mail, MapPin, ExternalLink, PhoneCall, Calendar,
   Briefcase, Users, Baby, DollarSign, Target, Heart, Shield,
@@ -572,46 +571,42 @@ export function LeadDetailView({
       )}
 
       {/* ── Action Buttons ─────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-3 pt-4">
-        <AnimatedActionButton
-          label="Call Again"
-          icon={Phone}
+      <div className="flex flex-col gap-2.5 pt-4">
+        <button
           onClick={onCallAgain}
-          highlightHueDeg={140}
-          size="lg"
-          fullWidth
-        />
+          className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-medium text-sm hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-[0.98] transition-all duration-200"
+        >
+          <Phone className="h-4 w-4" />
+          Call Again
+        </button>
 
         {canBookStrategy && (
-          <AnimatedActionButton
-            label="Book Strategy Call"
-            icon={Calendar}
+          <button
             onClick={onBookStrategy}
-            highlightHueDeg={210}
-            size="lg"
-            fullWidth
-          />
+            className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 font-medium text-sm hover:bg-blue-500/20 hover:border-blue-500/40 active:scale-[0.98] transition-all duration-200"
+          >
+            <Calendar className="h-4 w-4" />
+            Book Strategy Call
+          </button>
         )}
 
         {canRescheduleStrategy && (
-          <AnimatedActionButton
-            label="Reschedule Strategy"
-            icon={Calendar}
+          <button
             onClick={onRescheduleStrategy}
-            highlightHueDeg={40}
-            size="lg"
-            fullWidth
-          />
+            className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 font-medium text-sm hover:bg-amber-500/20 hover:border-amber-500/40 active:scale-[0.98] transition-all duration-200"
+          >
+            <Calendar className="h-4 w-4" />
+            Reschedule Strategy
+          </button>
         )}
 
-        <AnimatedActionButton
-          label="Back to Dashboard"
-          icon={ArrowLeft}
+        <button
           onClick={onClose}
-          highlightHueDeg={220}
-          size="md"
-          fullWidth
-        />
+          className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-white/40 font-medium text-sm hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.98] transition-all duration-200"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Dashboard
+        </button>
       </div>
     </div>
   );

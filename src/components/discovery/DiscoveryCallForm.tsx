@@ -203,7 +203,7 @@ export function DiscoveryCallForm({ lead, agentId, onSave, saving }: DiscoveryCa
   };
 
   return (
-    <div className="space-y-4 pb-28 sm:pb-24">
+    <div className="space-y-4 pb-4">
       {/* Interest Section */}
       <SectionCard title="Why They Looked Into IULs" icon={Lightbulb} accent="amber">
         <div className="space-y-2">
@@ -371,8 +371,8 @@ export function DiscoveryCallForm({ lead, agentId, onSave, saving }: DiscoveryCa
       </SectionCard>
 
       {/* Save Bar — saves discovery data, then sheet handles booking/outcome */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur-xl border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.3)]">
-        <div className="max-w-2xl mx-auto flex gap-3">
+      <div className="sticky bottom-0 z-50 -mx-4 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-background/95 backdrop-blur-xl border-t border-border shadow-[0_-4px_24px_rgba(0,0,0,0.3)]">
+        <div className="flex gap-3">
           <Button
             onClick={handleSave}
             disabled={saving}

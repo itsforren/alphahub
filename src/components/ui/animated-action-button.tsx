@@ -56,7 +56,7 @@ export function AnimatedActionButton({
           fullWidth && "w-full",
           SIZE_CLASSES[size],
         )}
-        style={{ "--highlight-hue": `${highlightHueDeg}deg` } as React.CSSProperties}
+        style={{ "--highlight-hue": `${highlightHueDeg}` } as React.CSSProperties}
       >
         {/* Icon — either custom Lucide icon or default sparkle SVG */}
         {Icon ? (

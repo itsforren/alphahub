@@ -4,7 +4,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LocationMap } from '@/components/ui/expand-map';
-import { AnimatedActionButton } from '@/components/ui/animated-action-button';
 import { Phone, Mail, MapPin, CheckCircle, PhoneMissed, PhoneOff, Clock, Loader2, AlertTriangle, RotateCcw, XCircle, PhoneForwarded, Sprout, PhoneCall, Calendar, Video, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { DiscoveryCallForm } from './DiscoveryCallForm';
@@ -654,27 +653,25 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
               <div className="flex flex-col gap-4 max-w-md mx-auto">
                 {/* Primary actions */}
                 <div className="flex gap-3">
-                  <AnimatedActionButton
-                    label="Yes, let's go"
-                    icon={CheckCircle}
+                  <button
                     onClick={handleAnswered}
-                    highlightHueDeg={140}
-                    size="lg"
-                    fullWidth
-                  />
-                  <AnimatedActionButton
-                    label="No Answer"
-                    icon={PhoneMissed}
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-4 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-medium text-base hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-[0.97] transition-all duration-200"
+                  >
+                    <CheckCircle className="h-5 w-5" />
+                    Yes, let's go
+                  </button>
+                  <button
                     onClick={handleNoAnswer}
-                    highlightHueDeg={0}
-                    size="lg"
-                    fullWidth
                     disabled={saveCall.isPending}
-                  />
+                    className="flex-1 flex items-center justify-center gap-2 px-5 py-4 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400 font-medium text-base hover:bg-red-500/20 hover:border-red-500/40 active:scale-[0.97] transition-all duration-200 disabled:opacity-40"
+                  >
+                    <PhoneMissed className="h-5 w-5" />
+                    No Answer
+                  </button>
                 </div>
 
                 {/* Schedule section divider */}
-                <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-3 mt-1">
                   <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
                   <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/20">Schedule</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
@@ -682,36 +679,21 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
                 {/* Schedule buttons */}
                 <div className="flex gap-2">
-                  <AnimatedActionButton
-                    label="Callback"
-                    icon={Clock}
-                    onClick={handleBadTiming}
-                    highlightHueDeg={40}
-                    size="sm"
-                    fullWidth
-                  />
-                  <AnimatedActionButton
-                    label="Discovery"
-                    icon={Calendar}
-                    onClick={() => setStep('schedule_discovery')}
-                    highlightHueDeg={210}
-                    size="sm"
-                    fullWidth
-                  />
-                  <AnimatedActionButton
-                    label="Strategy"
-                    icon={Video}
-                    onClick={() => setStep('schedule_strategy')}
-                    highlightHueDeg={270}
-                    size="sm"
-                    fullWidth
-                  />
+                  <button onClick={handleBadTiming} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500/8 border border-amber-500/20 text-amber-400/80 text-xs font-medium hover:bg-amber-500/15 hover:border-amber-500/35 active:scale-[0.97] transition-all duration-200">
+                    <Clock className="h-3.5 w-3.5" /> Callback
+                  </button>
+                  <button onClick={() => setStep('schedule_discovery')} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-500/8 border border-blue-500/20 text-blue-400/80 text-xs font-medium hover:bg-blue-500/15 hover:border-blue-500/35 active:scale-[0.97] transition-all duration-200">
+                    <Calendar className="h-3.5 w-3.5" /> Discovery
+                  </button>
+                  <button onClick={() => setStep('schedule_strategy')} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-500/8 border border-purple-500/20 text-purple-400/80 text-xs font-medium hover:bg-purple-500/15 hover:border-purple-500/35 active:scale-[0.97] transition-all duration-200">
+                    <Video className="h-3.5 w-3.5" /> Strategy
+                  </button>
                 </div>
 
-                {/* Bad number — subtle at bottom */}
+                {/* Bad number */}
                 <button
                   onClick={() => setStep('bad_number')}
-                  className="flex items-center justify-center gap-1.5 text-xs text-white/20 hover:text-red-400 transition-colors mt-2 mx-auto"
+                  className="flex items-center justify-center gap-1.5 text-xs text-white/20 hover:text-red-400 transition-colors mt-1 mx-auto"
                 >
                   <PhoneOff className="h-3.5 w-3.5" />
                   Bad Number
@@ -893,31 +875,33 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
               </div>
 
               {/* Qualifies toggle */}
-              <div className="p-4 rounded-xl border border-border bg-card/50 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">Qualifies?</p>
+              <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/30">Qualifies?</p>
                 <div className="flex gap-2">
-                  <Button
+                  <button
                     type="button"
-                    variant="outline"
                     className={cn(
-                      'flex-1',
-                      qualifies === 'yes' && 'border-green-500 bg-green-500/10 text-green-400'
+                      'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 border',
+                      qualifies === 'yes'
+                        ? 'border-green-500/40 bg-green-500/15 text-green-400 shadow-[0_0_15px_rgba(34,197,94,0.1)]'
+                        : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:bg-white/[0.05]'
                     )}
                     onClick={() => { setQualifies('yes'); setDqReasons([]); }}
                   >
                     Yes
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     type="button"
-                    variant="outline"
                     className={cn(
-                      'flex-1',
-                      qualifies === 'no' && 'border-rose-500 bg-rose-500/10 text-rose-400'
+                      'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 border',
+                      qualifies === 'no'
+                        ? 'border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]'
+                        : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:bg-white/[0.05]'
                     )}
                     onClick={() => setQualifies('no')}
                   >
                     No
-                  </Button>
+                  </button>
                 </div>
                 {qualifies === 'no' && (
                   <div className="mt-3 space-y-2">
@@ -956,31 +940,33 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
               </div>
 
               {/* Annuity opportunity toggle */}
-              <div className="p-4 rounded-xl border border-border bg-card/50 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60">Potential Annuity Opportunity?</p>
+              <div className="p-4 rounded-xl border border-white/[0.06] bg-white/[0.02] space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/30">Potential Annuity Opportunity?</p>
                 <div className="flex gap-2">
-                  <Button
+                  <button
                     type="button"
-                    variant="outline"
                     className={cn(
-                      'flex-1',
-                      annuityOpportunity === 'yes' && 'border-green-500 bg-green-500/10 text-green-400'
+                      'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 border',
+                      annuityOpportunity === 'yes'
+                        ? 'border-green-500/40 bg-green-500/15 text-green-400 shadow-[0_0_15px_rgba(34,197,94,0.1)]'
+                        : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:bg-white/[0.05]'
                     )}
                     onClick={() => setAnnuityOpportunity('yes')}
                   >
                     Yes
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     type="button"
-                    variant="outline"
                     className={cn(
-                      'flex-1',
-                      annuityOpportunity === 'no' && 'border-rose-500 bg-rose-500/10 text-rose-400'
+                      'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 border',
+                      annuityOpportunity === 'no'
+                        ? 'border-red-500/40 bg-red-500/15 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.1)]'
+                        : 'border-white/[0.06] bg-white/[0.02] text-white/40 hover:bg-white/[0.05]'
                     )}
                     onClick={() => setAnnuityOpportunity('no')}
                   >
                     No
-                  </Button>
+                  </button>
                 </div>
               </div>
 
@@ -1001,54 +987,23 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
               )}
 
               {/* Not scheduling? — outcome options */}
-              <div className="border-t border-border/30 pt-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/50 text-center mb-3">
+              <div className="border-t border-white/[0.06] pt-4">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/20 text-center mb-3">
                   Not scheduling a call?
                 </p>
                 <div className="flex flex-wrap gap-2 justify-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs border-rose-500/30 text-rose-400 hover:bg-rose-500/10"
-                    onClick={() => handleSkipWithOutcome('not_a_fit')}
-                  >
-                    <XCircle className="h-3.5 w-3.5 mr-1.5" />
-                    Not a Fit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10"
-                    onClick={() => {
-                      if (!showCallBackPicker) {
-                        setShowCallBackPicker(true);
-                      } else if (callBackDate) {
-                        handleSkipWithOutcome('call_back', callBackDate);
-                      } else {
-                        handleSkipWithOutcome('call_back');
-                      }
-                    }}
-                  >
-                    <PhoneForwarded className="h-3.5 w-3.5 mr-1.5" />
-                    {showCallBackPicker && callBackDate ? 'Confirm Call Back' : 'Call Back Later'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
-                    onClick={() => handleSkipWithOutcome('long_term_nurture')}
-                  >
-                    <Sprout className="h-3.5 w-3.5 mr-1.5" />
-                    Long-Term Nurture
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs text-muted-foreground"
-                    onClick={() => handleSkipWithOutcome('cant_book_now')}
-                  >
+                  <button onClick={() => handleSkipWithOutcome('not_a_fit')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/8 border border-red-500/20 text-red-400/80 text-xs font-medium hover:bg-red-500/15 hover:border-red-500/35 active:scale-[0.97] transition-all duration-200">
+                    <XCircle className="h-3.5 w-3.5" /> Not a Fit
+                  </button>
+                  <button onClick={() => { if (!showCallBackPicker) { setShowCallBackPicker(true); } else if (callBackDate) { handleSkipWithOutcome('call_back', callBackDate); } else { handleSkipWithOutcome('call_back'); } }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/8 border border-amber-500/20 text-amber-400/80 text-xs font-medium hover:bg-amber-500/15 hover:border-amber-500/35 active:scale-[0.97] transition-all duration-200">
+                    <PhoneForwarded className="h-3.5 w-3.5" /> {showCallBackPicker && callBackDate ? 'Confirm Call Back' : 'Call Back Later'}
+                  </button>
+                  <button onClick={() => handleSkipWithOutcome('long_term_nurture')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/8 border border-purple-500/20 text-purple-400/80 text-xs font-medium hover:bg-purple-500/15 hover:border-purple-500/35 active:scale-[0.97] transition-all duration-200">
+                    <Sprout className="h-3.5 w-3.5" /> Nurture
+                  </button>
+                  <button onClick={() => handleSkipWithOutcome('cant_book_now')} className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white/40 text-xs font-medium hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.97] transition-all duration-200">
                     Save Without Outcome
-                  </Button>
+                  </button>
                 </div>
 
                 {/* Call Back date/time picker */}
@@ -1062,27 +1017,12 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                       className="w-full h-10 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                     />
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 text-xs bg-amber-500/20 text-amber-400 border border-amber-500/40 hover:bg-amber-500/30"
-                        variant="outline"
-                        disabled={!callBackDate}
-                        onClick={() => handleSkipWithOutcome('call_back', callBackDate)}
-                      >
-                        <Clock className="h-3.5 w-3.5 mr-1.5" />
-                        Set Call Back
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs text-muted-foreground"
-                        onClick={() => {
-                          setShowCallBackPicker(false);
-                          setCallBackDate('');
-                        }}
-                      >
+                      <button disabled={!callBackDate} onClick={() => handleSkipWithOutcome('call_back', callBackDate)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 text-xs font-medium hover:bg-amber-500/20 active:scale-[0.97] transition-all duration-200 disabled:opacity-40">
+                        <Clock className="h-3.5 w-3.5" /> Set Call Back
+                      </button>
+                      <button onClick={() => { setShowCallBackPicker(false); setCallBackDate(''); }} className="px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] text-white/40 text-xs font-medium hover:bg-white/[0.06] active:scale-[0.97] transition-all duration-200">
                         Cancel
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1113,39 +1053,30 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                 )}
               </div>
 
-              <div className="flex flex-col gap-3 max-w-sm mx-auto">
-                <Button
-                  size="lg"
-                  className="h-14 text-base font-bold border-2 border-green-500 bg-green-500/10 text-green-400 hover:bg-green-500/20"
-                  variant="outline"
+              <div className="flex flex-col gap-2.5 max-w-sm mx-auto">
+                <button
                   onClick={async () => {
-                    await supabase.from('leads').update({
-                      discovery_stage: 'new',
-                      lost_reason: null,
-                      call_attempt_count: 0,
-                    }).eq('id', lead.id);
+                    await supabase.from('leads').update({ discovery_stage: 'new', lost_reason: null, call_attempt_count: 0 }).eq('id', lead.id);
                     toast.success('Lead moved back to Dial queue');
                     setSavedMessage('Lead reactivated — back in Dial queue');
                     setStep('saved');
                   }}
+                  className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-medium text-sm hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-[0.98] transition-all duration-200"
                 >
-                  <RotateCcw className="h-5 w-5 mr-2" />
-                  Move Back to Dial
-                </Button>
-
-                <Button
-                  size="lg"
-                  className="h-14 text-base font-bold border-2 border-amber-500 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
-                  variant="outline"
+                  <RotateCcw className="h-4 w-4" /> Move Back to Dial
+                </button>
+                <button
                   onClick={() => setStep('answer')}
+                  className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400 font-medium text-sm hover:bg-amber-500/20 hover:border-amber-500/40 active:scale-[0.98] transition-all duration-200"
                 >
-                  <Phone className="h-5 w-5 mr-2" />
-                  Try Calling Again
-                </Button>
-
-                <Button variant="outline" onClick={handleClose} className="text-muted-foreground">
+                  <Phone className="h-4 w-4" /> Try Calling Again
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-white/40 font-medium text-sm hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.98] transition-all duration-200"
+                >
                   Keep as Lost
-                </Button>
+                </button>
               </div>
             </div>
           )}
@@ -1161,24 +1092,20 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
                   if (!nextLead) return null;
                   const nextName = [nextLead.first_name, nextLead.last_name].filter(Boolean).join(' ') || 'Next Lead';
                   return (
-                    <AnimatedActionButton
-                      label={`Call Next: ${nextName}`}
-                      icon={PhoneCall}
+                    <button
                       onClick={() => onCallNext?.(nextLead)}
-                      highlightHueDeg={140}
-                      size="lg"
-                      fullWidth
-                    />
+                      className="w-full flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-medium text-sm hover:bg-emerald-500/20 hover:border-emerald-500/40 active:scale-[0.98] transition-all duration-200"
+                    >
+                      <PhoneCall className="h-4 w-4" /> Call Next: {nextName}
+                    </button>
                   );
                 })()}
-                <AnimatedActionButton
-                  label="Back to Dashboard"
-                  icon={ArrowLeft}
+                <button
                   onClick={handleClose}
-                  highlightHueDeg={220}
-                  size="md"
-                  fullWidth
-                />
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white/[0.03] border border-white/[0.06] text-white/40 font-medium text-sm hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.98] transition-all duration-200"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+                </button>
               </div>
             </div>
           )}

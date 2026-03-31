@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp, PhoneForwarded, Video, Headphones } from 'lucide-react';
+import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp, PhoneForwarded, Video, Headphones, X } from 'lucide-react';
 import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
@@ -24,6 +24,29 @@ interface LeadDiscoveryDashboardProps {
   isLoading?: boolean;
 }
 
+// Pure filter function — no hooks, no closures, just input → output
+function filterLeads(leads: DiscoveryLead[], query: string, state: string, temp: string, assigned: string): DiscoveryLead[] {
+  let r = leads;
+  if (state) r = r.filter(l => l.state === state);
+  if (temp) r = r.filter(l => {
+    const n = parseInt(l.discovery_temperature || '', 10);
+    if (isNaN(n)) return false;
+    if (temp === 'cold') return n <= 3;
+    if (temp === 'warm') return n >= 4 && n <= 6;
+    if (temp === 'hot') return n >= 7;
+    return false;
+  });
+  if (assigned) r = r.filter(l => l.last_attempted_by === assigned);
+  if (query) {
+    const q = query.toLowerCase();
+    r = r.filter(l => {
+      const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
+      return name.includes(q) || (l.email || '').toLowerCase().includes(q) || (l.phone || '').includes(q) || (l.state || '').toLowerCase().includes(q);
+    });
+  }
+  return r;
+}
+
 export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccountId, callbackCalendarId, isLoading }: LeadDiscoveryDashboardProps) {
   const [selectedLead, setSelectedLead] = useState<DiscoveryLead | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -33,81 +56,25 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
   const [filterTemp, setFilterTemp] = useState<string>('');
   const [filterAssigned, setFilterAssigned] = useState<string>('');
 
-  // Map tab keys to data sections
-  const tabDataMap: Record<string, DiscoveryLead[]> = {
-    queue: data.queue,
-    callbacks: data.callbacks,
-    'intro-booked': data.introBooked,
-    'strategy-booked': data.strategyBooked,
-    all: data.all,
-    lost: data.lost,
-  };
+  // Compute on every render — zero caching, zero stale state
+  const sq = searchQuery;
+  const fs = filterState;
+  const ft = filterTemp;
+  const fa = filterAssigned;
 
-  // Unique states for filter dropdown
-  const availableStates = useMemo(() => {
-    const states = new Set(data.all.map((l) => l.state).filter(Boolean) as string[]);
-    return Array.from(states).sort();
-  }, [data.all]);
+  const filteredQueue = filterLeads(data.queue, sq, fs, ft, fa);
+  const filteredCallbacks = filterLeads(data.callbacks, sq, fs, ft, fa);
+  const filteredIntroBooked = filterLeads(data.introBooked, sq, fs, ft, fa);
+  const filteredStrategyBooked = filterLeads(data.strategyBooked, sq, fs, ft, fa);
+  const filteredAll = filterLeads(data.all, sq, fs, ft, fa);
+  const filteredLost = filterLeads(data.lost, sq, fs, ft, fa);
 
-  // Unique assignees for filter dropdown
-  const availableAssignees = useMemo(() => {
-    const assignees = new Set(data.all.map((l) => l.last_attempted_by).filter(Boolean) as string[]);
-    return Array.from(assignees).sort();
-  }, [data.all]);
+  const activeTabTotal = { queue: data.queue.length, callbacks: data.callbacks.length, 'intro-booked': data.introBooked.length, 'strategy-booked': data.strategyBooked.length, all: data.all.length, lost: data.lost.length }[activeTab] || 0;
+  const activeTabFiltered = { queue: filteredQueue.length, callbacks: filteredCallbacks.length, 'intro-booked': filteredIntroBooked.length, 'strategy-booked': filteredStrategyBooked.length, all: filteredAll.length, lost: filteredLost.length }[activeTab] || 0;
 
-  // Apply dropdown filters (state, temp, assigned) — always applied
-  function applyDropdownFilters(leads: DiscoveryLead[]): DiscoveryLead[] {
-    let result = leads;
-    if (filterState) result = result.filter((l) => l.state === filterState);
-    if (filterTemp) {
-      result = result.filter((l) => {
-        if (!l.discovery_temperature) return false;
-        const n = parseInt(l.discovery_temperature, 10);
-        if (isNaN(n)) return l.discovery_temperature === filterTemp;
-        if (filterTemp === 'cold') return n <= 3;
-        if (filterTemp === 'warm') return n >= 4 && n <= 6;
-        if (filterTemp === 'hot') return n >= 7;
-        return l.discovery_temperature === filterTemp;
-      });
-    }
-    if (filterAssigned) result = result.filter((l) => l.last_attempted_by === filterAssigned);
-    return result;
-  }
+  const availableStates = Array.from(new Set(data.all.map(l => l.state).filter(Boolean) as string[])).sort();
+  const availableAssignees = Array.from(new Set(data.all.map(l => l.last_attempted_by).filter(Boolean) as string[])).sort();
 
-  // Search filter — only applied to the active tab
-  function applySearchFilter(leads: DiscoveryLead[]): DiscoveryLead[] {
-    if (!searchQuery) return leads;
-    const q = searchQuery.toLowerCase();
-    return leads.filter((l) => {
-      const name = [l.first_name, l.last_name].filter(Boolean).join(' ').toLowerCase();
-      return (
-        name.includes(q) ||
-        (l.email || '').toLowerCase().includes(q) ||
-        (l.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) ||
-        (l.state || '').toLowerCase().includes(q) ||
-        (l.lost_reason || '').toLowerCase().replace(/_/g, ' ').includes(q)
-      );
-    });
-  }
-
-  // Badge counts: dropdown filters apply to all tabs, search only to active tab
-  function getFilteredForTab(tabKey: string): DiscoveryLead[] {
-    const base = applyDropdownFilters(tabDataMap[tabKey] || []);
-    return tabKey === activeTab ? applySearchFilter(base) : base;
-  }
-
-  const filteredQueue = getFilteredForTab('queue');
-  const filteredCallbacks = getFilteredForTab('callbacks');
-  const filteredIntroBooked = getFilteredForTab('intro-booked');
-  const filteredStrategyBooked = getFilteredForTab('strategy-booked');
-  const filteredAll = getFilteredForTab('all');
-  const filteredLost = getFilteredForTab('lost');
-
-  // The active tab's unfiltered-by-search count (for "Showing X of Y")
-  const activeTabTotal = applyDropdownFilters(tabDataMap[activeTab] || []).length;
-  const activeTabFiltered = getFilteredForTab(activeTab).length;
-
-  // Tab label for status text
   const tabLabels: Record<string, string> = {
     queue: 'Dial', callbacks: 'Callbacks', 'intro-booked': 'Intro',
     'strategy-booked': 'Strategy', all: 'All', lost: 'Lost',
@@ -120,7 +87,6 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
 
   const handleCallNext = (lead: DiscoveryLead) => {
     setSelectedLead(lead);
-    // Sheet stays open — resets for the new lead via useEffect in DiscoveryCallSheet
   };
 
   const handleSheetClose = () => {
@@ -129,90 +95,48 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
   };
 
   const { data: stats } = useDiscoveryCallStats(agentId);
+  const hasActiveFilters = filterState || filterTemp || filterAssigned;
 
   return (
     <>
       {/* Speed-to-Lead Scoreboard */}
       <SpeedToLeadScoreboard stats={stats} queueData={data} />
 
-      {/* Search Bar — scoped to current tab */}
-      <div className="space-y-1">
+      {/* Search + Filters */}
+      <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-4 space-y-3 overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+
+        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 pointer-events-none z-10" />
           <input
             type="text"
             placeholder={`Search ${tabLabels[activeTab] || 'leads'} by name, email, phone, state...`}
             value={searchQuery}
             onChange={(e) => { setSearchQuery(e.target.value); }}
-            className="flex h-10 w-full rounded-md border border-input bg-background/50 pl-10 pr-3 py-2 text-sm text-foreground ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="flex h-10 w-full rounded-lg border border-white/[0.08] bg-white/[0.03] pl-10 pr-8 py-2 text-sm text-foreground placeholder:text-white/30 focus:outline-none focus:border-white/[0.15] focus:ring-2 focus:ring-primary/15 transition-all duration-200"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors z-10"
             >
-              ✕
+              <X className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
+
         {searchQuery && (
-          <p className="text-xs text-muted-foreground px-1">
-            Showing {activeTabFiltered} of {activeTabTotal} in {tabLabels[activeTab]} for "{searchQuery}"
+          <p className="text-[11px] text-white/30 px-1">
+            Showing {activeTabFiltered} of {activeTabTotal} in {tabLabels[activeTab]}
           </p>
         )}
-      </div>
 
-      <Tabs defaultValue="queue" value={activeTab} onValueChange={(v) => { setActiveTab(v); setSearchQuery(''); }} className="space-y-4">
-        <TabsList className="bg-background/50 border border-border/50">
-          <TabsTrigger value="queue" className="gap-2">
-            <PhoneCall className="h-4 w-4" />
-            Dial
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredQueue.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="callbacks" className="gap-2">
-            <PhoneForwarded className="h-4 w-4" />
-            Callbacks
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredCallbacks.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="intro-booked" className="gap-2">
-            <Headphones className="h-4 w-4" />
-            Intro
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredIntroBooked.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="strategy-booked" className="gap-2">
-            <Video className="h-4 w-4" />
-            Strategy
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredStrategyBooked.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="all" className="gap-2">
-            <Users className="h-4 w-4" />
-            All
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredAll.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="lost" className="gap-2">
-            <XCircle className="h-4 w-4" />
-            Lost
-            <Badge variant="secondary" className="ml-1 text-xs">
-              {filteredLost.length}
-            </Badge>
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Filter Bar */}
+        {/* Filters Row */}
         <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground/50" />
+          <Filter className="h-3 w-3 text-white/15" />
           <Select value={filterState} onValueChange={(v) => setFilterState(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[100px] bg-background/50 border-border/50">
+            <SelectTrigger className="h-7 text-xs w-auto min-w-[90px]">
               <SelectValue placeholder="State" />
             </SelectTrigger>
             <SelectContent>
@@ -223,7 +147,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
             </SelectContent>
           </Select>
           <Select value={filterTemp} onValueChange={(v) => setFilterTemp(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[100px] bg-background/50 border-border/50">
+            <SelectTrigger className="h-7 text-xs w-auto min-w-[100px]">
               <SelectValue placeholder="Temperature" />
             </SelectTrigger>
             <SelectContent>
@@ -234,7 +158,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
             </SelectContent>
           </Select>
           <Select value={filterAssigned} onValueChange={(v) => setFilterAssigned(v === 'all' ? '' : v)}>
-            <SelectTrigger className="h-7 text-xs w-auto min-w-[120px] bg-background/50 border-border/50">
+            <SelectTrigger className="h-7 text-xs w-auto min-w-[110px]">
               <SelectValue placeholder="Assigned To" />
             </SelectTrigger>
             <SelectContent>
@@ -244,30 +168,62 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
               ))}
             </SelectContent>
           </Select>
-          {(filterState || filterTemp || filterAssigned) && (
+          {hasActiveFilters && (
             <button
               onClick={() => { setFilterState(''); setFilterTemp(''); setFilterAssigned(''); }}
-              className="text-[10px] text-muted-foreground hover:text-primary underline"
+              className="text-[10px] text-white/25 hover:text-primary transition-colors"
             >
-              Clear
+              Clear filters
             </button>
           )}
         </div>
+      </div>
 
-        {/* Follow-Up Queue */}
-        <TabsContent value="queue" className="space-y-4">
-          {/* Failed delivery banner */}
+      {/* Tabs */}
+      <Tabs defaultValue="queue" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList className="w-full justify-start overflow-x-auto">
+          <TabsTrigger value="queue" className="gap-1.5">
+            <PhoneCall className="h-3.5 w-3.5" />
+            Dial
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredQueue.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="callbacks" className="gap-1.5">
+            <PhoneForwarded className="h-3.5 w-3.5" />
+            Callbacks
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredCallbacks.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="intro-booked" className="gap-1.5">
+            <Headphones className="h-3.5 w-3.5" />
+            Intro
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredIntroBooked.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="strategy-booked" className="gap-1.5">
+            <Video className="h-3.5 w-3.5" />
+            Strategy
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredStrategyBooked.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="all" className="gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            All
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredAll.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="lost" className="gap-1.5">
+            <XCircle className="h-3.5 w-3.5" />
+            Lost
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{filteredLost.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Dial Queue */}
+        <TabsContent value="queue" className="space-y-3">
           {data.failedDelivery.length > 0 && (
-            <Card className="border-red-500/30 bg-red-500/5">
-              <CardContent className="py-3 px-4 flex items-center gap-2 text-sm">
-                <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
-                <span className="text-red-400 font-medium">
-                  {data.failedDelivery.length} lead{data.failedDelivery.length > 1 ? 's' : ''} failed CRM delivery — contact support
-                </span>
-              </CardContent>
-            </Card>
+            <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-sm">
+              <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
+              <span className="text-red-400/80 font-medium">
+                {data.failedDelivery.length} lead{data.failedDelivery.length > 1 ? 's' : ''} failed CRM delivery
+              </span>
+            </div>
           )}
-
           {filteredQueue.length === 0 ? (
             <EmptyState icon={PhoneCall} message="No follow-ups right now. Nice." />
           ) : (
@@ -277,14 +233,10 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
                 return (
                   <div key={lead.id} className="relative">
                     {score >= 900 && (
-                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-500/90 text-white rounded">
-                        URGENT
-                      </span>
+                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-500/90 text-white rounded">URGENT</span>
                     )}
                     {score >= 700 && score < 900 && (
-                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/90 text-white rounded">
-                        HIGH
-                      </span>
+                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/90 text-white rounded">HIGH</span>
                     )}
                     <LeadCard lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
                   </div>
@@ -294,66 +246,35 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           )}
         </TabsContent>
 
-        {/* Callbacks */}
         <TabsContent value="callbacks" className="space-y-2">
-          {filteredCallbacks.length === 0 ? (
-            <EmptyState icon={PhoneForwarded} message="No callbacks scheduled" />
-          ) : (
-            filteredCallbacks.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-            ))
-          )}
+          {filteredCallbacks.length === 0 ? <EmptyState icon={PhoneForwarded} message="No callbacks scheduled" /> :
+            filteredCallbacks.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        {/* Intro Booked */}
         <TabsContent value="intro-booked" className="space-y-2">
-          {filteredIntroBooked.length === 0 ? (
-            <EmptyState icon={Headphones} message="No intro calls booked" />
-          ) : (
-            filteredIntroBooked.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-            ))
-          )}
+          {filteredIntroBooked.length === 0 ? <EmptyState icon={Headphones} message="No intro calls booked" /> :
+            filteredIntroBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        {/* Strategy Booked */}
         <TabsContent value="strategy-booked" className="space-y-2">
-          {filteredStrategyBooked.length === 0 ? (
-            <EmptyState icon={Video} message="No strategy calls booked" />
-          ) : (
-            filteredStrategyBooked.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-            ))
-          )}
+          {filteredStrategyBooked.length === 0 ? <EmptyState icon={Video} message="No strategy calls booked" /> :
+            filteredStrategyBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        {/* All Contacts */}
         <TabsContent value="all" className="space-y-2">
-          {filteredAll.length === 0 ? (
-            <EmptyState icon={Users} message="No contacts found" />
-          ) : (
-            filteredAll.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-            ))
-          )}
+          {filteredAll.length === 0 ? <EmptyState icon={Users} message="No contacts found" /> :
+            filteredAll.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        {/* Lost / DQ */}
         <TabsContent value="lost" className="space-y-2">
-          {filteredLost.length === 0 ? (
-            <EmptyState icon={XCircle} message="None" />
-          ) : (
-            filteredLost.map((lead) => (
-              <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
-            ))
-          )}
+          {filteredLost.length === 0 ? <EmptyState icon={XCircle} message="None" /> :
+            filteredLost.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
-
       </Tabs>
 
-      {/* Stats Section — below tabs */}
+      {/* Stats */}
       <details className="mt-6">
-        <summary className="flex items-center gap-2 cursor-pointer text-sm font-bold text-muted-foreground hover:text-foreground transition-colors">
+        <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-white/30 hover:text-white/60 transition-colors">
           <TrendingUp className="h-4 w-4" />
           Stats & Reports
         </summary>
@@ -363,7 +284,6 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         </div>
       </details>
 
-      {/* Discovery Call Sheet */}
       <DiscoveryCallSheet
         open={sheetOpen}
         onClose={handleSheetClose}
@@ -381,9 +301,11 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
 
 function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
   return (
-    <div className="text-center py-12">
-      <Icon className="h-10 w-10 mx-auto mb-3 text-muted-foreground/30" />
-      <p className="text-sm text-muted-foreground">{message}</p>
+    <div className="text-center py-16">
+      <div className="w-14 h-14 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center mx-auto mb-4">
+        <Icon className="h-6 w-6 text-white/15" />
+      </div>
+      <p className="text-sm text-white/30">{message}</p>
     </div>
   );
 }

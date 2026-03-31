@@ -1,7 +1,7 @@
 import { useParams, Link, Navigate } from "react-router-dom";
 import { Navbar } from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Loader2, Calendar, Clock, User } from "lucide-react";
+import { ArrowLeft, Loader2, Calendar, Clock } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,6 +24,9 @@ interface BlogPostData {
   meta_keywords: string | null;
   tags: string[];
 }
+
+const SIERRA_IMAGE =
+  "https://qcunascacayiiuufjtaq.supabase.co/storage/v1/object/public/media/profile-photos/1766368659922-oq4x14.jpg";
 
 const BlogPost = () => {
   const { slug } = useParams();
@@ -76,6 +79,8 @@ const BlogPost = () => {
     });
   };
 
+  const authorImage = post.author_image || SIERRA_IMAGE;
+
   const articleSchema = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -87,6 +92,7 @@ const BlogPost = () => {
       "@type": "Person",
       name: post.author_name,
       jobTitle: post.author_title,
+      image: authorImage,
       worksFor: { "@type": "Organization", name: "Alpha Agent", url: "https://alphaagent.io" },
     },
     publisher: {
@@ -118,20 +124,61 @@ const BlogPost = () => {
       </Helmet>
       <Navbar />
 
-      <article className="pt-32 pb-16 section-padding">
-        <div className="container-custom max-w-3xl">
+      <article className="pt-28 pb-16 px-4 md:px-8">
+        <div className="max-w-3xl mx-auto">
           {/* Back Link */}
           <Link
             to="/blog"
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-8"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to Blog
+            All Posts
           </Link>
+
+          {/* Tags */}
+          {post.tags && post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {post.tags.map((tag) => (
+                <span key={tag} className="text-xs px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Title */}
+          <h1 className="text-3xl md:text-4xl lg:text-[2.75rem] font-bold text-foreground mb-6 leading-tight">
+            {post.title}
+          </h1>
+
+          {/* Author + Meta Row */}
+          <div className="flex flex-wrap items-center gap-4 mb-10 pb-8 border-b border-white/[0.06]">
+            <div className="flex items-center gap-3">
+              <img
+                src={authorImage}
+                alt={post.author_name}
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <div>
+                <p className="text-sm font-medium text-foreground leading-tight">{post.author_name}</p>
+                <p className="text-xs text-muted-foreground">{post.author_title}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground ml-auto">
+              <div className="flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>{formatDate(post.published_at)}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                <span>{post.read_time}</span>
+              </div>
+            </div>
+          </div>
 
           {/* Featured Image */}
           {post.featured_image && (
-            <div className="aspect-[16/9] rounded-2xl overflow-hidden mb-10">
+            <div className="aspect-[2/1] rounded-2xl overflow-hidden mb-10">
               <img
                 src={post.featured_image}
                 alt={post.featured_image_alt || post.title}
@@ -140,55 +187,33 @@ const BlogPost = () => {
             </div>
           )}
 
-          {/* Header */}
-          <header className="mb-12">
-            {post.tags && post.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-4">
-                {post.tags.map((tag) => (
-                  <span key={tag} className="text-xs px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20">
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mb-6">
-              {post.title}
-            </h1>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <span>{post.author_name}</span>
-                <span className="text-muted-foreground/50">{post.author_title}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                <span>{formatDate(post.published_at)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                <span>{post.read_time}</span>
-              </div>
-            </div>
-          </header>
-
           {/* Content */}
-          <div className="prose prose-invert prose-lg max-w-none [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:text-foreground [&>h2]:mt-10 [&>h2]:mb-4 [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:text-foreground [&>h3]:mt-8 [&>h3]:mb-3 [&>p]:text-muted-foreground [&>p]:mb-4 [&>p]:leading-relaxed [&>ul]:text-muted-foreground [&>ul]:mb-4 [&>ul]:list-disc [&>ul]:pl-6 [&>ul>li]:mb-2 [&>ol]:text-muted-foreground [&>ol]:mb-4 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol>li]:mb-2 [&_strong]:text-foreground [&>table]:w-full [&>table]:border-collapse [&>table_th]:text-left [&>table_th]:py-2 [&>table_th]:px-4 [&>table_th]:border-b [&>table_th]:border-white/10 [&>table_td]:py-2 [&>table_td]:px-4 [&>table_td]:border-b [&>table_td]:border-white/5 [&>table_td]:text-muted-foreground [&>blockquote]:border-l-4 [&>blockquote]:border-primary/50 [&>blockquote]:pl-6 [&>blockquote]:italic [&>blockquote]:text-muted-foreground/80">
+          <div className="prose prose-invert prose-lg max-w-none
+            [&>h2]:text-2xl [&>h2]:font-bold [&>h2]:text-foreground [&>h2]:mt-10 [&>h2]:mb-4
+            [&>h3]:text-xl [&>h3]:font-semibold [&>h3]:text-foreground [&>h3]:mt-8 [&>h3]:mb-3
+            [&>p]:text-muted-foreground [&>p]:mb-4 [&>p]:leading-relaxed
+            [&>ul]:text-muted-foreground [&>ul]:mb-4 [&>ul]:list-disc [&>ul]:pl-6 [&>ul>li]:mb-2
+            [&>ol]:text-muted-foreground [&>ol]:mb-4 [&>ol]:list-decimal [&>ol]:pl-6 [&>ol>li]:mb-2
+            [&_strong]:text-foreground
+            [&>table]:w-full [&>table]:border-collapse [&>table]:my-6 [&>table]:text-sm
+            [&>table_th]:text-left [&>table_th]:py-2.5 [&>table_th]:px-4 [&>table_th]:border-b [&>table_th]:border-white/10 [&>table_th]:text-foreground [&>table_th]:font-medium
+            [&>table_td]:py-2.5 [&>table_td]:px-4 [&>table_td]:border-b [&>table_td]:border-white/5 [&>table_td]:text-muted-foreground
+            [&>blockquote]:border-l-4 [&>blockquote]:border-primary/50 [&>blockquote]:pl-6 [&>blockquote]:italic [&>blockquote]:text-muted-foreground/80
+            [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 hover:[&_a]:text-primary/80">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{post.content}</ReactMarkdown>
           </div>
 
           {/* Author Box */}
-          <div className="mt-16 glass-card p-6 flex items-start gap-4">
-            {post.author_image ? (
-              <img src={post.author_image} alt={post.author_name} className="w-14 h-14 rounded-full object-cover" />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <User className="w-6 h-6 text-primary" />
-              </div>
-            )}
+          <div className="mt-16 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-6 flex items-start gap-4">
+            <img
+              src={authorImage}
+              alt={post.author_name}
+              className="w-14 h-14 rounded-full object-cover flex-shrink-0"
+            />
             <div>
               <p className="font-semibold text-foreground">{post.author_name}</p>
               <p className="text-sm text-muted-foreground mb-2">{post.author_title} at Alpha Agent</p>
-              <p className="text-sm text-muted-foreground/70">
+              <p className="text-sm text-muted-foreground/70 leading-relaxed">
                 Working directly with 520+ IUL agents every day, Sierra shares the strategies,
                 insights, and real-world lessons that help professionals sell more and scale faster.
               </p>
@@ -196,11 +221,11 @@ const BlogPost = () => {
           </div>
 
           {/* CTA */}
-          <div className="mt-12 p-8 glass-card text-center">
-            <h3 className="text-2xl font-bold text-foreground mb-4">
+          <div className="mt-12 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-8 text-center">
+            <h3 className="text-xl md:text-2xl font-bold text-foreground mb-3">
               Ready to Run on the IUL Agent OS?
             </h3>
-            <p className="text-muted-foreground mb-6">
+            <p className="text-sm text-muted-foreground mb-6">
               See how Alpha Agent's complete operating system can transform your IUL practice.
             </p>
             <Button asChild size="lg" className="bg-primary hover:bg-primary/90">
@@ -212,7 +237,7 @@ const BlogPost = () => {
 
       {/* Footer */}
       <footer className="border-t border-border/40 py-8">
-        <div className="container-custom">
+        <div className="max-w-3xl mx-auto px-4 md:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="flex items-center gap-1">
               <span className="text-lg font-light text-foreground">ALPHA</span>

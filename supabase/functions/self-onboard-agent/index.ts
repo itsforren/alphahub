@@ -86,8 +86,8 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    if (password.length < 8) {
-      return new Response(JSON.stringify({ error: 'Password must be at least 8 characters', code: 'VALIDATION_ERROR' }),
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      return new Response(JSON.stringify({ error: 'Password must be 8+ characters with uppercase, lowercase, and number', code: 'VALIDATION_ERROR' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    const managementFee = onboardingSettings?.default_management_fee || 149700; // $1,497 in cents
+    const managementFee = onboardingSettings?.default_management_fee || 1497; // $1,497
     const adSpendBudget = onboardingSettings?.default_ad_spend_budget || 0;
 
     // ── Create client record ──

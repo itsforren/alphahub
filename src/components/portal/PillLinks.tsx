@@ -23,14 +23,14 @@ interface LinkConfig {
 }
 
 const LINKS: LinkConfig[] = [
-  { key: 'lander', label: 'Landing Page', icon: Globe, from: 'rgba(16,185,129,0.25)', to: 'rgba(5,150,105,0.35)' },
-  { key: 'thankyou', label: 'Thank You', icon: CheckCircle, from: 'rgba(34,197,94,0.25)', to: 'rgba(22,163,74,0.35)' },
-  { key: 'google', label: 'Google Ads', icon: Rocket, from: 'rgba(66,133,244,0.25)', to: 'rgba(26,115,232,0.35)' },
-  { key: 'nfia', label: 'NFIA', icon: BarChart3, from: 'rgba(139,92,246,0.25)', to: 'rgba(124,58,237,0.35)' },
-  { key: 'tfwp', label: 'TFWP Profile', icon: Users, from: 'rgba(168,85,247,0.25)', to: 'rgba(147,51,234,0.35)' },
-  { key: 'scheduler', label: 'Scheduler', icon: Calendar, from: 'rgba(59,130,246,0.25)', to: 'rgba(37,99,235,0.35)' },
-  { key: 'crm', label: 'CRM', icon: MessageSquare, from: 'rgba(249,115,22,0.25)', to: 'rgba(234,88,12,0.35)' },
-  { key: 'agreement', label: 'Agreement', icon: FileText, from: 'rgba(107,114,128,0.25)', to: 'rgba(75,85,99,0.35)' },
+  { key: 'lander', label: 'Landing Page', icon: Globe, from: 'rgba(16,185,129,0.12)', to: 'rgba(5,150,105,0.18)' },
+  { key: 'thankyou', label: 'Thank You', icon: CheckCircle, from: 'rgba(34,197,94,0.12)', to: 'rgba(22,163,74,0.18)' },
+  { key: 'google', label: 'Google Ads', icon: Rocket, from: 'rgba(66,133,244,0.12)', to: 'rgba(26,115,232,0.18)' },
+  { key: 'nfia', label: 'NFIA', icon: BarChart3, from: 'rgba(139,92,246,0.12)', to: 'rgba(124,58,237,0.18)' },
+  { key: 'tfwp', label: 'TFWP Profile', icon: Users, from: 'rgba(168,85,247,0.12)', to: 'rgba(147,51,234,0.18)' },
+  { key: 'scheduler', label: 'Scheduler', icon: Calendar, from: 'rgba(59,130,246,0.12)', to: 'rgba(37,99,235,0.18)' },
+  { key: 'crm', label: 'CRM', icon: MessageSquare, from: 'rgba(249,115,22,0.12)', to: 'rgba(234,88,12,0.18)' },
+  { key: 'agreement', label: 'Agreement', icon: FileText, from: 'rgba(107,114,128,0.12)', to: 'rgba(75,85,99,0.18)' },
 ];
 
 function buildGoogleAdsUrl(googleCampaignId: string): string {
@@ -74,12 +74,13 @@ export function PillLinks({
           href={linkValues[key] || '#'}
           target="_blank"
           rel="noopener noreferrer"
-          className="group relative h-[48px] w-[48px] hover:w-[180px] rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer"
+          className="group relative h-[44px] w-[44px] hover:w-[170px] rounded-full flex items-center justify-center transition-all duration-500 cursor-pointer backdrop-blur-xl"
           style={{
             '--gm-from': from,
             '--gm-to': to,
-            background: 'rgba(15, 15, 15, 0.9)',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
           } as React.CSSProperties}
         >
           {/* Gradient background on hover */}
@@ -89,7 +90,7 @@ export function PillLinks({
           />
           {/* Blur glow underneath */}
           <span
-            className="absolute top-[6px] inset-x-0 h-full rounded-full blur-[12px] opacity-0 -z-10 group-hover:opacity-40 transition-all duration-500"
+            className="absolute top-[6px] inset-x-0 h-full rounded-full blur-[12px] opacity-0 -z-10 group-hover:opacity-20 transition-all duration-500"
             style={{ background: `linear-gradient(135deg, var(--gm-from), var(--gm-to))` }}
           />
 

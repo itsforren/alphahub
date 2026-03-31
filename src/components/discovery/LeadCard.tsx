@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
-import { Phone, Mail, MapPin, Clock, AlertTriangle, Loader2, ExternalLink, PhoneCall, UserX, CalendarDays } from 'lucide-react';
+import { Phone, Mail, MapPin, Clock, AlertTriangle, Loader2, ExternalLink, PhoneCall, UserX, CalendarDays, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { TemperatureBadge } from './TemperatureSelector';
@@ -55,23 +55,24 @@ function formatLostReason(reason: string): string {
     not_in_service: 'Bad Number: Not In Service',
     no_ring: "Bad Number: Doesn't Ring",
     straight_to_vm: 'Bad Number: Straight to VM',
-    not_approved: 'Not Approved',
-    wrong_state: 'Wrong State',
   };
   return map[reason] || reason.replace(/_/g, ' ');
 }
 
+const BAD_NUMBER_REASONS = ['bad_number', 'disconnected', 'wrong_number', 'not_in_service', 'no_ring', 'straight_to_vm'];
 
-function getUpcomingAppointment(lead: DiscoveryLead): { label: string; isPast: boolean } | null {
+function isBadNumber(lead: DiscoveryLead): boolean {
+  return lead.discovery_stage === 'lost' && BAD_NUMBER_REASONS.includes(lead.lost_reason || '');
+}
+
+function getUpcomingAppointment(lead: DiscoveryLead): string | null {
   const dateStr = lead.strategy_booked_at || lead.intro_scheduled_at || lead.booked_call_at;
   if (!dateStr) return null;
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return null;
-  const formatted = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
     ', ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  const isPast = d.getTime() < Date.now();
-  return { label: formatted, isPast };
 }
 
 const BOOKED_STAGES = ['strategy_booked', 'intro_scheduled', 'callback_scheduled', 'booked'];
@@ -125,7 +126,7 @@ function NoShowButton({ leadId, stage }: { leadId: string; stage: string }) {
     <button
       onClick={handleNoShow}
       disabled={loading}
-      className="inline-flex items-center gap-1 text-xs text-red-400/50 hover:text-red-400 transition-colors"
+      className="inline-flex items-center gap-1 text-[10px] text-red-400/50 hover:text-red-400 transition-colors"
     >
       {loading ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <UserX className="h-2.5 w-2.5" />}
       No-Show
@@ -145,28 +146,18 @@ function formatRelativeTime(dateStr: string | null): string {
   return `${days}d ago`;
 }
 
-function toProperCase(s: string): string {
-  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-}
-
 export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
   const { user } = useAuth();
-  const name = toProperCase([lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Unknown');
+  const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'Unknown';
   const stage = stageConfig[lead.discovery_stage || 'new'] || stageConfig.new;
-  const rawFreshness = getFreshness(lead.lead_date);
-  // Override freshness dot for lost leads — always show muted/grey
-  const isLostLead = lead.discovery_stage === 'lost' || lead.discovery_stage === 'long_term_nurture';
-  const freshness = isLostLead
-    ? { ...rawFreshness, dot: 'bg-muted-foreground/30', text: 'text-muted-foreground/50' }
-    : rawFreshness;
+  const freshness = getFreshness(lead.lead_date);
 
   // Check if being worked by someone else
   const isWorkedByOther = lead.currently_being_worked && lead.last_attempted_by_id !== user?.id;
   const isDeliveryFailed = lead.delivery_status !== 'delivered';
   const activeStages = ['new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4', 'discovery_complete'];
   const isActiveStage = activeStages.includes(lead.discovery_stage || 'new');
-  const isLost = lead.discovery_stage === 'lost';
-  const isNurture = lead.discovery_stage === 'long_term_nurture';
+  const badNumber = isBadNumber(lead);
   const appointmentTime = BOOKED_STAGES.includes(lead.discovery_stage || '') ? getUpcomingAppointment(lead) : null;
   const summary = getLeadSummary(lead);
 
@@ -178,11 +169,9 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
         'w-full text-left p-4 rounded-xl border transition-all duration-200 group',
         isWorkedByOther
           ? 'opacity-50 cursor-not-allowed border-border bg-muted/20'
-          : isLost
+          : badNumber
             ? 'border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/30 cursor-pointer'
-            : isNurture
-              ? 'border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10 hover:border-purple-500/30 cursor-pointer'
-              : 'border-border/50 bg-card/50 hover:bg-card hover:border-primary/20 hover:shadow-[0_0_20px_hsl(var(--primary)/0.08)] cursor-pointer'
+            : 'border-border/50 bg-card/50 hover:bg-card hover:border-primary/20 hover:shadow-[0_0_20px_hsl(var(--primary)/0.08)] cursor-pointer'
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -191,11 +180,11 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
           <div className="flex items-center gap-2 mb-1">
             <span className={cn('inline-block w-2 h-2 rounded-full flex-shrink-0', freshness.dot)} title={freshness.label} />
             <span className="font-bold text-foreground truncate">{name}</span>
-            <span className={cn('text-xs font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
+            <span className={cn('text-[10px] font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
             <TemperatureBadge temp={lead.discovery_temperature} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {lead.phone && (
               <a
                 href={`tel:${lead.phone}`}
@@ -222,7 +211,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
           </div>
           {/* Lost reason */}
           {lead.discovery_stage === 'lost' && lead.lost_reason && (
-            <div className="flex items-center gap-1 mt-1.5 text-xs text-red-400/80">
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400/80">
               <AlertTriangle className="h-3 w-3" />
               {formatLostReason(lead.lost_reason)}
             </div>
@@ -230,22 +219,15 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
 
           {/* Appointment bubble */}
           {appointmentTime && (
-            appointmentTime.isPast ? (
-              <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-xs text-red-400/70 font-medium">
-                <CalendarDays className="h-3 w-3" />
-                Missed: {appointmentTime.label}
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-xs text-green-400 font-medium">
-                <CalendarDays className="h-3 w-3" />
-                Next call: {appointmentTime.label}
-              </div>
-            )
+            <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[11px] text-green-400 font-medium">
+              <CalendarDays className="h-3 w-3" />
+              Next call: {appointmentTime}
+            </div>
           )}
 
           {/* One-line lead summary */}
           {summary && (
-            <div className="mt-1 text-xs text-muted-foreground/60 italic truncate">
+            <div className="mt-1 text-[11px] text-muted-foreground/60 italic truncate">
               {summary}
             </div>
           )}
@@ -257,7 +239,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-xs text-primary/50 hover:text-primary transition-colors"
+                className="inline-flex items-center gap-1 text-[10px] text-primary/50 hover:text-primary transition-colors"
               >
                 <ExternalLink className="h-2.5 w-2.5" />
                 View in CRM
@@ -267,7 +249,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-xs text-green-400/60 hover:text-green-400 transition-colors"
+                className="inline-flex items-center gap-1 text-[10px] text-green-400/60 hover:text-green-400 transition-colors"
               >
                 <PhoneCall className="h-2.5 w-2.5" />
                 Call from CRM
@@ -276,6 +258,19 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
               {['strategy_booked', 'intro_scheduled', 'booked'].includes(lead.discovery_stage || '') && (
                 <NoShowButton leadId={lead.id} stage={lead.discovery_stage || ''} />
               )}
+              {/* Copy dial link for mobile */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const url = `${window.location.origin}/dial?lead_id=${lead.id}`;
+                  navigator.clipboard.writeText(url);
+                  toast.success('Dial link copied');
+                }}
+                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-primary transition-colors"
+              >
+                <Link2 className="h-2.5 w-2.5" />
+                Copy Link
+              </button>
             </div>
           )}
 
@@ -285,20 +280,20 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
               <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/15 text-[8px] font-bold text-primary flex-shrink-0">
                 {lead.last_attempted_by.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
               </span>
-              <span className="text-xs text-muted-foreground/70">{lead.last_attempted_by}</span>
+              <span className="text-[11px] text-muted-foreground/70">{lead.last_attempted_by}</span>
             </div>
           )}
 
           {/* Last attempt info */}
           {lead.last_call_attempt_at && (
-            <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground/70">
+            <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground/70">
               <Clock className="h-3 w-3" />
               Last: {formatRelativeTime(lead.last_call_attempt_at)}
             </div>
           )}
 
           {/* Cadence suggestion — only for active queue leads */}
-          {isActiveStage && !isLost && !isNurture && (
+          {isActiveStage && (
             <div className="mt-1">
               <CadenceSuggestion
                 attemptCount={lead.call_attempt_count || 0}
@@ -309,7 +304,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
 
           {/* Being worked indicator */}
           {isWorkedByOther && (
-            <div className="flex items-center gap-1 mt-1.5 text-xs text-amber-400">
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-amber-400">
               <Loader2 className="h-3 w-3 animate-spin" />
               Being worked by {lead.last_attempted_by}
             </div>
@@ -317,7 +312,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
 
           {/* Delivery failure */}
           {isDeliveryFailed && (
-            <div className="flex items-center gap-1 mt-1.5 text-xs text-red-400">
+            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400">
               <AlertTriangle className="h-3 w-3" />
               CRM delivery failed
             </div>
@@ -327,29 +322,16 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
         {/* Right: Stage badge + progress + arrow */}
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <Badge variant="outline" className={cn('text-xs font-bold', stage.color)}>
+            <Badge variant="outline" className={cn('text-[11px] font-bold', stage.color)}>
               {stage.label}
             </Badge>
-            {lead.status === 'submitted' && (
-              <Badge variant="outline" className="text-[10px] font-bold bg-purple-500/15 text-purple-400 border-purple-500/40">
-                Submitted
-              </Badge>
-            )}
-            {lead.status === 'approved' && (
-              <Badge variant="outline" className="text-[10px] font-bold bg-green-500/15 text-green-400 border-green-500/40">
-                Approved
-              </Badge>
-            )}
-            {lead.status === 'issued paid' && (
-              <Badge variant="outline" className="text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border-emerald-500/40">
-                Issued
-              </Badge>
-            )}
             <span className="text-muted-foreground/50 group-hover:text-primary transition-colors text-lg">
               ›
             </span>
           </div>
-          <AttemptProgressBar attempts={lead.call_attempt_count || 0} />
+          {isActiveStage && (
+            <AttemptProgressBar attempts={lead.call_attempt_count || 0} />
+          )}
         </div>
       </div>
     </button>

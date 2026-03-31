@@ -10,6 +10,12 @@
   --highlight-20: hsla(var(--highlight-hue), 100%, 70%, 0.2);
   --highlight-80: hsla(var(--highlight-hue), 100%, 70%, 0.8);
   --ui-anim-svg-fill: #e8e8e8;
+  /* Subtle idle color tint so buttons aren't all identical */
+  border-color: hsla(var(--highlight-hue), 60%, 50%, 0.15) !important;
+  box-shadow:
+    inset 0 -8px 16px -8px hsla(var(--highlight-hue), 100%, 70%, 0.06),
+    inset 0 1px 1px rgba(255,255,255,0.08),
+    0 2px 8px rgba(0,0,0,0.3) !important;
 }
 
 .ui-anim-btn::before {
@@ -45,9 +51,9 @@
   transition: opacity var(--transition), filter var(--transition);
 }
 
-/* Letters */
+/* Letters — tinted by highlight color */
 .ui-anim-letter {
-  color: #ffffff88;
+  color: hsla(var(--highlight-hue), 40%, 75%, 0.6);
   animation: ui-letter-anim 2s ease-in-out infinite;
   transition: color var(--transition, 0.4s), text-shadow var(--transition, 0.4s), opacity var(--transition, 0.4s);
 }
@@ -59,9 +65,10 @@
   }
 }
 
-/* SVG flicker */
+/* SVG flicker — tinted by highlight */
 .ui-anim-btn-svg {
-  filter: drop-shadow(0 0 2px #fff9);
+  color: hsla(var(--highlight-hue), 60%, 70%, 0.7) !important;
+  filter: drop-shadow(0 0 4px hsla(var(--highlight-hue), 100%, 70%, 0.3));
   animation: ui-flicker 2s linear infinite;
   animation-delay: 0.5s;
 }

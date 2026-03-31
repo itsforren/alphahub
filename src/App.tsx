@@ -79,6 +79,7 @@ const HubLeads = lazy(() => import("./pages/hub/Leads"));
 const HubProfile = lazy(() => import("./pages/hub/Profile"));
 const HubSettings = lazy(() => import("./pages/hub/Settings"));
 const SignAgreement = lazy(() => import("./pages/hub/SignAgreement"));
+const DialPage = lazy(() => import("./pages/DialPage"));
 
 // CONSOLIDATED Admin Pages
 const CommandCenter = lazy(() => import("./pages/hub/admin/CommandCenter"));
@@ -152,7 +153,14 @@ const App = () => (
                       <SignAgreement />
                     </ProtectedRoute>
                   } />
-                  
+
+                  {/* Full-screen dial page — mobile setter form with ?lead_id=xxx */}
+                  <Route path="/dial" element={
+                    <ProtectedRoute>
+                      <DialPage />
+                    </ProtectedRoute>
+                  } />
+
                   {/* NEW: Unified Agent Hub routes */}
                   <Route path="/hub" element={
                     <ProtectedRoute>
