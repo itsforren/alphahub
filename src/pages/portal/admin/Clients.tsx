@@ -156,7 +156,8 @@ export default function PortalAdminClients() {
   });
 
   const totalClients = clients.length;
-  const liveClients = clients.filter(c => normalizeStatus(c.status) === 'active').length;
+  const activeClients = clients.filter(c => normalizeStatus(c.status) === 'active').length;
+  const onboardingClients = clients.filter(c => normalizeStatus(c.status) === 'onboarding').length;
   // Apply performance percentage to total MTD spend
   const totalMTDSpend = useMemo(() => {
     const rawTotal = clients.reduce((sum, c) => sum + (c.mtd_ad_spend ?? 0), 0);
@@ -191,7 +192,7 @@ export default function PortalAdminClients() {
         <div>
           <h1 className="text-2xl font-semibold text-white/90 tracking-tight">Clients</h1>
           <p className="text-sm text-white/35 mt-0.5">
-            {liveClients} active &middot; {totalClients} total
+            {activeClients} active &middot; {onboardingClients} onboarding &middot; {totalClients} total
           </p>
         </div>
         <div className="flex gap-2">
@@ -228,7 +229,7 @@ export default function PortalAdminClients() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Clients"
-          value={`${liveClients}/${totalClients}`}
+          value={`${activeClients + onboardingClients}`}
           icon={Users}
         />
         <MetricCard

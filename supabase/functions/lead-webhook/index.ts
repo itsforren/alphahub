@@ -158,14 +158,39 @@ serve(async (req) => {
     if (existingLead) {
       console.log('Duplicate lead detected, returning existing:', existingLead.id);
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: 'Lead already exists',
           lead_id: existingLead.id,
           duplicate: true
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Check for duplicate by agent_id + phone (catches GHL multi-fire with different event IDs)
+    const normalizedPhone = (leadData.phone || '').replace(/\D/g, '');
+    if (normalizedPhone && leadData.agent_id) {
+      const { data: phoneDupe } = await supabase
+        .from('leads')
+        .select('id, lead_id')
+        .eq('agent_id', leadData.agent_id)
+        .eq('phone', leadData.phone)
+        .limit(1)
+        .maybeSingle();
+
+      if (phoneDupe) {
+        console.log('Duplicate phone detected for agent, returning existing:', phoneDupe.id);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Lead with same phone already exists for this agent',
+            lead_id: phoneDupe.id,
+            duplicate: true
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Track pipeline metric: webhook_received
@@ -364,6 +389,16 @@ serve(async (req) => {
       if (!res.ok) console.error('GHL injection failed:', res.status);
       else console.log('GHL injection triggered for lead:', newLead.id);
     }).catch(err => console.error('GHL injection error:', err));
+
+    // Notify team members (fire and forget)
+    fetch(`${supabaseUrl}/functions/v1/notify-team`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`,
+      },
+      body: JSON.stringify({ leadId: newLead.id }),
+    }).catch(err => console.error('Team notification error:', err));
 
     return new Response(
       JSON.stringify({ 
