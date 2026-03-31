@@ -24,6 +24,8 @@ import { PillLinks } from '@/components/portal/PillLinks';
 import { LeadIntelPillInline } from '@/components/hub/LeadIntelModal';
 import { ChatPopup, ChatBubbleButton } from '@/components/portal/ChatPopup';
 import { DiscoveryStatsSection } from '@/components/discovery/DiscoveryStatsSection';
+import { CallerLeaderboard } from '@/components/discovery/CallerLeaderboard';
+import { DailyWeeklyReport } from '@/components/discovery/DailyWeeklyReport';
 import StatusBadge from '@/components/portal/StatusBadge';
 import { PackageTypeBadge } from '@/components/portal/PackageTypeBadge';
 import { ProfilePhotoUpload } from '@/components/portal/ProfilePhotoUpload';
@@ -925,6 +927,15 @@ export default function PortalAdminClientDetail() {
               </div>
             )}
 
+            {/* Discovery Call Stats — pickup rate, connection rate, booking rate */}
+            {client.agent_id && (
+              <div className="space-y-4">
+                <DiscoveryStatsSection agentId={client.agent_id} />
+                <CallerLeaderboard agentId={client.agent_id} />
+                {!isClientView && <DailyWeeklyReport agentId={client.agent_id} />}
+              </div>
+            )}
+
             {/* Daily Spend Chart */}
             {showPerformance && (
               <DailySpendChart
@@ -941,11 +952,6 @@ export default function PortalAdminClientDetail() {
             {/* Leads Widget (visibility controlled) */}
             {showLeads && client.agent_id && (
               <LeadsWidget agentId={client.agent_id} />
-            )}
-
-            {/* Discovery Call Stats (admin only) */}
-            {!isClientView && client.agent_id && (
-              <DiscoveryStatsSection agentId={client.agent_id} />
             )}
           </TabsContent>
 

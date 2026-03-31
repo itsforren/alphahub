@@ -4,12 +4,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, TrendingUp, PhoneForwarded, Video, Headphones, X } from 'lucide-react';
+import { Search, PhoneCall, Calendar, Users, XCircle, AlertTriangle, Filter, PhoneForwarded, Video, Headphones, X } from 'lucide-react';
 import { LeadCard } from './LeadCard';
 import { DiscoveryCallSheet } from './DiscoveryCallSheet';
 import { SpeedToLeadScoreboard } from './SpeedToLeadScoreboard';
-import { CallerLeaderboard } from './CallerLeaderboard';
-import { DailyWeeklyReport } from './DailyWeeklyReport';
 import { useDiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
 import { computePriorityScore } from '@/hooks/useLeadDiscoveryQueue';
 import type { DiscoveryQueueData, DiscoveryLead } from '@/hooks/useLeadDiscoveryQueue';
@@ -274,18 +272,6 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
             filteredLost.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
       </Tabs>
-
-      {/* Stats */}
-      <details className="mt-6">
-        <summary className="flex items-center gap-2 cursor-pointer text-sm font-medium text-white/30 hover:text-white/60 transition-colors">
-          <TrendingUp className="h-4 w-4" />
-          Stats & Reports
-        </summary>
-        <div className="mt-4 space-y-6">
-          <CallerLeaderboard agentId={agentId} />
-          <DailyWeeklyReport agentId={agentId} />
-        </div>
-      </details>
 
       <DiscoveryCallSheet
         open={sheetOpen}
