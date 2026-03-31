@@ -82,7 +82,7 @@ const mainNavSections: NavSection[] = [
     title: 'My Business',
     defaultOpen: true,
     items: [
-      { to: '/hub/leads', icon: PhoneCall, label: 'My Leads' },
+      { to: '/hub/leads', icon: PhoneCall, label: 'Dial Tracker' },
       { to: '/hub/referrals', icon: UserPlus, label: 'Referrals' },
     ],
   },
@@ -300,19 +300,25 @@ export default function AgentHubLayout() {
   ];
   const showDiscovery = isAdmin || (user && DISCOVERY_ENABLED_USERS.includes(user.id));
 
-  const filteredMainNav = showDiscovery
-    ? mainNavSections
-    : mainNavSections.map(section => ({
-        ...section,
-        items: section.items.filter(item => item.to !== '/hub/leads'),
-      }));
+  // Client-only routes: hide Community, Support Tickets, and (conditionally) Leads
+  const CLIENT_HIDDEN_ROUTES = ['/hub/community', '/hub/support'];
+  const filteredMainNav = mainNavSections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!showDiscovery && item.to === '/hub/leads') return false;
+        if (CLIENT_HIDDEN_ROUTES.includes(item.to)) return false;
+        return true;
+      }),
+    }))
+    .filter(section => section.items.length > 0);
 
   // Inject "My Leads" into admin nav if user is discovery-enabled
   const adminSectionsWithLeads = showDiscovery
     ? [
         { title: null, items: [
           { to: '/hub/admin/clients', icon: Users, label: 'All Clients' },
-          { to: '/hub/leads', icon: PhoneCall, label: 'My Leads' },
+          { to: '/hub/leads', icon: PhoneCall, label: 'Dial Tracker' },
         ]},
         ...adminNavSections.slice(1),
       ]

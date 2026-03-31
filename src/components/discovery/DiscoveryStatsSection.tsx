@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
-import { Clock, Phone, Calendar, Repeat, Layers, XCircle } from 'lucide-react';
+import { Clock, Phone, Calendar, Repeat, Layers, XCircle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
 import { useDiscoveryCallStats } from '@/hooks/useDiscoveryCallStats';
 import { OutcomeBadge } from './OutcomeSelector';
 import type { DiscoveryCall } from '@/hooks/useDiscoveryCalls';
@@ -78,6 +79,7 @@ function stageOrderIndex(stage: string): number {
 
 export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
   const { data: stats, isLoading } = useDiscoveryCallStats(agentId);
+  const navigate = useNavigate();
 
   if (isLoading || !stats) return null;
 
@@ -95,20 +97,29 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
   const totalLeads = pieData.reduce((s, d) => s + d.value, 0);
 
   return (
-    <div className="relative rounded-2xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-xl overflow-hidden">
+    <div className="relative rounded-2xl border border-white/[0.08] bg-black/[0.20] overflow-hidden">
       {/* Top shine */}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.10] to-transparent" />
 
       <div className="p-5 space-y-5">
         {/* Header */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Phone className="h-3.5 w-3.5 text-primary" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+              <Phone className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Dial Performance</h3>
+              <p className="text-[11px] text-muted-foreground">Discovery call activity & pipeline</p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Dial Performance</h3>
-            <p className="text-[11px] text-muted-foreground">Discovery call activity & pipeline</p>
-          </div>
+          <button
+            onClick={() => navigate('/hub/leads')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-xs font-semibold text-primary hover:bg-primary/20 hover:border-primary/40 transition-all duration-200 flex-shrink-0"
+          >
+            Go to Dialer
+            <ArrowRight className="h-3 w-3" />
+          </button>
         </div>
 
         {/* KPI grid */}
@@ -123,58 +134,62 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
 
         {/* Pipeline + Activity */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Donut chart */}
-          <div className="relative rounded-xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-sm p-4">
-            <p className="text-xs font-semibold text-foreground mb-3">Pipeline Distribution</p>
-            <div className="flex items-center gap-4">
+          {/* Pipeline Distribution */}
+          <div className="relative rounded-xl border border-white/[0.08] bg-black/[0.20] p-4">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-semibold text-foreground">Pipeline Distribution</p>
+              <span className="text-[10px] font-bold text-muted-foreground">{totalLeads} total</span>
+            </div>
+            <div className="flex items-center gap-5">
               {/* Donut */}
-              <div className="relative flex-shrink-0" style={{ width: 120, height: 120 }}>
+              <div className="relative flex-shrink-0" style={{ width: 100, height: 100 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={36}
-                      outerRadius={54}
-                      paddingAngle={2}
-                      dataKey="value"
-                      strokeWidth={0}
-                    >
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={30} outerRadius={46} paddingAngle={2} dataKey="value" strokeWidth={0}>
                       {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} opacity={0.9} />
+                        <Cell key={i} fill={entry.color} opacity={0.85} />
                       ))}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ background: 'rgba(10,10,10,0.9)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 11 }}
+                      contentStyle={{ background: 'rgba(8,8,8,0.95)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 8, fontSize: 11 }}
                       formatter={(value: number, name: string) => [`${value} leads`, name]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
-                {/* Center label */}
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-lg font-black text-foreground">{totalLeads}</span>
-                  <span className="text-[9px] text-muted-foreground uppercase tracking-wide">leads</span>
+                  <span className="text-base font-black text-foreground">{totalLeads}</span>
+                  <span className="text-[8px] text-muted-foreground uppercase tracking-widest">leads</span>
                 </div>
               </div>
 
-              {/* Legend */}
-              <div className="flex-1 space-y-1.5 min-w-0">
-                {pieData.map((entry) => (
-                  <div key={entry.name} className="flex items-center justify-between gap-2 min-w-0">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: entry.color }} />
-                      <span className="text-[11px] text-muted-foreground truncate">{entry.name}</span>
+              {/* Legend with mini progress bars */}
+              <div className="flex-1 space-y-2 min-w-0">
+                {pieData.map((entry) => {
+                  const pct = Math.round((entry.value / totalLeads) * 100);
+                  return (
+                    <div key={entry.name}>
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-2 h-2 rounded-[3px] flex-shrink-0" style={{ background: entry.color }} />
+                          <span className="text-[11px] text-white/60 truncate">{entry.name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-[10px] text-white/25 tabular-nums">{pct}%</span>
+                          <span className="text-[11px] font-bold text-white/80 w-4 text-right tabular-nums">{entry.value}</span>
+                        </div>
+                      </div>
+                      <div className="h-[3px] bg-white/[0.05] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: entry.color, opacity: 0.65 }} />
+                      </div>
                     </div>
-                    <span className="text-[11px] font-bold text-foreground flex-shrink-0">{entry.value}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
 
           {/* Recent Activity */}
-          <div className="relative rounded-xl border border-white/[0.05] bg-white/[0.01] backdrop-blur-sm p-4">
+          <div className="relative rounded-xl border border-white/[0.08] bg-black/[0.20] p-4">
             <p className="text-xs font-semibold text-foreground mb-3">Recent Activity</p>
             {stats.recentActivity.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">No calls yet</p>
@@ -224,15 +239,13 @@ function KpiCard({
   color: string;
 }) {
   return (
-    <div className="glass-panel-premium p-4 group transition-all duration-300 hover:border-white/[0.1] cursor-default" style={{ background: 'rgba(255,255,255,0.008)' }}>
-      {/* Corner glow */}
-      <div className="absolute top-0 left-0 w-24 h-24 bg-primary/[0.03] rounded-full blur-3xl -translate-x-8 -translate-y-8 group-hover:bg-primary/[0.06] transition-colors duration-700" />
-      <div className="flex items-start justify-between relative z-10">
+    <div className="relative rounded-xl border border-white/[0.08] bg-black/[0.25] p-4 group transition-all duration-300 hover:border-white/[0.14] hover:bg-black/[0.30] cursor-default overflow-hidden">
+      <div className="flex items-start justify-between">
         <div className="space-y-1.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">{label}</p>
           <p className="text-xl font-semibold text-luxury tracking-tight">{value}</p>
         </div>
-        <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05] group-hover:border-primary/20 transition-colors duration-300">
+        <div className="p-2 rounded-lg bg-white/[0.04] border border-white/[0.06] group-hover:border-primary/20 transition-colors duration-300">
           <Icon className={cn('w-3.5 h-3.5', color)} />
         </div>
       </div>
