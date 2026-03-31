@@ -196,8 +196,8 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
               </a>
             )}
             {lead.email && (
-              <span className="inline-flex items-center gap-1 truncate max-w-[200px]">
-                <Mail className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1 truncate max-w-[140px] sm:max-w-[200px]">
+                <Mail className="h-3 w-3 flex-shrink-0" />
                 {lead.email}
               </span>
             )}
@@ -233,7 +233,7 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
           )}
 
           {lead.ghl_contact_id && subaccountId && (
-            <div className="flex items-center gap-3 mt-0.5">
+            <div className="flex items-center gap-2 sm:gap-3 mt-0.5 flex-wrap">
               <a
                 href={`https://app.alphaagentcrm.com/v2/location/${subaccountId}/contacts/detail/${lead.ghl_contact_id}`}
                 target="_blank"

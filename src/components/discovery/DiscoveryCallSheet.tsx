@@ -534,7 +534,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
-      <DialogContent className="max-w-3xl w-full sm:w-[95vw] h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-y-auto p-0 gap-0 border-0 sm:border sm:border-white/[0.06] bg-[rgba(8,8,8,0.98)] sm:bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl rounded-none sm:rounded-2xl">
+      <DialogContent className="max-w-3xl w-[95vw] max-h-[90vh] overflow-y-auto p-0 gap-0 border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl rounded-2xl">
         {/* Header with Location Map */}
         <div className="sticky top-0 z-10 border-b border-white/[0.06] bg-[rgba(8,8,8,0.95)] backdrop-blur-2xl">
           <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent" />
