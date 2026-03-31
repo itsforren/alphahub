@@ -112,13 +112,13 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
         </div>
 
         {/* KPI grid */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
-          <KpiCard icon={Clock} label="Speed to Lead" value={formatDuration(stats.speedToLeadMinutes)} color="text-blue-400" bg="bg-blue-500/10" />
-          <KpiCard icon={Phone} label="Connection" value={formatPercent(stats.connectionRate)} color="text-green-400" bg="bg-green-500/10" />
-          <KpiCard icon={Calendar} label="Booking Rate" value={formatPercent(stats.bookingRate)} color="text-purple-400" bg="bg-purple-500/10" />
-          <KpiCard icon={Repeat} label="Avg Attempts" value={stats.avgAttemptsToBook !== null ? stats.avgAttemptsToBook.toFixed(1) : '—'} color="text-amber-400" bg="bg-amber-500/10" />
-          <KpiCard icon={Layers} label="In Queue" value={String(totalQueue)} color="text-cyan-400" bg="bg-cyan-500/10" />
-          <KpiCard icon={XCircle} label="Lost Rate" value={formatPercent(stats.lostRate)} color="text-red-400" bg="bg-red-500/10" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+          <KpiCard icon={Clock}    label="Speed to Lead"  value={formatDuration(stats.speedToLeadMinutes)} color="text-blue-400" />
+          <KpiCard icon={Phone}    label="Connection"     value={formatPercent(stats.connectionRate)}      color="text-green-400" />
+          <KpiCard icon={Calendar} label="Booking Rate"   value={formatPercent(stats.bookingRate)}         color="text-purple-400" />
+          <KpiCard icon={Repeat}   label="Avg Attempts"   value={stats.avgAttemptsToBook !== null ? stats.avgAttemptsToBook.toFixed(1) : '—'} color="text-amber-400" />
+          <KpiCard icon={Layers}   label="In Queue"       value={String(totalQueue)}                       color="text-cyan-400" />
+          <KpiCard icon={XCircle}  label="Lost Rate"      value={formatPercent(stats.lostRate)}            color="text-red-400" />
         </div>
 
         {/* Pipeline + Activity */}
@@ -210,29 +210,31 @@ export function DiscoveryStatsSection({ agentId }: DiscoveryStatsSectionProps) {
   );
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
+// ── KPI Card — matches MetricCard (glass-panel-premium style) ────────────────
 
 function KpiCard({
   icon: Icon,
   label,
   value,
   color,
-  bg,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   color: string;
-  bg: string;
 }) {
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2">
-      <div className={cn('w-6 h-6 rounded-md flex items-center justify-center', bg)}>
-        <Icon className={cn('h-3 w-3', color)} />
-      </div>
-      <div>
-        <p className="text-[10px] text-muted-foreground leading-tight">{label}</p>
-        <p className="text-base font-bold text-foreground leading-tight mt-0.5">{value}</p>
+    <div className="glass-panel-premium p-4 group transition-all duration-300 hover:border-white/[0.1] cursor-default">
+      {/* Corner glow */}
+      <div className="absolute top-0 left-0 w-24 h-24 bg-primary/[0.03] rounded-full blur-3xl -translate-x-8 -translate-y-8 group-hover:bg-primary/[0.06] transition-colors duration-700" />
+      <div className="flex items-start justify-between relative z-10">
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">{label}</p>
+          <p className="text-xl font-semibold text-luxury tracking-tight">{value}</p>
+        </div>
+        <div className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.05] group-hover:border-primary/20 transition-colors duration-300">
+          <Icon className={cn('w-3.5 h-3.5', color)} />
+        </div>
       </div>
     </div>
   );
