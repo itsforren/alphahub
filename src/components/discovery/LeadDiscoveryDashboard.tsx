@@ -217,7 +217,7 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
         </TabsList>
 
         {/* Dial Queue */}
-        <TabsContent value="queue" className="space-y-3 min-w-0 overflow-hidden">
+        <TabsContent value="queue" className="space-y-3 min-w-0">
           {data.failedDelivery.length > 0 && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-sm">
               <AlertTriangle className="h-4 w-4 text-red-400 flex-shrink-0" />
@@ -229,16 +229,17 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           {filteredQueue.length === 0 ? (
             <EmptyState icon={PhoneCall} message="No follow-ups right now. Nice." />
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {filteredQueue.map((lead) => {
                 const score = computePriorityScore(lead);
+                const hasLabel = score >= 700;
                 return (
-                  <div key={lead.id} className="relative">
+                  <div key={lead.id} className={hasLabel ? 'relative pt-2' : 'relative'}>
                     {score >= 900 && (
-                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-500/90 text-white rounded">URGENT</span>
+                      <span className="absolute top-0 left-2 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-red-500/90 text-white rounded-b">URGENT</span>
                     )}
                     {score >= 700 && score < 900 && (
-                      <span className="absolute -top-1.5 -left-1 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/90 text-white rounded">HIGH</span>
+                      <span className="absolute top-0 left-2 z-10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/90 text-white rounded-b">HIGH</span>
                     )}
                     <LeadCard lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />
                   </div>
@@ -248,27 +249,27 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           )}
         </TabsContent>
 
-        <TabsContent value="callbacks" className="space-y-2 min-w-0 overflow-hidden">
+        <TabsContent value="callbacks" className="space-y-2 min-w-0">
           {filteredCallbacks.length === 0 ? <EmptyState icon={PhoneForwarded} message="No callbacks scheduled" /> :
             filteredCallbacks.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="intro-booked" className="space-y-2 min-w-0 overflow-hidden">
+        <TabsContent value="intro-booked" className="space-y-2 min-w-0">
           {filteredIntroBooked.length === 0 ? <EmptyState icon={Headphones} message="No intro calls booked" /> :
             filteredIntroBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="strategy-booked" className="space-y-2 min-w-0 overflow-hidden">
+        <TabsContent value="strategy-booked" className="space-y-2 min-w-0">
           {filteredStrategyBooked.length === 0 ? <EmptyState icon={Video} message="No strategy calls booked" /> :
             filteredStrategyBooked.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="all" className="space-y-2 min-w-0 overflow-hidden">
+        <TabsContent value="all" className="space-y-2 min-w-0">
           {filteredAll.length === 0 ? <EmptyState icon={Users} message="No contacts found" /> :
             filteredAll.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
 
-        <TabsContent value="lost" className="space-y-2 min-w-0 overflow-hidden">
+        <TabsContent value="lost" className="space-y-2 min-w-0">
           {filteredLost.length === 0 ? <EmptyState icon={XCircle} message="None" /> :
             filteredLost.map((lead) => <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} subaccountId={subaccountId} />)}
         </TabsContent>
