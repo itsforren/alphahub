@@ -519,7 +519,7 @@ export default function AgentHubLayout() {
 
       {/* Main Content */}
       <main
-        className={`flex-1 pt-16 lg:pt-0 transition-all duration-200 relative z-10 ${
+        className={`flex-1 min-w-0 overflow-x-hidden pt-16 lg:pt-0 transition-all duration-200 relative z-10 ${
           collapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
         }`}
       >

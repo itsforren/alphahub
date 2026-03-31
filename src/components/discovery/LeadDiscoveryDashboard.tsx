@@ -132,8 +132,8 @@ export function LeadDiscoveryDashboard({ data, agentId, schedulerLink, subaccoun
           </p>
         )}
 
-        {/* Filters Row — scrollable strip, never overflows page */}
-        <div className="overflow-x-auto scrollbar-hide -mx-3 sm:-mx-4 px-3 sm:px-4">
+        {/* Filters Row */}
+        <div className="overflow-x-auto scrollbar-hide">
           <div className="flex items-center gap-2 min-w-max">
             <Filter className="h-3 w-3 text-white/15 flex-shrink-0" />
             <Select value={filterState} onValueChange={(v) => setFilterState(v === 'all' ? '' : v)}>
