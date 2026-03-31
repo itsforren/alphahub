@@ -152,7 +152,6 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
   const stage = stageConfig[lead.discovery_stage || 'new'] || stageConfig.new;
   const freshness = getFreshness(lead.lead_date);
 
-  // Check if being worked by someone else
   const isWorkedByOther = lead.currently_being_worked && lead.last_attempted_by_id !== user?.id;
   const isDeliveryFailed = lead.delivery_status !== 'delivered';
   const activeStages = ['new', 'attempt_1', 'attempt_2', 'attempt_3', 'attempt_4', 'discovery_complete'];
@@ -161,12 +160,17 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
   const appointmentTime = BOOKED_STAGES.includes(lead.discovery_stage || '') ? getUpcomingAppointment(lead) : null;
   const summary = getLeadSummary(lead);
 
+  // Abbreviated state for mobile
+  const stateAbbr = lead.state?.length && lead.state.length > 2
+    ? lead.state.slice(0, 2).toUpperCase()
+    : lead.state;
+
   return (
     <button
       onClick={isWorkedByOther ? undefined : onClick}
       disabled={isWorkedByOther}
       className={cn(
-        'w-full text-left p-3 sm:p-4 rounded-xl border transition-all duration-200 group overflow-hidden',
+        'w-full text-left rounded-xl border transition-all duration-200 group overflow-hidden',
         isWorkedByOther
           ? 'opacity-50 cursor-not-allowed border-border bg-muted/20'
           : badNumber
@@ -174,164 +178,171 @@ export function LeadCard({ lead, onClick, subaccountId }: LeadCardProps) {
             : 'border-border/50 bg-card/50 hover:bg-card hover:border-primary/20 hover:shadow-[0_0_20px_hsl(var(--primary)/0.08)] cursor-pointer'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        {/* Left: Name + details */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className={cn('inline-block w-2 h-2 rounded-full flex-shrink-0', freshness.dot)} title={freshness.label} />
-            <span className="font-bold text-foreground truncate">{name}</span>
-            <span className={cn('text-[10px] font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
-            <TemperatureBadge temp={lead.discovery_temperature} />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-x-2 sm:gap-x-3 gap-y-1 text-xs text-muted-foreground overflow-hidden">
-            {lead.phone && (
-              <a
-                href={`tel:${lead.phone}`}
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 hover:text-primary transition-colors flex-shrink-0"
-              >
-                <Phone className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{lead.phone}</span>
-              </a>
-            )}
-            {lead.email && (
-              <span className="inline-flex items-center gap-1 min-w-0">
-                <Mail className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate max-w-[120px] sm:max-w-[200px]">{lead.email}</span>
-              </span>
-            )}
-            {lead.age && <span className="flex-shrink-0">Age {lead.age}</span>}
-            {lead.state && (
-              <span className="inline-flex items-center gap-1 flex-shrink-0">
-                <MapPin className="h-3 w-3 flex-shrink-0" />
-                {lead.state}
-              </span>
-            )}
-          </div>
-          {/* Lost reason */}
-          {lead.discovery_stage === 'lost' && lead.lost_reason && (
-            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400/80">
-              <AlertTriangle className="h-3 w-3" />
-              {formatLostReason(lead.lost_reason)}
-            </div>
-          )}
-
-          {/* Appointment bubble */}
-          {appointmentTime && (
-            <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[11px] text-green-400 font-medium">
-              <CalendarDays className="h-3 w-3" />
-              Next call: {appointmentTime}
-            </div>
-          )}
-
-          {/* One-line lead summary */}
-          {summary && (
-            <div className="mt-1 text-[11px] text-muted-foreground/60 italic truncate">
-              {summary}
-            </div>
-          )}
-
-          {lead.ghl_contact_id && subaccountId && (
-            <div className="flex items-center gap-2 sm:gap-3 mt-0.5 flex-wrap">
-              <a
-                href={`https://app.alphaagentcrm.com/v2/location/${subaccountId}/contacts/detail/${lead.ghl_contact_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-[10px] text-primary/50 hover:text-primary transition-colors"
-              >
-                <ExternalLink className="h-2.5 w-2.5" />
-                View in CRM
-              </a>
-              <a
-                href={`https://app.alphaagentcrm.com/v2/location/${subaccountId}/conversations/${lead.ghl_contact_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-[10px] text-green-400/60 hover:text-green-400 transition-colors"
-              >
-                <PhoneCall className="h-2.5 w-2.5" />
-                Call from CRM
-              </a>
-              {/* No-Show button for booked leads */}
-              {['strategy_booked', 'intro_scheduled', 'booked'].includes(lead.discovery_stage || '') && (
-                <NoShowButton leadId={lead.id} stage={lead.discovery_stage || ''} />
-              )}
-              {/* Copy dial link for mobile */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const url = `${window.location.origin}/dial?lead_id=${lead.id}`;
-                  navigator.clipboard.writeText(url);
-                  toast.success('Dial link copied');
-                }}
-                className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-primary transition-colors"
-              >
-                <Link2 className="h-2.5 w-2.5" />
-                Copy Link
-              </button>
-            </div>
-          )}
-
-          {/* Assigned person */}
-          {lead.last_attempted_by && (
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/15 text-[8px] font-bold text-primary flex-shrink-0">
-                {lead.last_attempted_by.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
-              </span>
-              <span className="text-[11px] text-muted-foreground/70">{lead.last_attempted_by}</span>
-            </div>
-          )}
-
-          {/* Last attempt info */}
-          {lead.last_call_attempt_at && (
-            <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground/70">
-              <Clock className="h-3 w-3" />
-              Last: {formatRelativeTime(lead.last_call_attempt_at)}
-            </div>
-          )}
-
-          {/* Cadence suggestion — only for active queue leads */}
-          {isActiveStage && (
-            <div className="mt-1">
-              <CadenceSuggestion
-                attemptCount={lead.call_attempt_count || 0}
-                lastAttemptAt={lead.last_call_attempt_at}
-              />
-            </div>
-          )}
-
-          {/* Being worked indicator */}
-          {isWorkedByOther && (
-            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-amber-400">
-              <Loader2 className="h-3 w-3 animate-spin" />
-              Being worked by {lead.last_attempted_by}
-            </div>
-          )}
-
-          {/* Delivery failure */}
-          {isDeliveryFailed && (
-            <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400">
-              <AlertTriangle className="h-3 w-3" />
-              CRM delivery failed
-            </div>
-          )}
+      {/* ═══ MOBILE LAYOUT (compact single-row) ═══ */}
+      <div className="sm:hidden p-2.5">
+        {/* Row 1: dot + name + freshness + stage badge + chevron */}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', freshness.dot)} />
+          <span className="font-semibold text-sm text-foreground truncate flex-1">{name}</span>
+          <span className={cn('text-[10px] font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
+          <TemperatureBadge temp={lead.discovery_temperature} />
+          <Badge variant="outline" className={cn('text-[9px] font-bold px-1.5 py-0 flex-shrink-0', stage.color)}>
+            {stage.label}
+          </Badge>
+          <span className="text-muted-foreground/40 text-sm flex-shrink-0">›</span>
         </div>
 
-        {/* Right: Stage badge + progress + arrow */}
-        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className={cn('text-[11px] font-bold', stage.color)}>
-              {stage.label}
-            </Badge>
-            <span className="text-muted-foreground/50 group-hover:text-primary transition-colors text-lg">
-              ›
-            </span>
-          </div>
-          {isActiveStage && (
-            <AttemptProgressBar attempts={lead.call_attempt_count || 0} />
+        {/* Row 2: phone · state · age — single line */}
+        <div className="flex items-center gap-2 mt-1 text-[11px] text-muted-foreground truncate">
+          {lead.phone && (
+            <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5 hover:text-primary flex-shrink-0">
+              <Phone className="h-2.5 w-2.5" />{lead.phone}
+            </a>
           )}
+          {stateAbbr && <span className="flex-shrink-0">{stateAbbr}</span>}
+          {lead.age && <span className="flex-shrink-0">Age {lead.age}</span>}
+        </div>
+
+        {/* Row 3: contextual info — only show what's critical */}
+        {(appointmentTime || (lead.discovery_stage === 'lost' && lead.lost_reason) || isActiveStage || isWorkedByOther) && (
+          <div className="mt-1">
+            {appointmentTime && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-green-400 font-medium">
+                <CalendarDays className="h-2.5 w-2.5" />{appointmentTime}
+              </span>
+            )}
+            {lead.discovery_stage === 'lost' && lead.lost_reason && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-red-400/80">
+                <AlertTriangle className="h-2.5 w-2.5" />{formatLostReason(lead.lost_reason)}
+              </span>
+            )}
+            {isActiveStage && (
+              <CadenceSuggestion attemptCount={lead.call_attempt_count || 0} lastAttemptAt={lead.last_call_attempt_at} />
+            )}
+            {isWorkedByOther && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />Being worked by {lead.last_attempted_by}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ═══ DESKTOP LAYOUT (original full layout) ═══ */}
+      <div className="hidden sm:block p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className={cn('inline-block w-2 h-2 rounded-full flex-shrink-0', freshness.dot)} title={freshness.label} />
+              <span className="font-bold text-foreground truncate">{name}</span>
+              <span className={cn('text-[10px] font-semibold flex-shrink-0', freshness.text)}>{freshness.label}</span>
+              <TemperatureBadge temp={lead.discovery_temperature} />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              {lead.phone && (
+                <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-primary transition-colors">
+                  <Phone className="h-3 w-3" />{lead.phone}
+                </a>
+              )}
+              {lead.email && (
+                <span className="inline-flex items-center gap-1 truncate max-w-[200px]">
+                  <Mail className="h-3 w-3 flex-shrink-0" />{lead.email}
+                </span>
+              )}
+              {lead.age && <span>Age {lead.age}</span>}
+              {lead.state && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />{lead.state}
+                </span>
+              )}
+            </div>
+
+            {lead.discovery_stage === 'lost' && lead.lost_reason && (
+              <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400/80">
+                <AlertTriangle className="h-3 w-3" />{formatLostReason(lead.lost_reason)}
+              </div>
+            )}
+
+            {appointmentTime && (
+              <div className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-[11px] text-green-400 font-medium">
+                <CalendarDays className="h-3 w-3" />Next call: {appointmentTime}
+              </div>
+            )}
+
+            {summary && (
+              <div className="mt-1 text-[11px] text-muted-foreground/60 italic truncate">{summary}</div>
+            )}
+
+            {lead.ghl_contact_id && subaccountId && (
+              <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                <a
+                  href={`https://app.alphaagentcrm.com/v2/location/${subaccountId}/contacts/detail/${lead.ghl_contact_id}`}
+                  target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[10px] text-primary/50 hover:text-primary transition-colors"
+                >
+                  <ExternalLink className="h-2.5 w-2.5" />View in CRM
+                </a>
+                <a
+                  href={`https://app.alphaagentcrm.com/v2/location/${subaccountId}/conversations/${lead.ghl_contact_id}`}
+                  target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[10px] text-green-400/60 hover:text-green-400 transition-colors"
+                >
+                  <PhoneCall className="h-2.5 w-2.5" />Call from CRM
+                </a>
+                {['strategy_booked', 'intro_scheduled', 'booked'].includes(lead.discovery_stage || '') && (
+                  <NoShowButton leadId={lead.id} stage={lead.discovery_stage || ''} />
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(`${window.location.origin}/dial?lead_id=${lead.id}`); toast.success('Dial link copied'); }}
+                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-primary transition-colors"
+                >
+                  <Link2 className="h-2.5 w-2.5" />Copy Link
+                </button>
+              </div>
+            )}
+
+            {lead.last_attempted_by && (
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/15 text-[8px] font-bold text-primary flex-shrink-0">
+                  {lead.last_attempted_by.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+                </span>
+                <span className="text-[11px] text-muted-foreground/70">{lead.last_attempted_by}</span>
+              </div>
+            )}
+
+            {lead.last_call_attempt_at && (
+              <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground/70">
+                <Clock className="h-3 w-3" />Last: {formatRelativeTime(lead.last_call_attempt_at)}
+              </div>
+            )}
+
+            {isActiveStage && (
+              <div className="mt-1">
+                <CadenceSuggestion attemptCount={lead.call_attempt_count || 0} lastAttemptAt={lead.last_call_attempt_at} />
+              </div>
+            )}
+
+            {isWorkedByOther && (
+              <div className="flex items-center gap-1 mt-1.5 text-[11px] text-amber-400">
+                <Loader2 className="h-3 w-3 animate-spin" />Being worked by {lead.last_attempted_by}
+              </div>
+            )}
+
+            {isDeliveryFailed && (
+              <div className="flex items-center gap-1 mt-1.5 text-[11px] text-red-400">
+                <AlertTriangle className="h-3 w-3" />CRM delivery failed
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className={cn('text-[11px] font-bold', stage.color)}>{stage.label}</Badge>
+              <span className="text-muted-foreground/50 group-hover:text-primary transition-colors text-lg">›</span>
+            </div>
+            {isActiveStage && <AttemptProgressBar attempts={lead.call_attempt_count || 0} />}
+          </div>
         </div>
       </div>
     </button>
