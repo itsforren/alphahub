@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,8 @@ export default function Login() {
   const { signIn } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = (location.state as any)?.from?.pathname + ((location.state as any)?.from?.search || '') || '/hub';
 
   const checkClientEmail = async () => {
     setErrors({});
@@ -137,12 +139,7 @@ export default function Login() {
       description: 'You have successfully logged in.',
     });
     
-    // Navigate based on user type
-    if (clientStatus?.isStaffMember) {
-      navigate('/hub'); // Admin/members go to hub (can redirect to admin later if needed)
-    } else {
-      navigate('/hub');
-    }
+    navigate(returnTo);
   };
 
   const handleMFASuccess = () => {
@@ -150,12 +147,7 @@ export default function Login() {
       title: 'Welcome back!',
       description: 'You have successfully logged in.',
     });
-    
-    if (clientStatus?.isStaffMember) {
-      navigate('/hub');
-    } else {
-      navigate('/hub');
-    }
+    navigate(returnTo);
   };
 
   const handleSetPassword = async (e: React.FormEvent) => {
@@ -212,7 +204,7 @@ export default function Login() {
         description: 'Your password has been set successfully.',
       });
       
-      navigate('/hub');
+      navigate(returnTo);
     } catch (err) {
       toast({
         title: 'Error',
@@ -279,7 +271,7 @@ export default function Login() {
         description: 'Your account has been created successfully.',
       });
       
-      navigate('/hub');
+      navigate(returnTo);
     } catch (err) {
       toast({
         title: 'Error',
