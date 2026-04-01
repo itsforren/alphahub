@@ -209,7 +209,7 @@ async function createGHLContact(
     lastName: leadData.last_name || '',
     email: leadData.email || undefined,
     phone: leadData.phone || undefined,
-    source: leadData.lead_source || 'AlphaHub',
+    source: 'Google Search',
     tags: ['alpha'], // Apply "alpha" tag to trigger automation
     customFields, // Always include custom fields (includes fallback with all data)
   };
