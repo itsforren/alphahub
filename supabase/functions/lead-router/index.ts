@@ -53,6 +53,19 @@ serve(async (req) => {
         return json({ error: 'agent_id, state, and email required' }, 400);
       }
 
+      // Normalize: survey arrays (interests, investments) → comma-separated strings
+      const toText = (v: unknown): string | null => {
+        if (!v) return null;
+        if (Array.isArray(v)) return (v as string[]).join(', ');
+        return String(v);
+      };
+
+      const surveyAge         = toText(age);
+      const surveyEmployment  = toText(employment);
+      const surveyInterest    = toText(interests);    // form field "interests" → DB column "interest"
+      const surveySavings     = toText(contribution); // form field "contribution" → DB column "savings"
+      const surveyInvestments = toText(investments);
+
       // 1. Get the agent/client details
       const { data: client } = await supabase
         .from('clients')
@@ -69,22 +82,28 @@ serve(async (req) => {
       const { error: leadError } = await supabase
         .from('leads')
         .insert({
-          lead_id: leadId,
-          agent_id: agent_id,
-          first_name: firstName,
-          last_name: lastName,
-          email: email,
-          phone: phone,
-          state: state,
-          lead_source: 'CONSOLIDATED_ROUTER',
-          lead_date: new Date().toISOString(),
-          status: 'new',
+          lead_id:     leadId,
+          agent_id:    agent_id,
+          first_name:  firstName,
+          last_name:   lastName,
+          email:       email,
+          phone:       phone,
+          state:       state,
+          // Survey qualification fields — top-level so inject-lead-to-ghl can read them
+          age:         surveyAge,
+          employment:  surveyEmployment,
+          interest:    surveyInterest,
+          savings:     surveySavings,
+          investments: surveyInvestments,
+          lead_source:     'CONSOLIDATED_ROUTER',
+          lead_date:       new Date().toISOString(),
+          status:          'new',
           delivery_status: 'pending',
           gclid: gclid || null,
           lead_data: {
-            source: src || 'consolidated_campaign',
+            source:        src || 'consolidated_campaign',
             campaign_type: src || 'direct',
-            keyword: keyword || null,
+            keyword:       keyword || null,
             router_version: 'v1',
             survey: { age, employment, contribution, investments, interests },
           },
