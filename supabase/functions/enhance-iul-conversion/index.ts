@@ -8,8 +8,12 @@ const corsHeaders = {
 
 const GOOGLE_ADS_API_VERSION = 'v22';
 const CUSTOMER_ID = '6551751244';
-const MANAGER_ID = '5765206288';
 const CONVERSION_ACTION = `customers/${CUSTOMER_ID}/conversionActions/6489866157`; // Master IUL PPL Conversion
+
+/** MCC account ID — same env var used by all other Google Ads functions */
+function getMccId(): string {
+  return (Deno.env.get('GOOGLE_ADS_MCC_CUSTOMER_ID') ?? '').trim().replace(/-/g, '');
+}
 
 // Retry delays in minutes indexed by attempt number (1-based).
 // Attempt 1 fires from the queue ~5 min after submission.
@@ -175,7 +179,7 @@ serve(async (req) => {
         'Content-Type':    'application/json',
         'Authorization':   `Bearer ${accessToken}`,
         'developer-token': Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')!,
-        'login-customer-id': MANAGER_ID,
+        'login-customer-id': getMccId(),
       },
       body: JSON.stringify(payload),
     });
@@ -187,6 +191,18 @@ serve(async (req) => {
     let success = apiRes.ok && partialErrors.length === 0;
     let errorMessage = '';
     let conversionNotFound = false;
+
+    // HTTP-level failure (e.g. 401 auth, 403, 500) — capture real error message
+    if (!apiRes.ok && apiResult.error) {
+      const apiErr = apiResult.error;
+      const errCode = apiErr.details?.[0]?.errors?.[0]?.errorCode;
+      errorMessage = `HTTP ${apiRes.status}: ${apiErr.message || JSON.stringify(apiErr).substring(0, 300)}`;
+      // CUSTOMER_NOT_FOUND under authenticationError = MCC ID mismatch, not a transient error
+      if (errCode?.authenticationError === 'CUSTOMER_NOT_FOUND') {
+        errorMessage = `CUSTOMER_NOT_FOUND (HTTP ${apiRes.status}) — check GOOGLE_ADS_MCC_CUSTOMER_ID env var`;
+      }
+      console.error(`[EC Enhancement] Google Ads HTTP error: ${errorMessage}`);
+    }
 
     if (partialErrors.length > 0) {
       const errorStr = JSON.stringify(partialErrors);
@@ -204,48 +220,49 @@ serve(async (req) => {
 
     // Update queue row if this was called from the queue processor
     if (queue_id) {
-      if (success) {
-        await supabase
-          .from('ec_enhancement_queue')
-          .update({ status: 'done' })
-          .eq('id', queue_id)
-          .catch(e => console.error('Queue done update failed:', e));
-
-      } else if (conversionNotFound && currentAttempt < MAX_ATTEMPTS) {
-        // Reschedule with escalating delay
-        const delayMinutes = RETRY_DELAYS_MINUTES[currentAttempt - 1] ?? 120;
-        const processAfter = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
-        console.log(`[EC Enhancement] Rescheduling in ${delayMinutes}min (attempt ${currentAttempt}/${MAX_ATTEMPTS})`);
-        await supabase
-          .from('ec_enhancement_queue')
-          .update({ status: 'pending', process_after: processAfter, last_error: errorMessage })
-          .eq('id', queue_id)
-          .catch(e => console.error('Queue reschedule update failed:', e));
-
-      } else {
-        // Max attempts reached or non-retriable error
-        const finalError = conversionNotFound
-          ? `CONVERSION_NOT_FOUND after ${currentAttempt} attempts — giving up`
-          : errorMessage;
-        console.log(`[EC Enhancement] ${conversionNotFound ? 'Max retries' : 'Error'} — marking failed: ${finalError}`);
-        await supabase
-          .from('ec_enhancement_queue')
-          .update({ status: 'failed', last_error: finalError })
-          .eq('id', queue_id)
-          .catch(e => console.error('Queue failed update failed:', e));
+      try {
+        if (success) {
+          await supabase
+            .from('ec_enhancement_queue')
+            .update({ status: 'done' })
+            .eq('id', queue_id);
+        } else if (conversionNotFound && currentAttempt < MAX_ATTEMPTS) {
+          const delayMinutes = RETRY_DELAYS_MINUTES[currentAttempt - 1] ?? 120;
+          const processAfter = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+          console.log(`[EC Enhancement] Rescheduling in ${delayMinutes}min (attempt ${currentAttempt}/${MAX_ATTEMPTS})`);
+          await supabase
+            .from('ec_enhancement_queue')
+            .update({ status: 'pending', process_after: processAfter, last_error: errorMessage })
+            .eq('id', queue_id);
+        } else {
+          const finalError = conversionNotFound
+            ? `CONVERSION_NOT_FOUND after ${currentAttempt} attempts — giving up`
+            : errorMessage;
+          console.log(`[EC Enhancement] ${conversionNotFound ? 'Max retries' : 'Error'} — marking failed: ${finalError}`);
+          await supabase
+            .from('ec_enhancement_queue')
+            .update({ status: 'failed', last_error: finalError })
+            .eq('id', queue_id);
+        }
+      } catch (queueErr) {
+        console.error('Queue update failed:', queueErr);
       }
     }
 
     // Log to Supabase
-    await supabase.from('enhanced_conversion_logs').insert({
-      conversion_type:     'IUL_Lead_EC_Web',
-      email_provided:      email,
-      phone_provided:      phone || null,
-      success,
-      google_api_status:   apiRes.status,
-      google_api_response: apiResult,
-      created_at:          new Date().toISOString(),
-    }).catch(e => console.error('EC log insert failed:', e));
+    try {
+      await supabase.from('enhanced_conversion_logs').insert({
+        conversion_type:     'IUL_Lead_EC_Web',
+        email_provided:      email,
+        phone_provided:      phone || null,
+        success,
+        google_api_status:   apiRes.status,
+        google_api_response: apiResult,
+        created_at:          new Date().toISOString(),
+      });
+    } catch (logErr) {
+      console.error('EC log insert failed:', logErr);
+    }
 
     console.log(`[EC Enhancement] ${success ? 'SUCCESS' : 'FAILED'}: order_id=${order_id}, attempt=${currentAttempt}`);
 
