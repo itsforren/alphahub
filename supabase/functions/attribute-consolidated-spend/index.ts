@@ -9,9 +9,14 @@ const corsHeaders = {
 // ── Constants ──
 const CONSOLIDATED_CAMPAIGN_ID = '23706217116'; // Google Ads campaign ID
 const CUSTOMER_ID               = '6551751244'; // Google Ads customer account
-const MANAGER_ID                = '5765206288'; // Manager account
 const GOOGLE_ADS_API_VERSION    = 'v22';
 const CAMPAIGN_LABEL            = 'ALPHA AGENT EXCLUSIVE IUL SEARCH CAMPAIGN';
+
+// Manager account ID is read from env — same secret used by sync-google-ads.
+// Avoids hardcoding an ID that must match the OAuth credentials exactly.
+function getMccId(): string {
+  return (Deno.env.get('GOOGLE_ADS_MCC_CUSTOMER_ID') ?? '').trim().replace(/-/g, '');
+}
 
 // ── Helpers ──
 
@@ -77,7 +82,7 @@ async function getCampaignSpend(etDate: string): Promise<{
         'Content-Type':    'application/json',
         'Authorization':   `Bearer ${token}`,
         'developer-token': Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')!,
-        'login-customer-id': MANAGER_ID,
+        'login-customer-id': getMccId(),
       },
       body: JSON.stringify({ query }),
     }
@@ -106,15 +111,16 @@ async function getCampaignSpend(etDate: string): Promise<{
 }
 
 // ── Fetch CONSOLIDATED_ROUTER leads per agent for a given day ──
+// leads.agent_id (text) maps to clients.agent_id — no FK exists, so two queries.
 async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
   Array<{ agent_id: string; client_id: string; client_name: string; count: number }>
 > {
   const { start, end } = getETDayBoundsUTC(etDate);
 
-  // Get leads with their agent's client_id
+  // 1. Count leads per agent_id
   const { data: leads, error } = await supabase
     .from('leads')
-    .select('agent_id, clients!inner(id, name)')
+    .select('agent_id')
     .eq('lead_source', 'CONSOLIDATED_ROUTER')
     .gte('created_at', start)
     .lte('created_at', end);
@@ -123,21 +129,35 @@ async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
   if (!leads || leads.length === 0) return [];
 
   // Group by agent_id
-  const grouped: Record<string, { agent_id: string; client_id: string; client_name: string; count: number }> = {};
+  const counts: Record<string, number> = {};
   for (const lead of leads) {
-    const aid = lead.agent_id;
-    if (!grouped[aid]) {
-      grouped[aid] = {
-        agent_id:    aid,
-        client_id:   lead.clients.id,
-        client_name: lead.clients.name,
-        count:       0,
-      };
-    }
-    grouped[aid].count++;
+    counts[lead.agent_id] = (counts[lead.agent_id] || 0) + 1;
   }
 
-  return Object.values(grouped);
+  const agentIds = Object.keys(counts);
+
+  // 2. Resolve agent_id → client record
+  const { data: clients, error: clientsError } = await supabase
+    .from('clients')
+    .select('id, name, agent_id')
+    .in('agent_id', agentIds);
+
+  if (clientsError) throw new Error(`Clients query failed: ${clientsError.message}`);
+
+  // Build result — skip any agent_id that doesn't resolve to a client row
+  const clientMap: Record<string, { id: string; name: string }> = {};
+  for (const c of clients || []) {
+    clientMap[c.agent_id] = { id: c.id, name: c.name };
+  }
+
+  return agentIds
+    .filter(aid => clientMap[aid])
+    .map(aid => ({
+      agent_id:    aid,
+      client_id:   clientMap[aid].id,
+      client_name: clientMap[aid].name,
+      count:       counts[aid],
+    }));
 }
 
 // ── Core attribution job ──

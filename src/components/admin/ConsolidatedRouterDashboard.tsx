@@ -100,25 +100,43 @@ function useRecentConsolidatedLeads() {
     queryFn: async () => {
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
 
-      // Get today's CONS leads + last 10 individual leads for context
+      // leads has no FK to clients — query leads first, then resolve agent names separately
       const [consRes, allRes] = await Promise.all([
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, created_at, delivery_status, clients!inner(name)')
+          .select('id, first_name, last_name, state, agent_id, created_at, delivery_status')
           .eq('lead_source', 'CONSOLIDATED_ROUTER')
           .gte('created_at', today + 'T00:00:00Z')
           .order('created_at', { ascending: false })
           .limit(20),
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, lead_source, created_at, delivery_status, clients!inner(name)')
+          .select('id, first_name, last_name, state, agent_id, lead_source, created_at, delivery_status')
           .order('created_at', { ascending: false })
           .limit(15),
       ]);
 
+      // Collect all unique agent_ids, then resolve to client names in one query
+      const allLeads = [...(consRes.data || []), ...(allRes.data || [])];
+      const agentIds = [...new Set(allLeads.map(l => l.agent_id).filter(Boolean))];
+
+      let agentNames: Record<string, string> = {};
+      if (agentIds.length > 0) {
+        const { data: clients } = await supabase
+          .from('clients')
+          .select('agent_id, name')
+          .in('agent_id', agentIds);
+        for (const c of clients || []) {
+          agentNames[c.agent_id] = c.name;
+        }
+      }
+
+      const enrich = (leads: any[]) =>
+        leads.map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null }));
+
       return {
-        consolidated: consRes.data || [],
-        recent:       allRes.data   || [],
+        consolidated: enrich(consRes.data || []),
+        recent:       enrich(allRes.data   || []),
       };
     },
     refetchInterval: 30_000,
@@ -481,7 +499,7 @@ export function ConsolidatedRouterDashboard() {
                         </TableCell>
                         <TableCell className="py-1.5 text-xs font-mono">{lead.state}</TableCell>
                         <TableCell className="py-1.5 text-xs truncate max-w-[120px]">
-                          {lead.clients?.name || '—'}
+                          {lead.agent_name || '—'}
                         </TableCell>
                         <TableCell className="py-1.5 text-center">
                           <Badge
