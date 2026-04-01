@@ -104,6 +104,9 @@ function useStateCoverage() {
   });
 }
 
+const isTestLead = (l: { first_name?: string | null; last_name?: string | null }) =>
+  `${l.first_name ?? ''} ${l.last_name ?? ''}`.toLowerCase().includes('test');
+
 function useRecentConsolidatedLeads() {
   return useQuery({
     queryKey: ['consolidated-recent-leads'],
@@ -142,7 +145,9 @@ function useRecentConsolidatedLeads() {
       }
 
       const enrich = (leads: any[]) =>
-        leads.map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null }));
+        leads
+          .filter(l => !isTestLead(l))
+          .map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null }));
 
       return {
         consolidated: enrich(consRes.data || []),

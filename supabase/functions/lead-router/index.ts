@@ -10,6 +10,11 @@ const DEFAULT_MONTHLY_BUDGET = 1000; // fallback when monthly_ad_spend_cap is nu
 const AVG_CPL = 45;
 const FLEX = 1.5;
 
+/** Returns true if the lead looks like a test — name contains "test" (case-insensitive) */
+function isTestLead(lead: { first_name?: string | null; last_name?: string | null }): boolean {
+  return `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.toLowerCase().includes('test');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -306,16 +311,18 @@ async function routeAgent(supabase: any, state: string) {
 
   const { data: todayLeads } = await supabase
     .from('leads')
-    .select('agent_id')
+    .select('agent_id, first_name, last_name')
     .in('agent_id', agentIds)
     .gte('created_at', today + 'T00:00:00Z')
     .eq('lead_source', 'CONSOLIDATED_ROUTER');
 
   const leadCounts: Record<string, number> = {};
   if (todayLeads) {
-    todayLeads.forEach((l: any) => {
-      leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
-    });
+    todayLeads
+      .filter((l: any) => !isTestLead(l))
+      .forEach((l: any) => {
+        leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+      });
   }
 
   // 4. Calculate fill scores and filter capped agents
@@ -431,20 +438,22 @@ async function getPoolStatus(supabase: any) {
     walletBalances[id] = (depositTotals[id] || 0) - (spendTotals[id] || 0) * feeMultiplier;
   });
 
-  // Today's consolidated leads per agent (for fill scores)
+  // Today's consolidated leads per agent (for fill scores) — test leads excluded
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
   const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
   const { data: todayLeads } = await supabase
     .from('leads')
-    .select('agent_id')
+    .select('agent_id, first_name, last_name')
     .in('agent_id', agentIds)
     .gte('created_at', today + 'T00:00:00Z')
     .eq('lead_source', 'CONSOLIDATED_ROUTER');
 
   const leadCounts: Record<string, number> = {};
-  (todayLeads || []).forEach((l: any) => {
-    leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
-  });
+  (todayLeads || [])
+    .filter((l: any) => !isTestLead(l))
+    .forEach((l: any) => {
+      leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+    });
 
   const eligible: any[] = [];
   const capped: any[]   = [];

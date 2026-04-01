@@ -110,17 +110,23 @@ async function getCampaignSpend(etDate: string): Promise<{
   };
 }
 
+/** Returns true if the lead looks like a test — name contains "test" (case-insensitive) */
+function isTestLead(lead: { first_name?: string | null; last_name?: string | null }): boolean {
+  return `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.toLowerCase().includes('test');
+}
+
 // ── Fetch CONSOLIDATED_ROUTER leads per agent for a given day ──
 // leads.agent_id (text) maps to clients.agent_id — no FK exists, so two queries.
+// Test leads (name contains "test") are excluded from attribution.
 async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
   Array<{ agent_id: string; client_id: string; client_name: string; count: number }>
 > {
   const { start, end } = getETDayBoundsUTC(etDate);
 
-  // 1. Count leads per agent_id
+  // 1. Count leads per agent_id — exclude obvious test leads
   const { data: leads, error } = await supabase
     .from('leads')
-    .select('agent_id')
+    .select('agent_id, first_name, last_name')
     .eq('lead_source', 'CONSOLIDATED_ROUTER')
     .gte('created_at', start)
     .lte('created_at', end);
@@ -128,9 +134,13 @@ async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
   if (error) throw new Error(`Leads query failed: ${error.message}`);
   if (!leads || leads.length === 0) return [];
 
-  // Group by agent_id
+  // Group by agent_id — skip test leads
   const counts: Record<string, number> = {};
   for (const lead of leads) {
+    if (isTestLead(lead)) {
+      console.log(`[Attribution] Skipping test lead: ${lead.first_name} ${lead.last_name}`);
+      continue;
+    }
     counts[lead.agent_id] = (counts[lead.agent_id] || 0) + 1;
   }
 
