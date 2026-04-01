@@ -1,10 +1,20 @@
 import { useState, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -226,11 +236,43 @@ function StateCoverageChart({ coverage }: { coverage: Record<string, { count: nu
   );
 }
 
+// ── Toggle mutation ──
+
+function useToggleAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      clientId,
+      enabled,
+      note,
+    }: { clientId: string; enabled: boolean; note?: string }) => {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          consolidated_router_enabled: enabled,
+          consolidated_router_note: enabled ? null : (note || null),
+        })
+        .eq('id', clientId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consolidated-pool-status'] });
+    },
+  });
+}
+
 // ── Main Component ──
 
 export function ConsolidatedRouterDashboard() {
   const queryClient = useQueryClient();
   const [running, setRunning] = useState(false);
+
+  // Toggle state — holds the agent being (dis)abled while we show the note dialog
+  const [disableDialog, setDisableDialog] = useState<{
+    clientId: string; name: string; note: string;
+  } | null>(null);
+
+  const toggleAgent = useToggleAgent();
 
   const { data: pool,         isLoading: poolLoading }     = usePoolStatus();
   const { data: summary,      isLoading: summaryLoading }  = useAttributionSummary();
@@ -273,6 +315,37 @@ export function ConsolidatedRouterDashboard() {
     queryClient.invalidateQueries({ queryKey: ['consolidated-attribution-summary'] });
     queryClient.invalidateQueries({ queryKey: ['consolidated-recent-leads'] });
     queryClient.invalidateQueries({ queryKey: ['consolidated-state-coverage'] });
+  };
+
+  // Called when admin flips an eligible/capped agent OFF — opens note dialog
+  const handleDisableClick = (agent: any) => {
+    setDisableDialog({ clientId: agent.client_id, name: agent.name, note: '' });
+  };
+
+  // Called when admin confirms disable (with optional note)
+  const handleConfirmDisable = async () => {
+    if (!disableDialog) return;
+    try {
+      await toggleAgent.mutateAsync({
+        clientId: disableDialog.clientId,
+        enabled: false,
+        note: disableDialog.note.trim() || undefined,
+      });
+      toast.success(`${disableDialog.name} removed from consolidated pool`);
+      setDisableDialog(null);
+    } catch (e) {
+      toast.error(`Failed to update: ${String(e)}`);
+    }
+  };
+
+  // Called when admin flips a manually-disabled agent back ON — immediate
+  const handleReEnable = async (agent: any) => {
+    try {
+      await toggleAgent.mutateAsync({ clientId: agent.client_id, enabled: true });
+      toast.success(`${agent.name} re-added to consolidated pool`);
+    } catch (e) {
+      toast.error(`Failed to update: ${String(e)}`);
+    }
   };
 
   const isLoading = poolLoading || summaryLoading || leadsLoading || coverageLoading;
@@ -372,6 +445,7 @@ export function ConsolidatedRouterDashboard() {
                   <TableHead className="text-xs text-center">Daily Max</TableHead>
                   <TableHead className="text-xs text-center">States</TableHead>
                   <TableHead className="text-xs text-center">Budget/mo</TableHead>
+                  <TableHead className="text-xs text-center w-16">Active</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -393,6 +467,14 @@ export function ConsolidatedRouterDashboard() {
                     <TableCell className="py-2 text-center text-sm">
                       ${(agent.monthly_budget || 0).toLocaleString()}
                     </TableCell>
+                    <TableCell className="py-2 text-center">
+                      <Switch
+                        checked={true}
+                        onCheckedChange={() => handleDisableClick(agent)}
+                        disabled={toggleAgent.isPending}
+                        className="data-[state=checked]:bg-emerald-500"
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
                 {/* Capped agents */}
@@ -412,31 +494,58 @@ export function ConsolidatedRouterDashboard() {
                     <TableCell className="py-2 text-center text-sm">
                       ${(agent.monthly_budget || 0).toLocaleString()}
                     </TableCell>
+                    <TableCell className="py-2 text-center">
+                      <Switch
+                        checked={true}
+                        onCheckedChange={() => handleDisableClick(agent)}
+                        disabled={toggleAgent.isPending}
+                        className="data-[state=checked]:bg-emerald-500"
+                      />
+                    </TableCell>
                   </TableRow>
                 ))}
                 {/* Excluded divider */}
                 {(pool?.excluded || []).length > 0 && (
                   <TableRow className="border-border/30 bg-muted/20">
-                    <TableCell colSpan={7} className="py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <TableCell colSpan={8} className="py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Excluded
                     </TableCell>
                   </TableRow>
                 )}
                 {/* Excluded agents */}
-                {(pool?.excluded || []).map((agent: any) => (
-                  <TableRow key={agent.agent_id} className="border-border/30 opacity-40">
-                    <TableCell className="py-2">
-                      <span className="text-sm">{agent.name}</span>
-                    </TableCell>
-                    <TableCell className="py-2">
-                      <WalletBadge balance={agent.wallet_balance} />
-                    </TableCell>
-                    <TableCell className="py-2 text-xs text-muted-foreground" colSpan={4}>
-                      ✗ {agent.exclude_reason}
-                    </TableCell>
-                    <TableCell />
-                  </TableRow>
-                ))}
+                {(pool?.excluded || []).map((agent: any) => {
+                  const isManualDisable = agent.consolidated_enabled === false;
+                  return (
+                    <TableRow key={agent.agent_id} className="border-border/30 opacity-40 hover:opacity-60">
+                      <TableCell className="py-2">
+                        <div>
+                          <span className="text-sm">{agent.name}</span>
+                          {isManualDisable && agent.consolidated_note && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 italic">{agent.consolidated_note}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <WalletBadge balance={agent.wallet_balance} />
+                      </TableCell>
+                      <TableCell className="py-2 text-xs text-muted-foreground" colSpan={4}>
+                        ✗ {agent.exclude_reason}
+                      </TableCell>
+                      <TableCell />
+                      <TableCell className="py-2 text-center">
+                        {isManualDisable ? (
+                          <Switch
+                            checked={false}
+                            onCheckedChange={() => handleReEnable(agent)}
+                            disabled={toggleAgent.isPending}
+                          />
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground/40">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -463,6 +572,45 @@ export function ConsolidatedRouterDashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Disable agent dialog */}
+      <Dialog open={!!disableDialog} onOpenChange={(open) => { if (!open) setDisableDialog(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remove from Consolidated Pool</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{disableDialog?.name}</span> will stop receiving consolidated leads immediately.
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Reason (optional)
+              </label>
+              <Input
+                placeholder="e.g. Management payment failed"
+                value={disableDialog?.note || ''}
+                onChange={(e) => setDisableDialog(prev => prev ? { ...prev, note: e.target.value } : null)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmDisable(); }}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setDisableDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleConfirmDisable}
+              disabled={toggleAgent.isPending}
+            >
+              {toggleAgent.isPending ? 'Saving...' : 'Remove from Pool'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Recent Leads + Cost Attribution side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

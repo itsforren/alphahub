@@ -10,9 +10,9 @@ const STELLA_SENDER_ROLE = "admin";
 const STELLA_AVATAR_URL = "https://qcunascacayiiuufjtaq.supabase.co/storage/v1/object/public/chat-attachments/stella-avatar.jpeg";
 
 const CLAUDE_MODEL = "claude-sonnet-4-6";
-const MAX_TOKENS = 500;
+const MAX_TOKENS = 800;
 const MAX_TOOL_ROUNDS = 3;
-const MAX_HISTORY_MESSAGES = 12;
+const MAX_HISTORY_MESSAGES = 30;
 
 // Testing: only respond to these client IDs
 const ALLOWED_CLIENT_IDS = [
@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     // ── Load conversation history ───────────────────────────────────
     const { data: messages } = await supabase
       .from("chat_messages")
-      .select("sender_role, sender_name, message, created_at")
+      .select("sender_role, sender_name, message, created_at, attachment_url, attachment_type, attachment_name")
       .eq("conversation_id", conversation_id)
       .order("created_at", { ascending: true })
       .limit(MAX_HISTORY_MESSAGES);
@@ -240,15 +240,12 @@ Deno.serve(async (req) => {
     ) {
       const { data: freshMessages } = await supabase
         .from("chat_messages")
-        .select("sender_role, sender_name, message, created_at")
+        .select("sender_role, sender_name, message, created_at, attachment_url, attachment_type, attachment_name")
         .eq("conversation_id", conversation_id)
         .order("created_at", { ascending: true })
         .limit(MAX_HISTORY_MESSAGES);
       finalHistory = freshMessages || chatHistory;
     }
-
-    // ── Build Claude messages ───────────────────────────────────────
-    const claudeMessages = buildClaudeMessages(finalHistory);
 
     // ── Build system prompt ─────────────────────────────────────────
     const firstName = client.name?.split(" ")[0] || "there";
@@ -274,12 +271,37 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Inject latest client message into system prompt for maximum attention ──
+    // ── Separate history from the latest client message ─────────────
+    // The latest client message is what we respond to.
+    // Everything before it becomes a compressed summary for context.
     const latestClientMessage = [...finalHistory]
       .reverse()
       .find((m) => m.sender_role === "client");
 
-    const augmentedPrompt = systemPrompt + `\n\n== RIGHT NOW ==\n\nThe agent just sent this message. You MUST respond to THIS specific message:\n"${latestClientMessage?.message || ""}"`;
+    const historyBeforeLatest = latestClientMessage
+      ? finalHistory.slice(0, finalHistory.lastIndexOf(latestClientMessage))
+      : [];
+
+    // Build a conversation summary from older messages (context only)
+    const conversationSummary = buildConversationSummary(historyBeforeLatest);
+
+    // Build the last few exchanges verbatim (keeps natural flow)
+    const recentExchanges = buildRecentExchanges(historyBeforeLatest);
+
+    const augmentedPrompt = systemPrompt +
+      (conversationSummary
+        ? `\n\n== CONVERSATION SO FAR ==\n\n${conversationSummary}`
+        : "") +
+      (recentExchanges
+        ? `\n\n== LAST FEW MESSAGES (verbatim) ==\n\n${recentExchanges}`
+        : "");
+
+    // Claude messages: ONLY the latest client message as the user turn
+    // If the message has an image attachment, include it as a vision content block
+    const latestMsgContent = buildLatestMessageContent(latestClientMessage);
+    const claudeMessages: ClaudeMessage[] = [
+      { role: "user", content: latestMsgContent },
+    ];
 
     // ── Tool context ────────────────────────────────────────────────
     const toolCtx = {
@@ -365,32 +387,42 @@ Deno.serve(async (req) => {
     // ── Post-process response ───────────────────────────────────────
     finalText = cleanResponse(finalText);
 
-    // Quality check: if response is a generic closer, the model drifted. Retry once.
-    const isGenericCloser = /^(anything else|was there anything|is there anything|let me know if).{0,30}(help|need|assist)/i.test(finalText.trim())
-      || /message didn't come through|didn't come through|didn't send right/i.test(finalText.trim());
-    if (isGenericCloser && currentMessages.length > 0) {
-      // Add explicit instruction and retry
-      currentMessages.push({ role: "assistant", content: finalText });
-      currentMessages.push({ role: "user", content: "[SYSTEM: Your previous response was a generic closer. The agent asked a specific question. Re-read their latest message and give a real, helpful answer. Use your tools if needed.]" });
-      const retryResponse = await callClaude(anthropicKey, systemPrompt, currentMessages);
+    // Only honor [NO_RESPONSE] for genuinely trivial messages (1-3 words, no question mark)
+    const latestMsgText = latestClientMessage?.message || "";
+    const isTrivial = latestMsgText.trim().split(/\s+/).length <= 3
+      && !latestMsgText.includes("?")
+      && /^(ok|thanks|thank you|got it|cool|sounds good|bet|word|aight|alright|np|thx|ty|kk|k)$/i.test(latestMsgText.trim().replace(/[.!]+$/, ""));
+
+    if ((finalText.trim() === "[NO_RESPONSE]" || finalText.trim() === "") && isTrivial) {
+      return new Response(
+        JSON.stringify({ skipped: true, reason: "no response needed" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // If model returned [NO_RESPONSE] but the message is NOT trivial, retry
+    if (finalText.trim() === "[NO_RESPONSE]" || finalText.trim() === "") {
+      currentMessages.push({ role: "assistant", content: "[NO_RESPONSE]" });
+      currentMessages.push({
+        role: "user",
+        content: "That message needs a real response. The agent asked something or said something that deserves a reply. Please respond naturally to what they said.",
+      });
+      const retryResponse = await callClaude(anthropicKey, augmentedPrompt, currentMessages);
       if (retryResponse.ok) {
         const retryResult = await retryResponse.json();
         const retryText = (retryResult.content || [])
           .filter((b: { type: string }) => b.type === "text")
           .map((b: { text: string }) => b.text)
           .join("");
-        if (retryText && retryText.trim() !== "[NO_RESPONSE]") {
+        if (retryText && retryText.trim() !== "[NO_RESPONSE]" && retryText.trim() !== "") {
           finalText = cleanResponse(retryText);
+        } else {
+          // Still no response after retry — send a safe fallback rather than silence
+          finalText = `Hey ${client.name?.split(" ")[0] || "there"}, give me one sec and I'll look into that for you`;
         }
+      } else {
+        finalText = `Hey ${client.name?.split(" ")[0] || "there"}, give me one sec and I'll look into that for you`;
       }
-    }
-
-    // Check for no-response signal
-    if (finalText.trim() === "[NO_RESPONSE]" || finalText.trim() === "") {
-      return new Response(
-        JSON.stringify({ skipped: true, reason: "no response needed" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
     }
 
     // ── Split into multiple messages and insert with typing animation ──
@@ -505,69 +537,141 @@ interface ClaudeMessage {
   content: any;
 }
 
-function buildClaudeMessages(
-  history: Array<{
-    sender_role: string;
-    sender_name: string;
-    message: string;
-    created_at: string;
-  }>,
-): ClaudeMessage[] {
-  const claudeMessages: ClaudeMessage[] = [];
+type HistoryMsg = {
+  sender_role: string;
+  sender_name: string;
+  message: string;
+  created_at: string;
+  attachment_url?: string | null;
+  attachment_type?: string | null;
+  attachment_name?: string | null;
+};
+
+/**
+ * Builds the content for the latest client message.
+ * If the message includes an image, sends it as a multipart content block
+ * so Claude can actually see what the agent sent.
+ */
+function buildLatestMessageContent(
+  msg: HistoryMsg | undefined,
+): string | Array<{ type: string; [key: string]: unknown }> {
+  if (!msg) return "";
+
+  const hasImage = msg.attachment_url && msg.attachment_type === "image";
+  const hasText = msg.message && msg.message.trim().length > 0;
+
+  if (!hasImage) {
+    return msg.message || "";
+  }
+
+  // Build multipart content: image + text
+  // deno-lint-ignore no-explicit-any
+  const content: any[] = [
+    {
+      type: "image",
+      source: {
+        type: "url",
+        url: msg.attachment_url,
+      },
+    },
+  ];
+
+  if (hasText) {
+    content.push({
+      type: "text",
+      text: msg.message,
+    });
+  } else {
+    // Image-only message — prompt Stella to acknowledge it
+    content.push({
+      type: "text",
+      text: `[The agent sent an image: "${msg.attachment_name || "image"}". Look at it and respond to what you see.]`,
+    });
+  }
+
+  return content;
+}
+
+/**
+ * Builds a compressed summary of older conversation history.
+ * This goes into the system prompt as context, NOT as conversation turns.
+ * Keeps topics, actions taken, and emotional tone visible without raw message weight.
+ */
+function buildConversationSummary(history: HistoryMsg[]): string {
+  if (history.length === 0) return "";
+
+  // Summarize by grouping into topic blocks
+  const lines: string[] = [];
+  let currentTopic = "";
 
   for (const msg of history) {
-    if (msg.sender_name === STELLA_SENDER_NAME) {
-      // Previous Stella response
-      claudeMessages.push({ role: "assistant", content: msg.message });
-    } else if (msg.sender_role === "client") {
-      // Agent message
-      claudeMessages.push({ role: "user", content: msg.message });
-    } else {
-      // Sierra or another admin
-      claudeMessages.push({
-        role: "user",
-        content: `[${msg.sender_name} from the team said]: ${msg.message}`,
-      });
+    const who = msg.sender_name === STELLA_SENDER_NAME
+      ? "You (Stella)"
+      : msg.sender_role === "client"
+        ? "Agent"
+        : msg.sender_name;
+
+    let text = msg.message.length > 150
+      ? msg.message.slice(0, 150) + "..."
+      : msg.message;
+
+    // Note attachments in the summary
+    if (msg.attachment_url) {
+      const attachLabel = msg.attachment_type === "image"
+        ? `[sent image: ${msg.attachment_name || "image"}]`
+        : `[sent file: ${msg.attachment_name || "file"}]`;
+      text = text ? `${text} ${attachLabel}` : attachLabel;
     }
-  }
 
-  // Claude API requires alternating roles - merge consecutive same-role messages
-  const merged: ClaudeMessage[] = [];
-  for (const msg of claudeMessages) {
-    if (
-      merged.length > 0 &&
-      merged[merged.length - 1].role === msg.role &&
-      typeof merged[merged.length - 1].content === "string" &&
-      typeof msg.content === "string"
-    ) {
-      merged[merged.length - 1].content += "\n" + msg.content;
-    } else {
-      merged.push({ ...msg });
+    // Detect topic shifts for readability
+    const lowerMsg = msg.message.toLowerCase();
+    let topic = "";
+    if (/cancel|refund|done|quit|stop service/i.test(lowerMsg)) topic = "CANCELLATION/RETENTION";
+    else if (/wallet|billing|payment|charge|management fee/i.test(lowerMsg)) topic = "BILLING";
+    else if (/lead|booking|campaign|ads|spend|cpl/i.test(lowerMsg)) topic = "PERFORMANCE";
+    else if (/crm|login|error|not working|can.t get in/i.test(lowerMsg)) topic = "CRM/TECHNICAL";
+    else if (/state|licensed/i.test(lowerMsg)) topic = "STATES";
+    else if (/bot|ai|automated|real person/i.test(lowerMsg)) topic = "IDENTITY";
+
+    if (topic && topic !== currentTopic) {
+      currentTopic = topic;
+      lines.push(`\n[Topic: ${topic}]`);
     }
+
+    lines.push(`${who}: ${text}`);
   }
 
-  // Ensure conversation starts with user message
-  if (merged.length > 0 && merged[0].role === "assistant") {
-    merged.shift();
+  return lines.join("\n");
+}
+
+/**
+ * Builds the last 2-3 exchanges verbatim so Stella has natural conversational flow.
+ * Only includes the most recent back-and-forth BEFORE the latest client message.
+ */
+function buildRecentExchanges(history: HistoryMsg[]): string {
+  if (history.length === 0) return "";
+
+  // Take last 6 messages (roughly 2-3 exchanges)
+  const recent = history.slice(-6);
+  const lines: string[] = [];
+
+  for (const msg of recent) {
+    const who = msg.sender_name === STELLA_SENDER_NAME
+      ? "You (Stella)"
+      : msg.sender_role === "client"
+        ? "Agent"
+        : msg.sender_name;
+    let text = msg.message;
+    if (msg.attachment_url) {
+      const attachLabel = msg.attachment_type === "image"
+        ? `[sent image: ${msg.attachment_name || "image"}]`
+        : `[sent file: ${msg.attachment_name || "file"}]`;
+      text = text ? `${text} ${attachLabel}` : attachLabel;
+    }
+    lines.push(`${who}: ${text}`);
   }
 
-  // Ensure conversation starts with user message
-  if (merged.length === 0) {
-    return merged;
-  }
-
-  // Ensure conversation ends with user message (required for Claude)
-  if (merged[merged.length - 1].role !== "user") {
-    merged.push({ role: "user", content: "(the agent is waiting for your response)" });
-  }
-
-  // Mark the latest user message so Claude focuses on it
-  const lastUserIdx = merged.length - 1;
-  if (merged[lastUserIdx].role === "user" && typeof merged[lastUserIdx].content === "string") {
-    merged[lastUserIdx].content = "[RESPOND TO THIS MESSAGE - this is what the agent just said]: " + merged[lastUserIdx].content;
-  }
-
-  return merged;
+  return lines.join("\n");
 }
 
 async function callClaude(

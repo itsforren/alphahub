@@ -183,9 +183,34 @@ serve(async (req) => {
     const client = conversation.clients;
     const clientId = client?.id;
     const portalUrl = 'https://alphaagent.io';
-    
+
+    // ── Cooldown: max 1 email notification per 30 min per direction ──────────
+    const COOLDOWN_MS = 30 * 60 * 1000;
+    const cooldownField = message.sender_role === 'client'
+      ? 'last_admin_notification_at'
+      : 'last_client_notification_at';
+    const lastNotifiedAt = (conversation as any)[cooldownField] as string | null;
+
+    if (lastNotifiedAt) {
+      const elapsed = Date.now() - new Date(lastNotifiedAt).getTime();
+      if (elapsed < COOLDOWN_MS) {
+        const remaining = Math.ceil((COOLDOWN_MS - elapsed) / 60000);
+        console.log(`chat-notification cooldown: skipping ${message.conversation_id} (${remaining}m remaining)`);
+        return new Response(JSON.stringify({ success: true, message: `cooldown_active`, remaining_minutes: remaining }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Stamp cooldown now (before sending) to block concurrent triggers
+    await supabase.from('chat_conversations')
+      .update({ [cooldownField]: new Date().toISOString() })
+      .eq('id', message.conversation_id);
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Direct URL to the specific conversation
-    const directUrl = clientId 
+    const directUrl = clientId
       ? `${portalUrl}/hub/admin/inbox?client=${clientId}`
       : `${portalUrl}/hub/admin/inbox`;
 

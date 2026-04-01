@@ -42,7 +42,7 @@ serve(async (req) => {
     if (path === 'submit' && req.method === 'POST') {
       const body = await req.json();
       const { agent_id, state, firstName, lastName, email, phone,
-              age, employment, contribution, investments, interests, gclid, order_id } = body;
+              age, employment, contribution, investments, interests, gclid, order_id, src, keyword } = body;
 
       if (!agent_id || !state || !email) {
         return json({ error: 'agent_id, state, and email required' }, 400);
@@ -77,7 +77,9 @@ serve(async (req) => {
           delivery_status: 'pending',
           gclid: gclid || null,
           lead_data: {
-            source: 'consolidated_campaign',
+            source: src || 'consolidated_campaign',
+            campaign_type: src || 'direct',
+            keyword: keyword || null,
             router_version: 'v1',
             survey: { age, employment, contribution, investments, interests },
           },
@@ -185,15 +187,22 @@ async function routeAgent(supabase: any, state: string) {
   const start = performance.now();
 
   // 1. Get all active clients with states and scheduler links
-  const { data: clients } = await supabase
+  const { data: allClients } = await supabase
     .from('clients')
-    .select('id, name, agent_id, states, scheduler_link, profile_image_url')
+    .select('id, name, agent_id, states, scheduler_link, profile_image_url, consolidated_router_enabled')
     .eq('status', 'active')
     .not('agent_id', 'is', null)
     .not('scheduler_link', 'is', null);
 
-  if (!clients || clients.length === 0) {
+  if (!allClients || allClients.length === 0) {
     return { error: 'No active agents found' };
+  }
+
+  // Filter out agents manually excluded from the consolidated pool
+  const clients = allClients.filter((c: any) => c.consolidated_router_enabled !== false);
+
+  if (clients.length === 0) {
+    return { error: 'No active agents eligible for consolidated routing' };
   }
 
   const clientIds = clients.map((c: any) => c.id);
@@ -374,7 +383,7 @@ async function getPoolStatus(supabase: any) {
 
   const { data: clients } = await supabase
     .from('clients')
-    .select('id, name, agent_id, states, scheduler_link, profile_image_url')
+    .select('id, name, agent_id, states, scheduler_link, profile_image_url, consolidated_router_enabled, consolidated_router_note')
     .eq('status', 'active')
     .not('agent_id', 'is', null);
 
@@ -451,6 +460,7 @@ async function getPoolStatus(supabase: any) {
     const statesCount = c.states ? c.states.split(',').length : 0;
 
     const base = {
+      client_id:      c.id,
       name:           c.name,
       agent_id:       c.agent_id,
       wallet_balance: balance,
@@ -460,8 +470,15 @@ async function getPoolStatus(supabase: any) {
       monthly_budget: budget,
       states_count:   statesCount,
       headshot:       c.profile_image_url || '',
+      consolidated_enabled: c.consolidated_router_enabled !== false,
+      consolidated_note:    c.consolidated_router_note || null,
     };
 
+    // Exclude: manually disabled by admin
+    if (c.consolidated_router_enabled === false) {
+      excluded.push({ ...base, exclude_reason: c.consolidated_router_note || 'Manually disabled' });
+      return;
+    }
     // Exclude: low wallet
     if (balance <= 100) {
       excluded.push({ ...base, exclude_reason: `wallet < $100` });
