@@ -162,7 +162,15 @@ serve(async (req) => {
       });
     }
 
-    return json({ error: 'Not found. Use /route?state=XX or POST /submit' }, 404);
+    // =============================================
+    // GET /pool — Admin dashboard: full pool status
+    // =============================================
+    if (path === 'pool' && req.method === 'GET') {
+      const result = await getPoolStatus(supabase);
+      return json(result);
+    }
+
+    return json({ error: 'Not found. Use /route?state=XX, POST /submit, or GET /pool' }, 404);
 
   } catch (e) {
     console.error('Lead router error:', e);
@@ -354,6 +362,142 @@ async function routeAgent(supabase: any, state: string) {
     capped,
     total_covering: covering.length,
     elapsed_ms: elapsed,
+  };
+}
+
+// =============================================
+// POOL STATUS — Admin dashboard view
+// Returns ALL active agents categorized by pool status (no state filter)
+// =============================================
+async function getPoolStatus(supabase: any) {
+  const start = performance.now();
+
+  const { data: clients } = await supabase
+    .from('clients')
+    .select('id, name, agent_id, states, scheduler_link, profile_image_url')
+    .eq('status', 'active')
+    .not('agent_id', 'is', null);
+
+  if (!clients || clients.length === 0) {
+    return { eligible: [], capped: [], excluded: [], total_active: 0 };
+  }
+
+  const clientIds = clients.map((c: any) => c.id);
+
+  const [perfResult, walletResult, depositResult, spendResult] = await Promise.all([
+    supabase.from('onboarding_settings').select('setting_value').eq('setting_key', 'performance_percentage').maybeSingle(),
+    supabase.from('client_wallets').select('client_id, monthly_ad_spend_cap').in('client_id', clientIds),
+    supabase.from('wallet_transactions').select('client_id, amount, created_at').in('client_id', clientIds).in('transaction_type', ['deposit', 'adjustment']),
+    supabase.from('ad_spend_daily').select('client_id, cost, spend_date').in('client_id', clientIds),
+  ]);
+
+  const perfPct       = perfResult.data?.setting_value != null ? Number(perfResult.data.setting_value) : 10;
+  const feeMultiplier = 1 + perfPct / 100;
+
+  const walletSettings: Record<string, { monthly_ad_spend_cap: number | null }> = {};
+  (walletResult.data || []).forEach((w: any) => {
+    walletSettings[w.client_id] = { monthly_ad_spend_cap: w.monthly_ad_spend_cap };
+  });
+
+  const depositTotals: Record<string, number> = {};
+  const firstDepositDates: Record<string, string> = {};
+  (depositResult.data || []).forEach((d: any) => {
+    depositTotals[d.client_id] = (depositTotals[d.client_id] || 0) + (d.amount || 0);
+    const dateStr = d.created_at.split('T')[0];
+    if (!firstDepositDates[d.client_id] || dateStr < firstDepositDates[d.client_id]) {
+      firstDepositDates[d.client_id] = dateStr;
+    }
+  });
+
+  const spendTotals: Record<string, number> = {};
+  (spendResult.data || []).forEach((s: any) => {
+    const startDate = firstDepositDates[s.client_id];
+    if (!startDate || s.spend_date >= startDate) {
+      spendTotals[s.client_id] = (spendTotals[s.client_id] || 0) + (s.cost || 0);
+    }
+  });
+
+  const walletBalances: Record<string, number> = {};
+  clientIds.forEach((id: string) => {
+    walletBalances[id] = (depositTotals[id] || 0) - (spendTotals[id] || 0) * feeMultiplier;
+  });
+
+  // Today's consolidated leads per agent (for fill scores)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
+  const { data: todayLeads } = await supabase
+    .from('leads')
+    .select('agent_id')
+    .in('agent_id', agentIds)
+    .gte('created_at', today + 'T00:00:00Z')
+    .eq('lead_source', 'CONSOLIDATED_ROUTER');
+
+  const leadCounts: Record<string, number> = {};
+  (todayLeads || []).forEach((l: any) => {
+    leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+  });
+
+  const eligible: any[] = [];
+  const capped: any[]   = [];
+  const excluded: any[] = [];
+
+  clients.forEach((c: any) => {
+    const balance     = Math.round((walletBalances[c.id] || 0) * 100) / 100;
+    const budget      = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
+    const dailyTarget = budget / 30 / AVG_CPL;
+    const dailyMax    = Math.ceil(dailyTarget * FLEX);
+    const leadsToday  = leadCounts[c.agent_id] || 0;
+    const fillPct     = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
+    const statesCount = c.states ? c.states.split(',').length : 0;
+
+    const base = {
+      name:           c.name,
+      agent_id:       c.agent_id,
+      wallet_balance: balance,
+      fill_pct:       fillPct,
+      leads_today:    leadsToday,
+      daily_max:      dailyMax,
+      monthly_budget: budget,
+      states_count:   statesCount,
+      headshot:       c.profile_image_url || '',
+    };
+
+    // Exclude: low wallet
+    if (balance <= 100) {
+      excluded.push({ ...base, exclude_reason: `wallet < $100` });
+      return;
+    }
+    // Exclude: no states
+    if (!c.states || statesCount === 0) {
+      excluded.push({ ...base, exclude_reason: 'no states configured' });
+      return;
+    }
+    // Exclude: no scheduler
+    if (!c.scheduler_link) {
+      excluded.push({ ...base, exclude_reason: 'no scheduler link' });
+      return;
+    }
+    // Capped
+    if (leadsToday >= dailyMax) {
+      capped.push({ ...base, status: 'capped' });
+      return;
+    }
+    // Eligible
+    eligible.push({ ...base, status: 'eligible' });
+  });
+
+  // Sort eligible by fill_pct ascending (lowest fill = next in line)
+  eligible.sort((a, b) => a.fill_pct - b.fill_pct);
+
+  return {
+    eligible,
+    capped,
+    excluded,
+    total_active:   clients.length,
+    total_eligible: eligible.length,
+    total_capped:   capped.length,
+    total_excluded: excluded.length,
+    elapsed_ms:     Math.round((performance.now() - start) * 100) / 100,
   };
 }
 

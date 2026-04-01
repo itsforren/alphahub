@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { 
-  BarChart3, 
-  Router, 
-  History, 
+import {
+  BarChart3,
+  Router,
+  History,
   Settings2,
-  RefreshCw 
+  RefreshCw,
+  Network
 } from 'lucide-react';
 import { CampaignCommandCenter } from '@/components/campaigns/CampaignCommandCenter';
 import { useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 const LeadStatsContent = lazy(() => import('./LeadStats'));
 const CampaignChangesContent = lazy(() => import('./CampaignChanges'));
 const CampaignSettingsContent = lazy(() => import('./CampaignSettings'));
+const ConsolidatedRouterDashboardContent = lazy(() =>
+  import('@/components/admin/ConsolidatedRouterDashboard').then(m => ({ default: m.ConsolidatedRouterDashboard }))
+);
 
 const TabSkeleton = () => (
   <div className="space-y-4 p-6">
@@ -71,7 +75,7 @@ export default function CommandCenter() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full max-w-2xl grid-cols-4">
+        <TabsList className="grid w-full max-w-3xl grid-cols-5">
           <TabsTrigger value="campaigns" className="gap-2">
             <BarChart3 className="w-4 h-4" />
             Campaigns
@@ -79,6 +83,10 @@ export default function CommandCenter() {
           <TabsTrigger value="router" className="gap-2">
             <Router className="w-4 h-4" />
             Lead Router
+          </TabsTrigger>
+          <TabsTrigger value="consolidated" className="gap-2">
+            <Network className="w-4 h-4" />
+            Consolidated
           </TabsTrigger>
           <TabsTrigger value="changes" className="gap-2">
             <History className="w-4 h-4" />
@@ -97,6 +105,12 @@ export default function CommandCenter() {
         <TabsContent value="router">
           <Suspense fallback={<TabSkeleton />}>
             <LeadStatsContent />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="consolidated">
+          <Suspense fallback={<TabSkeleton />}>
+            <ConsolidatedRouterDashboardContent />
           </Suspense>
         </TabsContent>
 

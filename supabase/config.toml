@@ -1,5 +1,11 @@
 project_id = "qcunascacayiiuufjtaq"
 
+[functions.lead-router]
+verify_jwt = false
+
+[functions.enhance-iul-conversion]
+verify_jwt = false
+
 [functions.submit-webhook]
 verify_jwt = false
 
@@ -346,4 +352,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.daily-health-digest]
+verify_jwt = false
+
+[functions.attribute-consolidated-spend]
 verify_jwt = false
