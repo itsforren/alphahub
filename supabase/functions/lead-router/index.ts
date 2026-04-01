@@ -15,6 +15,28 @@ function isTestLead(lead: { first_name?: string | null; last_name?: string | nul
   return `${lead.first_name ?? ''} ${lead.last_name ?? ''}`.toLowerCase().includes('test');
 }
 
+const US_STATES = new Set([
+  'AL','AK','AZ','AR','CA','CO','CT','DC','DE','FL','GA','HI','ID','IL','IN',
+  'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH',
+  'NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT',
+  'VT','VA','WA','WV','WI','WY',
+]);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Validate and sanitize submit body. Returns error string or null if valid. */
+function validateSubmitBody(body: Record<string, unknown>): string | null {
+  const { email, state, firstName, lastName, phone } = body as Record<string, string>;
+
+  if (!EMAIL_RE.test((email || '').trim())) return 'Invalid email format';
+  if (!US_STATES.has((state || '').toUpperCase())) return 'Invalid US state code';
+  if (firstName && firstName.length > 100) return 'firstName too long';
+  if (lastName  && lastName.length  > 100) return 'lastName too long';
+  if (phone && !/^[\d\s\-\+\(\)\.]{7,20}$/.test(phone)) return 'Invalid phone format';
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -51,6 +73,11 @@ serve(async (req) => {
 
       if (!agent_id || !state || !email) {
         return json({ error: 'agent_id, state, and email required' }, 400);
+      }
+
+      const validationError = validateSubmitBody(body);
+      if (validationError) {
+        return json({ error: validationError }, 400);
       }
 
       // Normalize: survey arrays (interests, investments) → comma-separated strings
@@ -178,7 +205,7 @@ serve(async (req) => {
         .then(() => {})
         .catch(e => console.error('EC queue insert failed (non-blocking):', e));
 
-      console.log(`[SUBMIT] ${state} → ${client.name} (${agent_id}) — ${firstName} ${lastName} <${email}> order_id=${leadUUID}`);
+      console.log(`[SUBMIT] ${state} → ${client.name} (${agent_id}) order_id=${leadUUID}`);
 
       return json({
         ok: true,

@@ -11,12 +11,23 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const body = await req.json()
+
+    // Auth guard — require ADMIN_SET_PASSWORD_SECRET
+    const expectedSecret = Deno.env.get('ADMIN_SET_PASSWORD_SECRET');
+    if (!expectedSecret || body.admin_secret !== expectedSecret) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      });
+    }
+
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const { clientId, email, password } = await req.json()
+    const { clientId, email, password } = body
 
     if (!clientId || !email || !password) {
       return new Response(JSON.stringify({ error: 'clientId, email, and password are required' }), {

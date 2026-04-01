@@ -5,6 +5,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
 };
 
+/** Verify Stripe HMAC-SHA256 webhook signature */
+async function verifyStripeSignature(body: string, signature: string, secret: string): Promise<boolean> {
+  try {
+    const parts = signature.split(',');
+    const timestampPart = parts.find(p => p.startsWith('t='));
+    const sigPart = parts.find(p => p.startsWith('v1='));
+    if (!timestampPart || !sigPart) return false;
+    const timestamp = timestampPart.split('=')[1];
+    const expectedSig = sigPart.split('=')[1];
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw', encoder.encode(secret),
+      { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    );
+    const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(`${timestamp}.${body}`));
+    const computed = Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return computed === expectedSig;
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -15,7 +37,24 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const payload = await req.json();
+    const body = await req.text();
+    const signature = req.headers.get('stripe-signature') || '';
+
+    // Verify signature against both Stripe accounts
+    const mgmtSecret   = Deno.env.get('STRIPE_MANAGEMENT_WEBHOOK_SECRET') || '';
+    const adSpendSecret = Deno.env.get('STRIPE_AD_SPEND_WEBHOOK_SECRET') || '';
+    const verified = (mgmtSecret && await verifyStripeSignature(body, signature, mgmtSecret))
+                  || (adSpendSecret && await verifyStripeSignature(body, signature, adSpendSecret));
+
+    if (!verified) {
+      console.error('Stripe webhook signature verification failed');
+      return new Response(JSON.stringify({ error: 'Invalid signature' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const payload = JSON.parse(body);
     
     console.log('Stripe webhook received:', payload.type);
 
