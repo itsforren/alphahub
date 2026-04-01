@@ -13,9 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { RefreshCw, Circle, TrendingUp, DollarSign, Users, Zap } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { RefreshCw, Circle, TrendingUp, DollarSign, Users, Zap, Map } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 
 const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL;
 const CONSOLIDATED_CID    = '23706217116';
@@ -51,6 +57,53 @@ function useAttributionSummary() {
       return res.json();
     },
     refetchInterval: 5 * 60_000, // refresh every 5 min
+  });
+}
+
+// Geographic tile-map layout for all 50 states + DC.
+// Each entry is [abbr, row, col]. Null cells are empty grid positions.
+// Layout follows the common "NPR/NYT-style" US tilemap (12 columns × 8 rows).
+const STATE_TILES: Array<[string, number, number]> = [
+  ['AK', 7, 0], ['HI', 7, 1],
+  ['ME', 0, 11], ['VT', 1, 10], ['NH', 1, 9],
+  ['WA', 1, 0], ['MT', 1, 1], ['ND', 1, 2], ['MN', 1, 3], ['WI', 1, 4], ['MI', 1, 5], ['NY', 2, 9], ['MA', 1, 8], ['RI', 2, 11],
+  ['OR', 2, 0], ['ID', 2, 1], ['WY', 2, 2], ['SD', 2, 3], ['IA', 2, 4], ['IL', 2, 5], ['IN', 2, 6], ['OH', 2, 7], ['PA', 3, 9], ['NJ', 3, 10], ['CT', 2, 10],
+  ['CA', 3, 0], ['NV', 3, 1], ['CO', 3, 2], ['NE', 3, 3], ['MO', 3, 4], ['KY', 3, 5], ['WV', 3, 6], ['VA', 3, 7], ['MD', 4, 9], ['DE', 4, 10], ['DC', 4, 11],
+  ['AZ', 4, 1], ['NM', 4, 2], ['KS', 4, 3], ['AR', 4, 4], ['TN', 4, 5], ['NC', 4, 6], ['SC', 4, 7], ['GA', 5, 7],
+  ['TX', 5, 2], ['OK', 5, 3], ['LA', 5, 4], ['MS', 5, 5], ['AL', 5, 6], ['FL', 6, 7],
+];
+const GRID_ROWS = 8;
+const GRID_COLS = 12;
+
+function useStateCoverage() {
+  return useQuery({
+    queryKey: ['consolidated-state-coverage'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('id, name, states')
+        .eq('status', 'active')
+        .not('agent_id', 'is', null)
+        .not('states', 'is', null);
+
+      if (error) throw error;
+
+      // Build { [stateAbbr]: { count, agents } }
+      const coverage: Record<string, { count: number; agents: string[] }> = {};
+      for (const client of data || []) {
+        const abbrs = (client.states as string)
+          .split(',')
+          .map((s: string) => s.trim().toUpperCase())
+          .filter(Boolean);
+        for (const abbr of abbrs) {
+          if (!coverage[abbr]) coverage[abbr] = { count: 0, agents: [] };
+          coverage[abbr].count++;
+          coverage[abbr].agents.push(client.name);
+        }
+      }
+      return { coverage, total_agents: data?.length ?? 0 };
+    },
+    refetchInterval: 5 * 60_000,
   });
 }
 
@@ -128,15 +181,99 @@ function WalletBadge({ balance }: { balance: number }) {
   return <span className={`font-mono text-sm font-medium ${color}`}>${balance.toFixed(0)}</span>;
 }
 
+function coverageColor(count: number): string {
+  if (count === 0) return 'bg-muted/30 text-muted-foreground/40 border-border/20';
+  if (count === 1) return 'bg-blue-950/60 text-blue-300 border-blue-800/40';
+  if (count === 2) return 'bg-blue-800/70 text-blue-200 border-blue-600/50';
+  if (count === 3) return 'bg-blue-600/80 text-white border-blue-400/60';
+  return 'bg-primary/90 text-white border-primary/70'; // 4+
+}
+
+function StateCoverageMap({ coverage }: { coverage: Record<string, { count: number; agents: string[] }> }) {
+  // Build lookup: "row-col" → tile abbr
+  const grid: Array<Array<string | null>> = Array.from({ length: GRID_ROWS }, () =>
+    Array(GRID_COLS).fill(null)
+  );
+  for (const [abbr, row, col] of STATE_TILES) {
+    grid[row][col] = abbr;
+  }
+
+  const covered   = STATE_TILES.filter(([abbr]) => (coverage[abbr]?.count ?? 0) > 0).length;
+  const uncovered = STATE_TILES.filter(([abbr]) => (coverage[abbr]?.count ?? 0) === 0).length;
+
+  return (
+    <TooltipProvider delayDuration={100}>
+      <div className="space-y-4">
+        {/* Summary */}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span><span className="text-foreground font-semibold">{covered}</span> states covered</span>
+          <span>·</span>
+          <span><span className="text-red-400 font-semibold">{uncovered}</span> uncovered</span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-muted/30 border border-border/20 inline-block" /> 0</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-blue-950/60 border border-blue-800/40 inline-block" /> 1</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-blue-800/70 border border-blue-600/50 inline-block" /> 2</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-blue-600/80 border border-blue-400/60 inline-block" /> 3</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-primary/90 border border-primary/70 inline-block" /> 4+</span>
+          </div>
+        </div>
+
+        {/* Grid */}
+        <div
+          className="grid gap-0.5"
+          style={{ gridTemplateColumns: `repeat(${GRID_COLS}, minmax(0, 1fr))` }}
+        >
+          {grid.flatMap((row, r) =>
+            row.map((abbr, c) => {
+              if (!abbr) {
+                return <div key={`${r}-${c}`} />;
+              }
+              const info   = coverage[abbr];
+              const count  = info?.count ?? 0;
+              const agents = info?.agents ?? [];
+              return (
+                <Tooltip key={abbr}>
+                  <TooltipTrigger asChild>
+                    <div
+                      className={`
+                        rounded-sm border text-[9px] font-bold
+                        flex items-center justify-center
+                        aspect-square cursor-default select-none
+                        transition-opacity hover:opacity-90
+                        ${coverageColor(count)}
+                      `}
+                    >
+                      {abbr}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-[200px]">
+                    <p className="font-semibold">{abbr} — {count === 0 ? 'No coverage' : `${count} agent${count > 1 ? 's' : ''}`}</p>
+                    {agents.length > 0 && (
+                      <ul className="mt-1 text-xs space-y-0.5 text-muted-foreground">
+                        {agents.map(a => <li key={a}>• {a}</li>)}
+                      </ul>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </TooltipProvider>
+  );
+}
+
 // ── Main Component ──
 
 export function ConsolidatedRouterDashboard() {
   const queryClient = useQueryClient();
   const [running, setRunning] = useState(false);
 
-  const { data: pool,        isLoading: poolLoading }    = usePoolStatus();
-  const { data: summary,     isLoading: summaryLoading } = useAttributionSummary();
-  const { data: leadsData,   isLoading: leadsLoading }   = useRecentConsolidatedLeads();
+  const { data: pool,         isLoading: poolLoading }     = usePoolStatus();
+  const { data: summary,      isLoading: summaryLoading }  = useAttributionSummary();
+  const { data: leadsData,    isLoading: leadsLoading }    = useRecentConsolidatedLeads();
+  const { data: coverageData, isLoading: coverageLoading } = useStateCoverage();
 
   const handleRunAttribution = useCallback(async () => {
     setRunning(true);
@@ -173,9 +310,10 @@ export function ConsolidatedRouterDashboard() {
     queryClient.invalidateQueries({ queryKey: ['consolidated-pool-status'] });
     queryClient.invalidateQueries({ queryKey: ['consolidated-attribution-summary'] });
     queryClient.invalidateQueries({ queryKey: ['consolidated-recent-leads'] });
+    queryClient.invalidateQueries({ queryKey: ['consolidated-state-coverage'] });
   };
 
-  const isLoading = poolLoading || summaryLoading || leadsLoading;
+  const isLoading = poolLoading || summaryLoading || leadsLoading || coverageLoading;
 
   return (
     <div className="space-y-6">
@@ -339,6 +477,34 @@ export function ConsolidatedRouterDashboard() {
                 ))}
               </TableBody>
             </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* State Coverage Map */}
+      <Card className="bg-card/60 backdrop-blur-sm border-border/50">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Map className="w-4 h-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                State Coverage
+              </CardTitle>
+            </div>
+            {!coverageLoading && coverageData && (
+              <span className="text-xs text-muted-foreground">
+                {coverageData.total_agents} active agents
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {coverageLoading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : coverageData ? (
+            <StateCoverageMap coverage={coverageData.coverage} />
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-6">No coverage data</p>
           )}
         </CardContent>
       </Card>
