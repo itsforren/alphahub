@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw, Shield, Zap } from 'lucide-react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { Plus, Loader2, ChevronDown, ExternalLink, RefreshCw, Shield, Zap, Network } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -46,9 +46,32 @@ export function CampaignPanel({
   onRefresh,
   onUpdateStates,
 }: CampaignPanelProps) {
+  const CONSOLIDATED_CAMPAIGN_ID = '23706217116';
+
   const queryClient = useQueryClient();
   const { data: rechargeState } = useRechargeState(clientId);
   const [isBuilding, setIsBuilding] = useState(false);
+
+  // MTD attributed spend from the consolidated router campaign
+  const { data: consolidatedSpend } = useQuery({
+    queryKey: ['consolidated-spend', clientId],
+    queryFn: async () => {
+      const now = new Date();
+      const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const { data, error } = await supabase
+        .from('ad_spend_daily')
+        .select('cost, spend_date')
+        .eq('client_id', clientId)
+        .eq('campaign_id', CONSOLIDATED_CAMPAIGN_ID)
+        .gte('spend_date', mtdStart)
+        .order('spend_date', { ascending: false });
+      if (error) return null;
+      const total = (data || []).reduce((sum, r) => sum + Number(r.cost || 0), 0);
+      const days  = (data || []).length;
+      return { total, days, rows: data || [] };
+    },
+    staleTime: 5 * 60_000,
+  });
   const [rebuildingCampaignId, setRebuildingCampaignId] = useState<string | null>(null);
   const [manualCampaignId, setManualCampaignId] = useState('');
   const [showManualInput, setShowManualInput] = useState(false);
@@ -275,6 +298,51 @@ export function CampaignPanel({
           <span>Safe mode active — budgets locked at minimum. Resolve payment to restore.</span>
         </div>
       )}
+      {/* Consolidated Router Campaign — read-only display row.
+          spend is attributed via ad_spend_daily (campaign_id = 23706217116).
+          Cannot appear in the campaigns table due to UNIQUE (google_customer_id, google_campaign_id). */}
+      {consolidatedSpend !== null && consolidatedSpend !== undefined && (
+        <Card className="border-border/50 bg-primary/5">
+          <CardContent className="py-3 px-4">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <Network className="h-3.5 w-3.5 text-primary/60" />
+                <a
+                  href={`https://ads.google.com/aw/campaigns?ocid=6551751244&campaignId=${CONSOLIDATED_CAMPAIGN_ID}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-foreground hover:text-primary hover:underline inline-flex items-center gap-1 transition-colors"
+                >
+                  Alpha Agent Exclusive IUL Search Campaign
+                  <ExternalLink className="h-3 w-3 opacity-50" />
+                </a>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-primary border-primary/30">
+                  Consolidated
+                </Badge>
+              </div>
+
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span>MTD Attributed:</span>
+                <span className="font-medium text-foreground">
+                  {consolidatedSpend.total > 0
+                    ? `$${(consolidatedSpend.total * 1.10).toFixed(2)}`
+                    : '—'}
+                </span>
+                {consolidatedSpend.days > 0 && (
+                  <span className="text-xs text-muted-foreground/60">
+                    ({consolidatedSpend.days} day{consolidatedSpend.days !== 1 ? 's' : ''})
+                  </span>
+                )}
+              </div>
+
+              <span className="text-xs text-muted-foreground/60 ml-auto">
+                Shared campaign · spend attributed proportionally
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {campaigns.map((campaign) => (
         <Card key={campaign.id} className="border-border/50">
           <CardContent className="py-3 px-4">
