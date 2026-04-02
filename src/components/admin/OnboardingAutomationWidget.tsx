@@ -333,9 +333,9 @@ export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomat
                   Run Full Automation
                 </Button>
               ) : status === 'paused' ? (
-                <Button 
-                  onClick={() => handleRetryFromStep(currentStep + 1)}
-                  disabled={retryFromStep.isPending || !stepsCompleted.includes(currentStep)}
+                <Button
+                  onClick={() => handleRetryFromStep(useOwnCrm && CRM_STEP_NUMBERS.includes(currentStep) ? currentStep : currentStep + 1)}
+                  disabled={retryFromStep.isPending || (!stepsCompleted.includes(currentStep) && !(useOwnCrm && CRM_STEP_NUMBERS.includes(currentStep)))}
                   className="gap-2"
                 >
                   {retryFromStep.isPending ? (

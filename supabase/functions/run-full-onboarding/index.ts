@@ -1043,6 +1043,14 @@ Deno.serve(async (req) => {
     for (let i = startFromStep; i <= AUTOMATION_STEPS.length; i++) {
       const step = AUTOMATION_STEPS[i - 1];
 
+      // Own-CRM mode: auto-skip GHL/CRM-dependent steps (9-15, 19) — check BEFORE manual pause
+      const CRM_STEPS = [9, 10, 11, 12, 13, 14, 15, 19];
+      if (client.use_own_crm && CRM_STEPS.includes(i)) {
+        console.log(`[Own CRM] Skipping step ${i}: ${step.name} — agent uses own CRM`);
+        await updateStep(i, true, { skipped: true, reason: 'Agent uses own CRM' });
+        continue;
+      }
+
       // Manual steps: pause if not yet completed by admin, otherwise continue
       if ((step as any).manual) {
         const stepsCompleted = (automationRun.steps_completed || []) as number[];
@@ -1073,14 +1081,6 @@ Deno.serve(async (req) => {
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
-      }
-
-      // Own-CRM mode: auto-skip GHL/CRM-dependent steps (9-15, 19)
-      const CRM_STEPS = [9, 10, 11, 12, 13, 14, 15, 19];
-      if (client.use_own_crm && CRM_STEPS.includes(i)) {
-        console.log(`[Own CRM] Skipping step ${i}: ${step.name} — agent uses own CRM`);
-        await updateStep(i, true, { skipped: true, reason: 'Agent uses own CRM' });
-        continue;
       }
 
       console.log(`Executing step ${i}: ${step.name}`);
