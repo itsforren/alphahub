@@ -41,10 +41,10 @@ serve(async (req) => {
     if (clientId) {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, agent_id, subaccount_id, ghl_user_id, crm_delivery_enabled')
+        .select('id, name, agent_id, subaccount_id, ghl_user_id, crm_delivery_enabled, use_own_crm, external_webhook_url')
         .eq('id', clientId)
         .single();
-      
+
       if (error || !data) {
         return new Response(
           JSON.stringify({ error: 'Client not found', details: error?.message }),
@@ -55,7 +55,7 @@ serve(async (req) => {
     } else {
       const { data, error } = await supabase
         .from('clients')
-        .select('id, name, agent_id, subaccount_id, ghl_user_id, crm_delivery_enabled')
+        .select('id, name, agent_id, subaccount_id, ghl_user_id, crm_delivery_enabled, use_own_crm, external_webhook_url')
         .eq('agent_id', agentId)
         .single();
       
@@ -132,9 +132,67 @@ serve(async (req) => {
 
     console.log('Test lead created with all fields:', insertedLead.id);
 
-    // If CRM delivery is enabled, inject to GHL
+    // Deliver test lead: webhook (own CRM) or GHL injection
     let deliveryResult = null;
-    if (client.crm_delivery_enabled !== false && client.subaccount_id) {
+    if (client.use_own_crm && client.external_webhook_url) {
+      // Own-CRM mode: POST to agent's webhook
+      try {
+        console.log(`[Own CRM] Sending test lead to webhook: ${client.external_webhook_url}`);
+        const webhookPayload = {
+          lead_id: insertedLead.id,
+          first_name: testLead.first_name,
+          last_name: testLead.last_name,
+          email: testLead.email,
+          phone: testLead.phone,
+          state: testLead.state,
+          agent_id: testLead.agent_id,
+          lead_source: testLead.lead_source,
+          age: testLead.age,
+          employment: testLead.employment,
+          interest: testLead.interest,
+          savings: testLead.savings,
+          investments: testLead.investments,
+          timezone: testLead.timezone,
+          utm_source: testLead.utm_source,
+          utm_medium: testLead.utm_medium,
+          utm_campaign: testLead.utm_campaign,
+          utm_content: testLead.utm_content,
+          utm_term: testLead.utm_term,
+          gclid: testLead.gclid,
+          notes: testLead.notes,
+          created_at: new Date().toISOString(),
+        };
+
+        const webhookResp = await fetch(client.external_webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        });
+
+        deliveryResult = {
+          success: webhookResp.ok,
+          method: 'webhook',
+          status: webhookResp.status,
+          webhookUrl: client.external_webhook_url,
+          error: webhookResp.ok ? null : `Webhook returned ${webhookResp.status}`,
+        };
+
+        // Update lead delivery status
+        await supabase.from('leads').update({
+          delivery_status: webhookResp.ok ? 'delivered' : 'failed',
+          delivery_error: webhookResp.ok ? null : `Webhook ${webhookResp.status}`,
+        }).eq('id', insertedLead.id);
+
+        console.log('[Own CRM] Webhook delivery result:', deliveryResult);
+      } catch (webhookError) {
+        deliveryResult = {
+          success: false,
+          method: 'webhook',
+          error: webhookError instanceof Error ? webhookError.message : 'Webhook error',
+        };
+      }
+    } else if (client.crm_delivery_enabled !== false && client.subaccount_id) {
+      // Standard GHL injection
       try {
         const injectResponse = await fetch(`${supabaseUrl}/functions/v1/inject-lead-to-ghl`, {
           method: 'POST',
@@ -148,6 +206,7 @@ serve(async (req) => {
         const injectResult = await injectResponse.json();
         deliveryResult = {
           success: injectResponse.ok,
+          method: 'ghl',
           contactId: injectResult.contactId,
           created: injectResult.created,
           error: injectResult.error,
@@ -157,6 +216,7 @@ serve(async (req) => {
       } catch (injectError) {
         deliveryResult = {
           success: false,
+          method: 'ghl',
           error: injectError instanceof Error ? injectError.message : 'Unknown injection error',
         };
       }

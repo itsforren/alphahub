@@ -1339,7 +1339,7 @@ export default function PortalAdminClientDetail() {
                     </Button>
                   </div>
 
-                  {/* Send Test Lead button — sends full realistic payload for Zapier field mapping */}
+                  {/* Send Test Lead button — routes through edge function to avoid CORS */}
                   {(client as any).external_webhook_url && (
                     <Button
                       size="sm"
@@ -1349,43 +1349,27 @@ export default function PortalAdminClientDetail() {
                       onClick={async () => {
                         setIsTestingWebhook(true);
                         try {
-                          const testPayload = {
-                            lead_id: 'test-' + Date.now(),
-                            first_name: 'Jane',
-                            last_name: 'Smith',
-                            email: 'jane.smith@example.com',
-                            phone: '+15551234567',
-                            state: 'FL',
-                            agent_id: client.agent_id,
-                            lead_source: 'google_ads',
-                            age: '35-44',
-                            employment: 'W2 Employee',
-                            interest: 'Tax-Free Retirement',
-                            savings: '$50,000 - $100,000',
-                            investments: '$100,000 - $250,000',
-                            timezone: 'America/New_York',
-                            utm_source: 'google',
-                            utm_medium: 'cpc',
-                            utm_campaign: 'iul_maxconv_search',
-                            utm_content: 'tax_free_retirement',
-                            utm_term: 'indexed universal life insurance',
-                            gclid: 'test_gclid_' + Date.now(),
-                            fbclid: null,
-                            notes: 'Test lead sent from Alpha Hub for Zapier field mapping',
-                            created_at: new Date().toISOString(),
-                          };
-                          const resp = await fetch((client as any).external_webhook_url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(testPayload),
-                          });
-                          if (resp.ok) {
-                            toast.success(`Test lead sent successfully (${resp.status}) — check Zapier to map fields`);
+                          const resp = await fetch(
+                            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-test-lead`,
+                            {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+                              },
+                              body: JSON.stringify({ clientId: client.id }),
+                            }
+                          );
+                          const result = await resp.json();
+                          if (result.delivery?.success) {
+                            toast.success(`Test lead delivered to webhook (${result.delivery.status}) — check Zapier to map fields`);
+                          } else if (result.success && !result.delivery) {
+                            toast.info('Test lead created but no delivery target configured');
                           } else {
-                            toast.error(`Webhook returned ${resp.status} — check the URL`);
+                            toast.error(`Delivery failed: ${result.delivery?.error || result.error || 'Unknown error'}`);
                           }
                         } catch (err: any) {
-                          toast.error(`Webhook test failed: ${err.message || 'Network error'}`);
+                          toast.error(`Test lead failed: ${err.message || 'Network error'}`);
                         }
                         setIsTestingWebhook(false);
                       }}
