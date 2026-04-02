@@ -28,6 +28,7 @@ interface Campaign {
   is_primary: boolean | null;
   current_daily_budget: number | null;
   status: string | null;
+  tracking_paused: boolean | null;
   created_at: string;
 }
 
@@ -386,7 +387,7 @@ export function CampaignPanel({
       )}
 
       {!isClientView && campaigns.map((campaign) => (
-        <Card key={campaign.id} className="border-border/50">
+        <Card key={campaign.id} className={`border-border/50 ${campaign.tracking_paused ? 'opacity-60' : ''}`}>
           <CardContent className="py-3 px-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <div className="flex items-center gap-2">
@@ -407,7 +408,28 @@ export function CampaignPanel({
                     {campaign.status}
                   </Badge>
                 )}
+                {campaign.tracking_paused && (
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-amber-500/10 text-amber-500 border-amber-500/20">
+                    Tracking Paused
+                  </Badge>
+                )}
               </div>
+
+              <button
+                className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                  campaign.tracking_paused
+                    ? 'border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10'
+                    : 'border-amber-500/30 text-amber-400 hover:bg-amber-500/10'
+                }`}
+                onClick={async () => {
+                  const newVal = !campaign.tracking_paused;
+                  await supabase.from('campaigns').update({ tracking_paused: newVal }).eq('id', campaign.id);
+                  toast.success(newVal ? `Tracking paused for ${campaign.label || 'campaign'}` : `Tracking resumed for ${campaign.label || 'campaign'}`);
+                  queryClient.invalidateQueries({ queryKey: ['campaigns', clientId] });
+                }}
+              >
+                {campaign.tracking_paused ? 'Resume Tracking' : 'Pause Tracking'}
+              </button>
 
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Budget:</span>

@@ -337,14 +337,18 @@ serve(async (req) => {
       // Fetch all campaigns for this client from the campaigns table
       const { data: campaignRows } = await supabase
         .from('campaigns')
-        .select('id, google_customer_id, google_campaign_id, label, is_primary')
+        .select('id, google_customer_id, google_campaign_id, label, is_primary, tracking_paused')
         .eq('client_id', clientId)
         .order('is_primary', { ascending: false })
         .order('created_at');
 
       if (campaignRows && campaignRows.length > 0) {
-        // Use campaigns table as source of truth
+        // Use campaigns table as source of truth — skip paused campaigns
         for (const row of campaignRows) {
+          if (row.tracking_paused) {
+            console.log(`Skipping paused campaign: ${row.label || row.google_campaign_id} (tracking_paused=true)`);
+            continue;
+          }
           campaignsToSync.push({
             rowId: row.id,
             googleCustomerId: row.google_customer_id,
