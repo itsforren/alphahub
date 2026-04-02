@@ -424,38 +424,50 @@ async function routeAgent(supabase: any, state: string) {
     return { error: 'No agents cover state: ' + state, total_covering: 0 };
   }
 
-  // 3. Get today's consolidated lead counts per agent (for fill score)
+  // 3. Get today's + 5-day rolling lead counts per agent (for fill score + pacing)
   const today = new Date().toISOString().split('T')[0];
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const agentIds = covering.map((c: any) => c.agent_id);
 
-  const { data: todayLeads } = await supabase
+  const { data: recentLeads } = await supabase
     .from('leads')
-    .select('agent_id, first_name, last_name')
+    .select('agent_id, first_name, last_name, created_at')
     .in('agent_id', agentIds)
-    .gte('created_at', today + 'T00:00:00Z')
+    .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
     .eq('lead_source', 'CONSOLIDATED_ROUTER');
 
-  const leadCounts: Record<string, number> = {};
-  if (todayLeads) {
-    todayLeads
+  const leadCounts: Record<string, number> = {};      // today only
+  const leadCounts5d: Record<string, number> = {};    // rolling 5 days
+  if (recentLeads) {
+    recentLeads
       .filter((l: any) => !isTestLead(l))
       .forEach((l: any) => {
-        leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+        leadCounts5d[l.agent_id] = (leadCounts5d[l.agent_id] || 0) + 1;
+        if (l.created_at >= today + 'T00:00:00Z') {
+          leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+        }
       });
   }
 
   // 4. Calculate fill scores and filter capped agents
+  const PACING_WINDOW = 5; // days
   const rollingCPL = await getRollingCPL(supabase);
   const eligible: any[] = [];
   const capped: any[] = [];
 
   covering.forEach((c: any) => {
     // Use actual monthly cap; fall back to default if not set
-    const budget     = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
+    const budget      = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
     const dailyTarget = budget / 30 / rollingCPL;
-    const dailyMax   = Math.ceil(dailyTarget * FLEX);
-    const leadsToday = leadCounts[c.agent_id] || 0;
-    const fillPct    = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
+    const dailyMax    = Math.ceil(dailyTarget * FLEX);
+    const leadsToday  = leadCounts[c.agent_id] || 0;
+    const fillPct     = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
+
+    // 5-day rolling pacing: how many leads should they get in a 5-day window?
+    const leads5d       = leadCounts5d[c.agent_id] || 0;
+    const windowTarget  = Math.ceil(budget / 30 * PACING_WINDOW / rollingCPL * FLEX);
+    const windowPct     = windowTarget > 0 ? Math.round(leads5d / windowTarget * 100 * 10) / 10 : 0;
+    const pacingCapped  = leads5d >= windowTarget;
 
     const walletBalance = Math.round((walletBalances[c.id] || 0) * 100) / 100;
     const agentInfo = {
@@ -464,8 +476,11 @@ async function routeAgent(supabase: any, state: string) {
       scheduler_url:  c.scheduler_link,
       headshot:       c.profile_image_url || '',
       leads_today:    leadsToday,
+      leads_5d:       leads5d,
       daily_max:      dailyMax,
       daily_target:   Math.round(dailyTarget * 100) / 100,
+      window_target:  windowTarget,
+      window_pct:     windowPct,
       monthly_budget: budget,
       fill_pct:       fillPct,
       wallet_balance: walletBalance,
@@ -473,10 +488,11 @@ async function routeAgent(supabase: any, state: string) {
       _score:         0,
     };
 
-    if (leadsToday >= dailyMax) {
-      capped.push(agentInfo);
+    if (leadsToday >= dailyMax || pacingCapped) {
+      capped.push({ ...agentInfo, cap_reason: pacingCapped && leadsToday < dailyMax ? '5d pacing' : 'daily' });
     } else {
-      agentInfo._score = (leadsToday / dailyMax) + (Math.random() * 0.0001);
+      // Score combines daily fill + 5-day pacing (agents closer to 5d limit get deprioritized)
+      agentInfo._score = (leadsToday / dailyMax) * 0.6 + (leads5d / Math.max(windowTarget, 1)) * 0.4 + (Math.random() * 0.0001);
       eligible.push(agentInfo);
     }
   });
@@ -558,36 +574,46 @@ async function getPoolStatus(supabase: any) {
     walletBalances[id] = (depositTotals[id] || 0) - (spendTotals[id] || 0) * feeMultiplier;
   });
 
-  // Today's consolidated leads per agent (for fill scores) — test leads excluded
+  // Today's + 5-day rolling leads per agent (for fill scores + pacing) — test leads excluded
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
-  const { data: todayLeads } = await supabase
+  const { data: recentLeads } = await supabase
     .from('leads')
-    .select('agent_id, first_name, last_name')
+    .select('agent_id, first_name, last_name, created_at')
     .in('agent_id', agentIds)
-    .gte('created_at', today + 'T00:00:00Z')
+    .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
     .eq('lead_source', 'CONSOLIDATED_ROUTER');
 
   const leadCounts: Record<string, number> = {};
-  (todayLeads || [])
+  const leadCounts5d: Record<string, number> = {};
+  (recentLeads || [])
     .filter((l: any) => !isTestLead(l))
     .forEach((l: any) => {
-      leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+      leadCounts5d[l.agent_id] = (leadCounts5d[l.agent_id] || 0) + 1;
+      if (l.created_at >= today + 'T00:00:00Z') {
+        leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
+      }
     });
 
+  const PACING_WINDOW = 5;
   const rollingCPL = await getRollingCPL(supabase);
   const eligible: any[] = [];
   const capped: any[]   = [];
   const excluded: any[] = [];
 
   clients.forEach((c: any) => {
-    const balance     = Math.round((walletBalances[c.id] || 0) * 100) / 100;
-    const budget      = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
-    const dailyTarget = budget / 30 / rollingCPL;
-    const dailyMax    = Math.ceil(dailyTarget * FLEX);
-    const leadsToday  = leadCounts[c.agent_id] || 0;
-    const fillPct     = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
-    const statesCount = c.states ? c.states.split(',').length : 0;
+    const balance      = Math.round((walletBalances[c.id] || 0) * 100) / 100;
+    const budget       = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
+    const dailyTarget  = budget / 30 / rollingCPL;
+    const dailyMax     = Math.ceil(dailyTarget * FLEX);
+    const leadsToday   = leadCounts[c.agent_id] || 0;
+    const leads5d      = leadCounts5d[c.agent_id] || 0;
+    const windowTarget = Math.ceil(budget / 30 * PACING_WINDOW / rollingCPL * FLEX);
+    const fillPct      = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
+    const windowPct    = windowTarget > 0 ? Math.round(leads5d / windowTarget * 100 * 10) / 10 : 0;
+    const pacingCapped = leads5d >= windowTarget;
+    const statesCount  = c.states ? c.states.split(',').length : 0;
 
     const base = {
       client_id:      c.id,
@@ -596,7 +622,10 @@ async function getPoolStatus(supabase: any) {
       wallet_balance: balance,
       fill_pct:       fillPct,
       leads_today:    leadsToday,
+      leads_5d:       leads5d,
       daily_max:      dailyMax,
+      window_target:  windowTarget,
+      window_pct:     windowPct,
       monthly_budget: budget,
       states_count:   statesCount,
       headshot:       c.profile_image_url || '',
@@ -624,9 +653,9 @@ async function getPoolStatus(supabase: any) {
       excluded.push({ ...base, exclude_reason: 'no scheduler link' });
       return;
     }
-    // Capped
-    if (leadsToday >= dailyMax) {
-      capped.push({ ...base, status: 'capped' });
+    // Capped: daily or 5-day pacing
+    if (leadsToday >= dailyMax || pacingCapped) {
+      capped.push({ ...base, status: 'capped', cap_reason: pacingCapped && leadsToday < dailyMax ? '5d pacing' : 'daily' });
       return;
     }
     // Eligible
