@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -116,6 +117,9 @@ export default function PortalAdminClientDetail() {
   } | null>(null);
   const [adminNotes, setAdminNotes] = useState<string | null>(null);
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState<string | null>(null);
+  const [isSavingWebhook, setIsSavingWebhook] = useState(false);
+  const [isTestingWebhook, setIsTestingWebhook] = useState(false);
   
   // Get date range from preset
   const dateRange = useMemo(() => getDateRangeFromPreset(datePreset), [datePreset]);
@@ -850,10 +854,11 @@ export default function PortalAdminClientDetail() {
 
             {/* Onboarding Automation Widget (Admin Only) - Only show during onboarding */}
             {!isClientView && client.id && showOnboardingWidgets && (
-              <OnboardingAutomationWidget 
+              <OnboardingAutomationWidget
                 clientId={client.id}
                 clientName={client.name}
                 onSkipAutomation={handleSkipAutomation}
+                useOwnCrm={(client as any).use_own_crm === true}
               />
             )}
 
@@ -1263,33 +1268,144 @@ export default function PortalAdminClientDetail() {
               </div>
             )}
 
-            {/* CRM Delivery Toggle */}
-            <div className="rounded-2xl border border-border/50 bg-card p-6">
+            {/* CRM Settings */}
+            <div className="rounded-2xl border border-border/50 bg-card p-6 space-y-5">
+              <h3 className="text-sm font-medium text-muted-foreground">CRM & Lead Delivery</h3>
+
+              {/* Use Own CRM Toggle */}
               <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                  <Label htmlFor="crm-delivery" className="text-sm font-medium">CRM Lead Delivery</Label>
+                  <Label htmlFor="use-own-crm" className="text-sm font-medium">Agent Uses Own CRM</Label>
                   <p className="text-xs text-muted-foreground">
-                    When enabled, leads are automatically sent to the agent's GHL CRM. 
-                    Disable if agent uses their own CRM or only wants a lead sheet.
+                    Enable if agent brings their own CRM. Onboarding will skip all GHL steps
+                    and leads will be sent to their webhook instead.
                   </p>
                 </div>
                 <Switch
-                  id="crm-delivery"
-                  checked={(client as any).crm_delivery_enabled !== false}
+                  id="use-own-crm"
+                  checked={(client as any).use_own_crm === true}
                   onCheckedChange={async (checked) => {
                     if (!id) return;
                     try {
-                      await updateClient.mutateAsync({ 
-                        clientId: id, 
-                        updates: { crm_delivery_enabled: checked } as any 
-                      });
-                      toast.success(checked ? 'CRM delivery enabled' : 'CRM delivery disabled');
+                      const updates: any = { use_own_crm: checked };
+                      if (checked) {
+                        updates.crm_delivery_enabled = false;
+                      }
+                      await updateClient.mutateAsync({ clientId: id, updates });
+                      toast.success(checked ? 'Own CRM mode enabled — GHL steps will be skipped' : 'Own CRM mode disabled');
                     } catch (error) {
-                      toast.error('Failed to update CRM delivery setting');
+                      toast.error('Failed to update CRM setting');
                     }
                   }}
                 />
               </div>
+
+              {/* Webhook URL (shown when use_own_crm is enabled) */}
+              {(client as any).use_own_crm && (
+                <div className="space-y-2 pl-0.5">
+                  <Label htmlFor="webhook-url" className="text-sm font-medium">Lead Webhook URL</Label>
+                  <p className="text-xs text-muted-foreground">
+                    New leads will be POSTed to this URL as JSON. Must return 2xx to confirm delivery.
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      id="webhook-url"
+                      type="url"
+                      placeholder="https://hooks.zapier.com/... or agent's CRM webhook"
+                      value={webhookUrl ?? (client as any).external_webhook_url ?? ''}
+                      onChange={(e) => setWebhookUrl(e.target.value)}
+                      className="flex-1 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={isSavingWebhook || (webhookUrl ?? (client as any).external_webhook_url ?? '') === ((client as any).external_webhook_url ?? '')}
+                      onClick={async () => {
+                        if (!id) return;
+                        setIsSavingWebhook(true);
+                        try {
+                          await updateClient.mutateAsync({
+                            clientId: id,
+                            updates: { external_webhook_url: webhookUrl || null } as any,
+                          });
+                          setWebhookUrl(null);
+                          toast.success('Webhook URL saved');
+                        } catch {
+                          toast.error('Failed to save webhook URL');
+                        }
+                        setIsSavingWebhook(false);
+                      }}
+                    >
+                      {isSavingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                    </Button>
+                    {(client as any).external_webhook_url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isTestingWebhook}
+                        onClick={async () => {
+                          setIsTestingWebhook(true);
+                          try {
+                            const testPayload = {
+                              test: true,
+                              lead_id: 'test-' + Date.now(),
+                              first_name: 'Test',
+                              last_name: 'Lead',
+                              email: 'test@alphaagent.io',
+                              phone: '+15551234567',
+                              state: 'FL',
+                              agent_id: client.agent_id,
+                              timestamp: new Date().toISOString(),
+                            };
+                            const resp = await fetch((client as any).external_webhook_url, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(testPayload),
+                            });
+                            if (resp.ok) {
+                              toast.success(`Webhook test passed (${resp.status})`);
+                            } else {
+                              toast.error(`Webhook returned ${resp.status} — check the URL`);
+                            }
+                          } catch (err: any) {
+                            toast.error(`Webhook test failed: ${err.message || 'Network error'}`);
+                          }
+                          setIsTestingWebhook(false);
+                        }}
+                      >
+                        {isTestingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* CRM Delivery Toggle (only when NOT using own CRM) */}
+              {!(client as any).use_own_crm && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label htmlFor="crm-delivery" className="text-sm font-medium">CRM Lead Delivery</Label>
+                    <p className="text-xs text-muted-foreground">
+                      When enabled, leads are automatically sent to the agent's GHL CRM.
+                    </p>
+                  </div>
+                  <Switch
+                    id="crm-delivery"
+                    checked={(client as any).crm_delivery_enabled !== false}
+                    onCheckedChange={async (checked) => {
+                      if (!id) return;
+                      try {
+                        await updateClient.mutateAsync({
+                          clientId: id,
+                          updates: { crm_delivery_enabled: checked } as any
+                        });
+                        toast.success(checked ? 'CRM delivery enabled' : 'CRM delivery disabled');
+                      } catch (error) {
+                        toast.error('Failed to update CRM delivery setting');
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Contact Information */}

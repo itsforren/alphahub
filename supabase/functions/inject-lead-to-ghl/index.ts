@@ -445,34 +445,110 @@ serve(async (req) => {
     // Get the client/agent's subaccount_id and ghl_user_id
     const { data: client, error: clientError } = await supabase
       .from('clients')
-      .select('id, subaccount_id, ghl_user_id, name, crm_delivery_enabled')
+      .select('id, subaccount_id, ghl_user_id, name, crm_delivery_enabled, use_own_crm, external_webhook_url')
       .eq('agent_id', lead.agent_id)
       .single();
 
     if (clientError || !client) {
       const errorMessage = `No client found for agent_id: ${lead.agent_id}`;
       console.error(errorMessage);
-      
+
       // Log delivery failure
       await logDeliveryAttempt(supabase, lead.id, null, 'failed', null, errorMessage);
       await updateLeadDeliveryStatus(supabase, lead.id, 'failed', errorMessage);
-      
+
       return new Response(
         JSON.stringify({ error: errorMessage }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if CRM delivery is disabled for this agent
+    // Own-CRM mode: deliver to agent's webhook instead of GHL
+    if (client.use_own_crm && client.external_webhook_url) {
+      console.log(`[Own CRM] Delivering lead to webhook for ${client.name}: ${client.external_webhook_url}`);
+
+      const webhookPayload = {
+        lead_id: lead.id,
+        first_name: lead.first_name,
+        last_name: lead.last_name,
+        email: lead.email,
+        phone: lead.phone,
+        state: lead.state,
+        agent_id: lead.agent_id,
+        lead_source: lead.lead_source,
+        age: lead.age,
+        employment: lead.employment,
+        interest: lead.interest,
+        savings: lead.savings,
+        investments: lead.investments,
+        timezone: lead.timezone,
+        utm_source: lead.utm_source,
+        utm_medium: lead.utm_medium,
+        utm_campaign: lead.utm_campaign,
+        utm_content: lead.utm_content,
+        utm_term: lead.utm_term,
+        gclid: lead.gclid,
+        fbclid: lead.fbclid,
+        notes: lead.notes,
+        created_at: lead.created_at,
+      };
+
+      try {
+        const webhookResp = await fetch(client.external_webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload),
+        });
+
+        if (webhookResp.ok) {
+          console.log(`[Own CRM] Webhook delivery success (${webhookResp.status}) for lead ${lead.id}`);
+          await logDeliveryAttempt(supabase, lead.id, null, 'delivered', null, `Webhook ${webhookResp.status}`);
+          await updateLeadDeliveryStatus(supabase, lead.id, 'delivered', null);
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              webhook: true,
+              status: webhookResp.status,
+              message: `Lead delivered to agent webhook (${webhookResp.status})`,
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          const errText = await webhookResp.text().catch(() => '');
+          const errorMessage = `Webhook returned ${webhookResp.status}: ${errText.slice(0, 500)}`;
+          console.error(`[Own CRM] Webhook delivery failed for lead ${lead.id}:`, errorMessage);
+          await logDeliveryAttempt(supabase, lead.id, null, 'failed', null, errorMessage);
+          await updateLeadDeliveryStatus(supabase, lead.id, 'failed', errorMessage);
+
+          return new Response(
+            JSON.stringify({ success: false, webhook: true, error: errorMessage }),
+            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (err: unknown) {
+        const errorMessage = `Webhook error: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(`[Own CRM] Webhook exception for lead ${lead.id}:`, errorMessage);
+        await logDeliveryAttempt(supabase, lead.id, null, 'failed', null, errorMessage);
+        await updateLeadDeliveryStatus(supabase, lead.id, 'failed', errorMessage);
+
+        return new Response(
+          JSON.stringify({ success: false, webhook: true, error: errorMessage }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    // Check if CRM delivery is disabled for this agent (no own CRM, just disabled)
     if (client.crm_delivery_enabled === false) {
       console.log(`CRM delivery disabled for ${client.name}, skipping GHL injection`);
-      
+
       // Track as "skipped" in pipeline metrics
       await supabase.rpc('increment_pipeline_metric', {
         p_agent_id: lead.agent_id,
         p_stage: 'skipped'
       });
-      
+
       // Update lead to show it was skipped (not failed)
       await supabase
         .from('leads')
@@ -481,10 +557,10 @@ serve(async (req) => {
           delivery_error: null,
         })
         .eq('id', lead.id);
-      
+
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           skipped: true,
           message: 'CRM delivery disabled for this agent'
         }),

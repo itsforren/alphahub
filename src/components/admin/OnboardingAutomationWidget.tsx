@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CheckCircle2, XCircle, Loader2, Play, RotateCcw, ChevronDown, ChevronUp,
-  Rocket, Clock, AlertTriangle, ExternalLink, Zap, CheckCheck, UserCheck, Square, CheckSquare
+  Rocket, Clock, AlertTriangle, ExternalLink, Zap, CheckCheck, UserCheck, Square, CheckSquare, SkipForward
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useOnboardingAutomation, AUTOMATION_STEPS, AutomationStep } from '@/hooks/useOnboardingAutomation';
+import { useOnboardingAutomation, AUTOMATION_STEPS, CRM_STEP_NUMBERS, AutomationStep } from '@/hooks/useOnboardingAutomation';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -133,9 +133,10 @@ interface OnboardingAutomationWidgetProps {
   clientId: string;
   clientName?: string;
   onSkipAutomation?: () => void;
+  useOwnCrm?: boolean;
 }
 
-export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomation }: OnboardingAutomationWidgetProps) {
+export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomation, useOwnCrm }: OnboardingAutomationWidgetProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showLogs, setShowLogs] = useState(false);
   const [isSkipping, setIsSkipping] = useState(false);
@@ -472,9 +473,14 @@ export function OnboardingAutomationWidget({ clientId, clientName, onSkipAutomat
                         )}>
                           {step.label}
                         </span>
-                        {step.manual && (
+                        {step.manual && !useOwnCrm && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/30 text-amber-400">
                             <UserCheck className="w-3 h-3 mr-0.5" /> Manual
+                          </Badge>
+                        )}
+                        {useOwnCrm && CRM_STEP_NUMBERS.includes(step.step) && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-500/30 text-blue-400">
+                            <SkipForward className="w-3 h-3 mr-0.5" /> CRM Skipped
                           </Badge>
                         )}
                       </div>

@@ -7,7 +7,11 @@ export interface AutomationStep {
   name: string;
   label: string;
   manual?: boolean; // If true, this step is completed by a human, not automation
+  crmRequired?: boolean; // If true, this step is skipped when agent uses own CRM
 }
+
+// Steps 9-15 and 19 are CRM-dependent (GHL subaccount, SaaS, calendars, etc.)
+export const CRM_STEP_NUMBERS = [9, 10, 11, 12, 13, 14, 15, 19];
 
 export const AUTOMATION_STEPS: AutomationStep[] = [
   { step: 1, name: 'lowercase_name', label: 'Lowercase Agent Name' },
@@ -18,17 +22,17 @@ export const AUTOMATION_STEPS: AutomationStep[] = [
   { step: 6, name: 'create_lander', label: 'Create Lander Page' },
   { step: 7, name: 'create_profile', label: 'Create Profile Page' },
   { step: 8, name: 'create_thankyou', label: 'Create Thank You Page' },
-  { step: 9, name: 'create_subaccount', label: 'Create GHL Subaccount' },
-  { step: 10, name: 'activate_saas', label: 'Activate SaaS (Manual)', manual: true },
-  { step: 11, name: 'install_snapshot', label: 'Verify Snapshot & Calendar ID' },
-  { step: 12, name: 'pull_calendar_id', label: 'Pull Calendar ID' },
-  { step: 13, name: 'assign_calendars', label: 'Assign User to Calendars' },
-  { step: 14, name: 'update_scheduler_embed', label: 'Update Scheduler Embed' },
-  { step: 15, name: 'sync_crm_custom_fields', label: 'Sync CRM Custom Fields' },
+  { step: 9, name: 'create_subaccount', label: 'Create GHL Subaccount', crmRequired: true },
+  { step: 10, name: 'activate_saas', label: 'Activate SaaS (Manual)', manual: true, crmRequired: true },
+  { step: 11, name: 'install_snapshot', label: 'Verify Snapshot & Calendar ID', crmRequired: true },
+  { step: 12, name: 'pull_calendar_id', label: 'Pull Calendar ID', crmRequired: true },
+  { step: 13, name: 'assign_calendars', label: 'Assign User to Calendars', crmRequired: true },
+  { step: 14, name: 'update_scheduler_embed', label: 'Update Scheduler Embed', crmRequired: true },
+  { step: 15, name: 'sync_crm_custom_fields', label: 'Sync CRM Custom Fields', crmRequired: true },
   { step: 16, name: 'create_google_ads', label: 'Create Google Ads Campaigns (Search + Display)' },
   { step: 17, name: 'final_verification', label: 'Final Verification' },
   { step: 18, name: 'verify_onboarding', label: 'Verify & Test Onboarding' },
-  { step: 19, name: 'provision_phone', label: 'Provision Phone Number (Manual)', manual: true },
+  { step: 19, name: 'provision_phone', label: 'Provision Phone Number (Manual)', manual: true, crmRequired: true },
 ];
 
 export interface OnboardingAutomationRun {

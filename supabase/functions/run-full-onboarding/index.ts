@@ -1075,6 +1075,14 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Own-CRM mode: auto-skip GHL/CRM-dependent steps (9-15, 19)
+      const CRM_STEPS = [9, 10, 11, 12, 13, 14, 15, 19];
+      if (client.use_own_crm && CRM_STEPS.includes(i)) {
+        console.log(`[Own CRM] Skipping step ${i}: ${step.name} — agent uses own CRM`);
+        await updateStep(i, true, { skipped: true, reason: 'Agent uses own CRM' });
+        continue;
+      }
+
       console.log(`Executing step ${i}: ${step.name}`);
 
       try {
@@ -1908,17 +1916,26 @@ Deno.serve(async (req) => {
 
           case 'final_verification': {
             const missing: string[] = [];
-            if (!isNonEmptyString(client.subaccount_id)) missing.push('subaccount_id');
-            if (!isNonEmptyString(client.discovery_calendar_id)) missing.push('discovery_calendar_id');
+            if (!client.use_own_crm) {
+              // Standard flow: require GHL artifacts
+              if (!isNonEmptyString(client.subaccount_id)) missing.push('subaccount_id');
+              if (!isNonEmptyString(client.discovery_calendar_id)) missing.push('discovery_calendar_id');
+            }
             if (!isNonEmptyString(client.google_campaign_id)) missing.push('google_campaign_id');
 
             if (missing.length > 0) {
               throw new Error(`Final verification failed: missing ${missing.join(', ')}`);
             }
 
+            const checked = client.use_own_crm
+              ? ['google_campaign_id']
+              : ['subaccount_id', 'discovery_calendar_id', 'google_campaign_id'];
             await updateStep(i, true, {
-              checked: ['subaccount_id', 'discovery_calendar_id', 'google_campaign_id'],
-              note: 'Core onboarding artifacts verified before live test.',
+              checked,
+              ownCrm: !!client.use_own_crm,
+              note: client.use_own_crm
+                ? 'Own-CRM mode: verified Google Ads only (GHL artifacts skipped).'
+                : 'Core onboarding artifacts verified before live test.',
             });
             break;
           }
