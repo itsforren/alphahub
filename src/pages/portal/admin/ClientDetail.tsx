@@ -874,7 +874,7 @@ export default function PortalAdminClientDetail() {
             )}
 
             {/* Test Funnel (Admin Only) — E2E lead test for this agent */}
-            {!isClientView && client.agent_id && client.lander_link && (
+            {!isClientView && client.agent_id && (
               <Card className="border-border/50 bg-card/60">
                 <CardContent className="py-4 px-5">
                   <div className="flex items-center justify-between mb-3">
@@ -882,18 +882,29 @@ export default function PortalAdminClientDetail() {
                     <Badge variant="outline" className="text-[10px]">Admin</Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Walk through the full lead funnel for this agent. Fill out the survey, verify routing, check calendar, and confirm CRM delivery.
+                    Walk through the full consolidated funnel forced to this agent. Survey will show this agent regardless of state selected.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <a
-                      href={client.lander_link}
+                      href={`https://www.taxfreewealthplan.com/discover-get-started?force_agent=${client.agent_id}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
                     >
-                      <ExternalLink className="w-3 h-3" />
-                      Open Lander
+                      <Zap className="w-3 h-3" />
+                      Test Consolidated Funnel
                     </a>
+                    {client.lander_link && (
+                      <a
+                        href={client.lander_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Agent Lander
+                      </a>
+                    )}
                     {client.scheduler_link && (
                       <a
                         href={client.scheduler_link}
@@ -902,22 +913,10 @@ export default function PortalAdminClientDetail() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
                       >
                         <ExternalLink className="w-3 h-3" />
-                        Open Scheduler
+                        Agent Scheduler
                       </a>
                     )}
-                    <a
-                      href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-router/route?state=${((client as any).states || 'FL').split(',')[0].trim()}&force_agent=${client.agent_id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
-                    >
-                      <Zap className="w-3 h-3" />
-                      Test Router (force)
-                    </a>
                   </div>
-                  <p className="text-[10px] text-muted-foreground/60 mt-2">
-                    Router force URL: <code className="bg-muted px-1 py-0.5 rounded">/route?state=XX&force_agent={client.agent_id}</code>
-                  </p>
                 </CardContent>
               </Card>
             )}
