@@ -249,7 +249,7 @@ serve(async (req) => {
 // ROLLING CPL — 7-day average from actual campaign data
 // =============================================
 async function getRollingCPL(supabase: any): Promise<number> {
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   const { data, error } = await supabase
@@ -532,7 +532,7 @@ async function getPoolStatus(supabase: any) {
   });
 
   // Today's consolidated leads per agent (for fill scores) — test leads excluded
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
   const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
   const { data: todayLeads } = await supabase
     .from('leads')

@@ -22,12 +22,12 @@ function getMccId(): string {
 // ── Helpers ──
 
 function getTodayET(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 }
 
 function getETDayBoundsUTC(etDate: string): { start: string; end: string } {
   const isDST = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York', timeZoneName: 'short',
+    timeZone: 'America/Bogota', timeZoneName: 'short',
   }).formatToParts(new Date()).find(p => p.type === 'timeZoneName')?.value === 'EDT';
   const offset = isDST ? '-04:00' : '-05:00';
   return {

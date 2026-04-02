@@ -78,6 +78,7 @@ export function CampaignPanel({
     queryFn: async () => {
       const now = new Date();
       const mtdStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
       const { data, error } = await supabase
         .from('ad_spend_daily')
         .select('cost, spend_date')
@@ -87,8 +88,10 @@ export function CampaignPanel({
         .order('spend_date', { ascending: false });
       if (error) return null;
       const total = (data || []).reduce((sum, r) => sum + Number(r.cost || 0), 0);
+      const todayRow = (data || []).find(r => r.spend_date === todayStr);
+      const todayCost = todayRow ? Number(todayRow.cost || 0) : 0;
       const days  = (data || []).length;
-      return { total, days, rows: data || [] };
+      return { total, days, todayCost, rows: data || [] };
     },
     staleTime: 5 * 60_000,
   });
@@ -365,7 +368,16 @@ export function CampaignPanel({
               </div>
 
               <div className="flex items-center gap-2 text-muted-foreground">
-                <span>MTD Attributed:</span>
+                <span>Today:</span>
+                <span className="font-medium text-foreground">
+                  {consolidatedSpend.todayCost > 0
+                    ? `$${(consolidatedSpend.todayCost * 1.10).toFixed(2)}`
+                    : '—'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <span>MTD:</span>
                 <span className="font-medium text-foreground">
                   {consolidatedSpend.total > 0
                     ? `$${(consolidatedSpend.total * 1.10).toFixed(2)}`

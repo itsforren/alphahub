@@ -111,7 +111,7 @@ function useRecentConsolidatedLeads() {
   return useQuery({
     queryKey: ['consolidated-recent-leads'],
     queryFn: async () => {
-      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 
       // leads has no FK to clients — query leads first, then resolve agent names separately
       const [consRes, allRes] = await Promise.all([
