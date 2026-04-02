@@ -146,8 +146,7 @@ function useRecentConsolidatedLeads() {
 
       const enrich = (leads: any[]) =>
         leads
-          .filter(l => !isTestLead(l))
-          .map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null }));
+          .map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null, isTest: isTestLead(l) }));
 
       return {
         consolidated: enrich(consRes.data || []),
@@ -640,15 +639,20 @@ export function ConsolidatedRouterDashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(leadsData?.recent || []).slice(0, 12).map((lead: any) => {
+                  {(leadsData?.recent || []).slice(0, 15).map((lead: any) => {
                     const isCons = lead.lead_source === 'CONSOLIDATED_ROUTER';
                     return (
-                      <TableRow key={lead.id} className="border-border/30">
+                      <TableRow key={lead.id} className={`border-border/30 ${lead.isTest ? 'opacity-60' : ''}`}>
                         <TableCell className="py-1.5 text-xs text-muted-foreground">
                           {format(new Date(lead.created_at), 'h:mma')}
                         </TableCell>
                         <TableCell className="py-1.5 text-xs">
-                          {lead.first_name} {lead.last_name}
+                          <span className="flex items-center gap-1.5">
+                            {lead.first_name} {lead.last_name}
+                            {lead.isTest && (
+                              <Badge variant="outline" className="text-[9px] py-0 px-1 text-amber-400 border-amber-400/30">TEST</Badge>
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell className="py-1.5 text-xs font-mono">{lead.state}</TableCell>
                         <TableCell className="py-1.5 text-xs truncate max-w-[120px]">
