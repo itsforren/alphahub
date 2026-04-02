@@ -828,6 +828,8 @@ export default function PortalAdminClientDetail() {
                   campaigns={campaigns as any}
                   trackingStartDate={walletTrackingStartDate}
                   onRefresh={handleRefresh}
+                  isClientView={isClientView}
+                  monthlyAdSpendCap={(client as any).monthly_ad_spend_cap ?? null}
                   onUpdateStates={async (states) => {
                     if (!id) return;
                     await updateClient.mutateAsync({ clientId: id, updates: { states } });

@@ -37,6 +37,8 @@ interface CampaignPanelProps {
   trackingStartDate?: string | null;
   onRefresh: () => void;
   onUpdateStates: (states: string) => Promise<void>;
+  isClientView?: boolean;
+  monthlyAdSpendCap?: number | null;
 }
 
 export function CampaignPanel({
@@ -45,8 +47,25 @@ export function CampaignPanel({
   trackingStartDate,
   onRefresh,
   onUpdateStates,
+  isClientView = false,
+  monthlyAdSpendCap: propCap,
 }: CampaignPanelProps) {
   const CONSOLIDATED_CAMPAIGN_ID = '23706217116';
+
+  // Fetch monthly_ad_spend_cap from client_wallets for client view display
+  const { data: walletCap } = useQuery({
+    queryKey: ['wallet-cap', clientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('client_wallets')
+        .select('monthly_ad_spend_cap')
+        .eq('client_id', clientId)
+        .maybeSingle();
+      return data?.monthly_ad_spend_cap ?? null;
+    },
+    enabled: isClientView && !propCap,
+  });
+  const monthlyAdSpendCap = propCap ?? walletCap;
 
   const queryClient = useQueryClient();
   const { data: rechargeState } = useRechargeState(clientId);
@@ -370,16 +389,21 @@ export function CampaignPanel({
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Budget:</span>
                 <span className="font-medium">
-                  {campaign.current_daily_budget ? `$${campaign.current_daily_budget}` : '—'}
+                  {isClientView
+                    ? `$${monthlyAdSpendCap ? Math.round(monthlyAdSpendCap / 30) : '—'}/day`
+                    : campaign.current_daily_budget ? `$${campaign.current_daily_budget}` : '—'
+                  }
                 </span>
-                <EditBudgetDialog
-                  clientId={clientId}
-                  currentBudget={campaign.current_daily_budget}
-                  googleCampaignId={`${campaign.google_customer_id}:${campaign.google_campaign_id}`}
-                  campaignRowId={campaign.id}
-                  campaignLabel={campaign.label || undefined}
-                  onSuccess={onRefresh}
-                />
+                {!isClientView && (
+                  <EditBudgetDialog
+                    clientId={clientId}
+                    currentBudget={campaign.current_daily_budget}
+                    googleCampaignId={`${campaign.google_customer_id}:${campaign.google_campaign_id}`}
+                    campaignRowId={campaign.id}
+                    campaignLabel={campaign.label || undefined}
+                    onSuccess={onRefresh}
+                  />
+                )}
               </div>
 
               <div className="flex items-center gap-2">
