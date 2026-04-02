@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.87.1';
+import { getAgencyAccessToken } from '../_shared/ghl-oauth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -6,128 +7,6 @@ const corsHeaders = {
 };
 
 const _version = '2026-03-09_v2-oauth';
-const GHL_API_BASE = 'https://services.leadconnectorhq.com';
-const COMPANY_ID = '30bFOq4ZtlhKuMOvVPwA';
-
-// AES-GCM decryption
-async function decryptToken(encryptedData: string, key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-
-  const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
-  const iv = combined.slice(0, 12);
-  const encrypted = combined.slice(12);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt']
-  );
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encrypted
-  );
-
-  return new TextDecoder().decode(decrypted);
-}
-
-// AES-GCM encryption
-async function encryptToken(token: string, key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt']
-  );
-
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encoder.encode(token)
-  );
-
-  const combined = new Uint8Array(iv.length + encrypted.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(encrypted), iv.length);
-
-  return btoa(String.fromCharCode(...combined));
-}
-
-async function getAgencyToken(supabase: any, encryptionKey: string): Promise<string> {
-  const { data: tokenData, error } = await supabase
-    .from('ghl_oauth_tokens')
-    .select('id, access_token, refresh_token, expires_at')
-    .eq('company_id', COMPANY_ID)
-    .single();
-
-  if (error || !tokenData) {
-    throw new Error('No GHL OAuth token found for agency. Please reconnect via Settings > CRM.');
-  }
-
-  const expiresAt = new Date(tokenData.expires_at);
-  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
-
-  if (expiresAt <= fiveMinutesFromNow) {
-    console.log('Token expired or expiring soon, refreshing...');
-
-    const GHL_CLIENT_ID = Deno.env.get('GHL_CLIENT_ID');
-    const GHL_CLIENT_SECRET = Deno.env.get('GHL_CLIENT_SECRET');
-
-    const decryptedRefreshToken = await decryptToken(tokenData.refresh_token, encryptionKey);
-
-    const refreshResponse = await fetch(`${GHL_API_BASE}/oauth/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: GHL_CLIENT_ID!,
-        client_secret: GHL_CLIENT_SECRET!,
-        grant_type: 'refresh_token',
-        refresh_token: decryptedRefreshToken,
-      }),
-    });
-
-    if (!refreshResponse.ok) {
-      const errorText = await refreshResponse.text();
-      throw new Error(`Failed to refresh GHL OAuth token: ${errorText}`);
-    }
-
-    const newTokens = await refreshResponse.json();
-
-    const encryptedAccessToken = await encryptToken(newTokens.access_token, encryptionKey);
-    const encryptedRefreshToken = await encryptToken(newTokens.refresh_token, encryptionKey);
-
-    await supabase
-      .from('ghl_oauth_tokens')
-      .update({
-        access_token: encryptedAccessToken,
-        refresh_token: encryptedRefreshToken,
-        expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', tokenData.id);
-
-    console.log('Token refreshed successfully');
-    return newTokens.access_token;
-  }
-
-  try {
-    const decryptedToken = await decryptToken(tokenData.access_token, encryptionKey);
-    console.log('Agency token decrypted, length:', decryptedToken.length);
-    return decryptedToken;
-  } catch (decryptError) {
-    console.warn('Decrypt failed, using token as-is (legacy fallback)');
-    return tokenData.access_token;
-  }
-}
 
 // GHL/LeadConnector hosts used for telephony configuration
 const GHL_HOSTS = {
@@ -193,9 +72,8 @@ Deno.serve(async (req) => {
 
     console.log(`[ghl-inject-twilio] (${_version}) Two-phase Twilio setup for location ${locationId}`);
 
-    // Get V2 OAuth agency token (auto-refreshes if expired)
-    const encryptionKey = Deno.env.get('ENCRYPTION_KEY') || supabaseKey;
-    const agencyToken = await getAgencyToken(supabase, encryptionKey);
+    // Get V2 OAuth agency token (auto-refreshes if expired, with DB locking)
+    const agencyToken = await getAgencyAccessToken(supabase, 'ghl-inject-twilio');
 
     // Build token candidates: location-scoped token (if provided) + V2 OAuth agency token
     const tokenCandidatesRaw: Array<{ kind: 'location' | 'agency'; raw: string | null | undefined }> = [

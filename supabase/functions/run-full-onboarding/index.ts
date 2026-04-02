@@ -1,5 +1,6 @@
 // Force redeploy: 2026-02-26 — ensure sanitizeForJsonb is in deployed runtime
 import { createClient } from "npm:@supabase/supabase-js@2.87.1";
+import { getAgencyAccessToken } from '../_shared/ghl-oauth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -388,105 +389,9 @@ Deno.serve(async (req) => {
 
     const normalizeBearerToken = (raw: string) => raw.replace(/^Bearer\s+/i, '').trim();
 
-    // AES-GCM helpers (copied inline; edge functions can't import from other files)
-    const decryptToken = async (encryptedData: string, key: string): Promise<string> => {
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-      const combined = Uint8Array.from(atob(encryptedData), (c) => c.charCodeAt(0));
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-      const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['decrypt']);
-      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, encrypted);
-      return new TextDecoder().decode(decrypted);
-    };
-
-    const encryptToken = async (token: string, key: string): Promise<string> => {
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt']);
-      const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, encoder.encode(token));
-      const combined = new Uint8Array(iv.length + encrypted.byteLength);
-      combined.set(iv, 0);
-      combined.set(new Uint8Array(encrypted), iv.length);
-      return btoa(String.fromCharCode(...combined));
-    };
-
+    // Agency OAuth token — uses centralized shared module with DB locking
     const getAgencyOAuthAccessToken = async (): Promise<string> => {
-      const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
-      if (!encryptionKey) throw new Error('Missing ENCRYPTION_KEY secret');
-
-      const { data: tokenRecord, error: tokenError } = await supabase
-        .from('ghl_oauth_tokens')
-        .select('id, access_token, refresh_token, expires_at')
-        .maybeSingle();
-
-      if (tokenError || !tokenRecord) {
-        throw new Error('No GHL OAuth tokens found. Reconnect OAuth.');
-      }
-
-      const expiresAt = new Date(tokenRecord.expires_at);
-      const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
-
-      // Refresh if expiring
-      if (expiresAt <= fiveMinutesFromNow) {
-        const clientId = Deno.env.get('GHL_CLIENT_ID');
-        const clientSecret = Deno.env.get('GHL_CLIENT_SECRET');
-        if (!clientId || !clientSecret) {
-          throw new Error('Missing GHL_CLIENT_ID / GHL_CLIENT_SECRET secrets');
-        }
-
-        let decryptedRefreshToken = tokenRecord.refresh_token;
-        try {
-          decryptedRefreshToken = await decryptToken(tokenRecord.refresh_token, encryptionKey);
-        } catch (e) {
-          console.warn('Refresh token decrypt failed, using as-is (legacy fallback):', e);
-        }
-
-        const refreshResponse = await fetch('https://services.leadconnectorhq.com/oauth/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Accept': 'application/json',
-          },
-          body: new URLSearchParams({
-            client_id: clientId,
-            client_secret: clientSecret,
-            grant_type: 'refresh_token',
-            refresh_token: decryptedRefreshToken,
-          }),
-        });
-
-        if (!refreshResponse.ok) {
-          const errorText = await refreshResponse.text();
-          throw new Error(`Failed to refresh GHL OAuth token: ${errorText}`);
-        }
-
-        const tokenData = await refreshResponse.json();
-        const encryptedAccessToken = await encryptToken(tokenData.access_token, encryptionKey);
-        const encryptedRefreshToken = await encryptToken(tokenData.refresh_token, encryptionKey);
-        const newExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000).toISOString();
-
-        await supabase
-          .from('ghl_oauth_tokens')
-          .update({
-            access_token: encryptedAccessToken,
-            refresh_token: encryptedRefreshToken,
-            expires_at: newExpiresAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', tokenRecord.id);
-
-        return tokenData.access_token;
-      }
-
-      // Token still valid
-      try {
-        return await decryptToken(tokenRecord.access_token, encryptionKey);
-      } catch (e) {
-        console.warn('Access token decrypt failed, using as-is (legacy fallback):', e);
-        return tokenRecord.access_token;
-      }
+      return await getAgencyAccessToken(supabase, 'run-full-onboarding');
     };
 
     const enableSaasForLocation = async (companyId: string, locationId: string) => {

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAgencyAccessToken } from '../_shared/ghl-oauth.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -15,94 +16,6 @@ const DISPOSITION_TAGS: Record<string, string> = {
   disqualified: "disqualified",
 };
 
-async function getLocationToken(supabase: any, locationId: string): Promise<string | null> {
-  // Get the company-level token
-  const { data: tokenData } = await supabase
-    .from("ghl_oauth_tokens")
-    .select("access_token, refresh_token, expires_at, company_id")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (!tokenData) {
-    console.log("No GHL OAuth token found");
-    return null;
-  }
-
-  // Check if token needs refresh
-  const expiresAt = new Date(tokenData.expires_at);
-  if (expiresAt <= new Date()) {
-    console.log("Token expired, attempting refresh...");
-    const refreshed = await refreshToken(supabase, tokenData.refresh_token);
-    if (!refreshed) return null;
-    return refreshed.access_token;
-  }
-
-  // Get location-specific access token
-  const response = await fetch(
-    `https://services.leadconnectorhq.com/oauth/locationToken`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Bearer ${tokenData.access_token}`,
-        Version: "2021-07-28",
-      },
-      body: new URLSearchParams({
-        companyId: tokenData.company_id || "",
-        locationId: locationId,
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    console.error("Failed to get location token:", await response.text());
-    return tokenData.access_token; // Fallback to company token
-  }
-
-  const data = await response.json();
-  return data.access_token || tokenData.access_token;
-}
-
-async function refreshToken(supabase: any, refreshToken: string): Promise<any> {
-  const clientId = Deno.env.get("GHL_CLIENT_ID");
-  const clientSecret = Deno.env.get("GHL_CLIENT_SECRET");
-
-  if (!clientId || !clientSecret) {
-    console.error("Missing GHL OAuth credentials");
-    return null;
-  }
-
-  const response = await fetch("https://services.leadconnectorhq.com/oauth/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!response.ok) {
-    console.error("Failed to refresh token:", await response.text());
-    return null;
-  }
-
-  const data = await response.json();
-  
-  await supabase
-    .from("ghl_oauth_tokens")
-    .update({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("refresh_token", refreshToken);
-
-  return data;
-}
 
 async function addTagToContact(contactId: string, accessToken: string, tag: string): Promise<boolean> {
   const response = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tags`, {
@@ -196,14 +109,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get access token
-    const accessToken = await getLocationToken(supabase, locationId);
-    if (!accessToken) {
-      return new Response(
-        JSON.stringify({ error: "Failed to get GHL access token" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // Get access token (centralized OAuth with DB locking)
+    const accessToken = await getAgencyAccessToken(supabase, 'sync-disposition-to-ghl');
 
     // Add tag to contact
     const success = await addTagToContact(contactId, accessToken, tag);

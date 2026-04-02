@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getAgencyAccessToken } from '../_shared/ghl-oauth.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,135 +10,6 @@ const corsHeaders = {
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const COMPANY_ID = "30bFOq4ZtlhKuMOvVPwA";
 const DEFAULT_PASSWORD = "Alpha21$";
-
-// AES-GCM decryption
-async function decryptToken(encryptedData: string, key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-  
-  const combined = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
-  const iv = combined.slice(0, 12);
-  const encrypted = combined.slice(12);
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt']
-  );
-  
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encrypted
-  );
-  
-  return new TextDecoder().decode(decrypted);
-}
-
-// AES-GCM encryption
-async function encryptToken(token: string, key: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key.padEnd(32, '0').slice(0, 32));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt']
-  );
-  
-  const encrypted = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encoder.encode(token)
-  );
-  
-  const combined = new Uint8Array(iv.length + encrypted.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(encrypted), iv.length);
-  
-  return btoa(String.fromCharCode(...combined));
-}
-
-async function getAgencyToken(supabase: any, encryptionKey: string): Promise<string> {
-  const { data: tokenData, error } = await supabase
-    .from("ghl_oauth_tokens")
-    .select("id, access_token, refresh_token, expires_at")
-    .eq("company_id", COMPANY_ID)
-    .single();
-
-  if (error || !tokenData) {
-    throw new Error("No GHL OAuth token found for agency. Please reconnect.");
-  }
-
-  const expiresAt = new Date(tokenData.expires_at);
-  const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
-
-  // Check if token is expired or about to expire
-  if (expiresAt <= fiveMinutesFromNow) {
-    console.log("Token expired or expiring soon, refreshing...");
-    
-    const GHL_CLIENT_ID = Deno.env.get("GHL_CLIENT_ID");
-    const GHL_CLIENT_SECRET = Deno.env.get("GHL_CLIENT_SECRET");
-
-    // Decrypt the refresh token
-    const decryptedRefreshToken = await decryptToken(tokenData.refresh_token, encryptionKey);
-
-    const refreshResponse = await fetch(`${GHL_API_BASE}/oauth/token`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        client_id: GHL_CLIENT_ID!,
-        client_secret: GHL_CLIENT_SECRET!,
-        grant_type: "refresh_token",
-        refresh_token: decryptedRefreshToken,
-      }),
-    });
-
-    if (!refreshResponse.ok) {
-      const errorText = await refreshResponse.text();
-      throw new Error(`Failed to refresh token: ${errorText}`);
-    }
-
-    const newTokens = await refreshResponse.json();
-    
-    // Encrypt new tokens before storing
-    const encryptedAccessToken = await encryptToken(newTokens.access_token, encryptionKey);
-    const encryptedRefreshToken = await encryptToken(newTokens.refresh_token, encryptionKey);
-
-    await supabase
-      .from("ghl_oauth_tokens")
-      .update({
-        access_token: encryptedAccessToken,
-        refresh_token: encryptedRefreshToken,
-        expires_at: new Date(Date.now() + newTokens.expires_in * 1000).toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", tokenData.id);
-
-    console.log("Token refreshed successfully, tokenLooksLikeJwt:", newTokens.access_token.includes('.'));
-    return newTokens.access_token;
-  }
-
-  // Token is still valid - decrypt it
-  try {
-    const decryptedToken = await decryptToken(tokenData.access_token, encryptionKey);
-    console.log("Token decrypted, tokenLooksLikeJwt:", decryptedToken.includes('.'), "tokenLength:", decryptedToken.length);
-    return decryptedToken;
-  } catch (decryptError) {
-    // Fallback: token might be stored unencrypted (legacy)
-    console.warn("Decrypt failed, using token as-is (legacy fallback):", decryptError);
-    const tokenLooksLikeJwt = tokenData.access_token.includes('.') && tokenData.access_token.split('.').length === 3;
-    console.log("Raw token fallback, tokenLooksLikeJwt:", tokenLooksLikeJwt, "tokenLength:", tokenData.access_token.length);
-    return tokenData.access_token;
-  }
-}
 
 // Search for existing user by email
 type ExistingGhlUser = {
@@ -346,11 +218,6 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const encryptionKey = Deno.env.get("ENCRYPTION_KEY");
-
-    if (!encryptionKey) {
-      throw new Error("ENCRYPTION_KEY secret is not configured");
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -371,7 +238,7 @@ serve(async (req) => {
       );
     }
 
-    const accessToken = await getAgencyToken(supabase, encryptionKey);
+    const accessToken = await getAgencyAccessToken(supabase, 'ghl-create-user');
     console.log("Processing GHL user for:", email, "in location:", location_id);
 
     // 1) Try to find user first
