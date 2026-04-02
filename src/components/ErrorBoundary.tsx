@@ -22,6 +22,26 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ErrorBoundary caught:', error, errorInfo);
+
+    // Auto-reload on chunk load failures (happens after new deploys)
+    const isChunkError =
+      error.message?.includes('Failed to fetch dynamically imported module') ||
+      error.message?.includes('Importing a module script failed') ||
+      error.message?.includes('Loading chunk') ||
+      error.message?.includes('Loading CSS chunk');
+
+    if (isChunkError) {
+      const reloadKey = 'chunk-reload-' + window.location.pathname;
+      const lastReload = sessionStorage.getItem(reloadKey);
+      const now = Date.now();
+
+      // Only auto-reload once per path per 30 seconds to prevent infinite loops
+      if (!lastReload || now - Number(lastReload) > 30000) {
+        sessionStorage.setItem(reloadKey, String(now));
+        window.location.reload();
+        return;
+      }
+    }
   }
 
   render() {
@@ -36,10 +56,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {this.state.error?.stack}
           </pre>
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() => window.location.reload()}
             style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '0.25rem', cursor: 'pointer' }}
           >
-            Try Again
+            Reload
           </button>
         </div>
       );
