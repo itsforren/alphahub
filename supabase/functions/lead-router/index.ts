@@ -53,11 +53,38 @@ serve(async (req) => {
   try {
     // =============================================
     // GET /route?state=XX — Preview (no increment)
+    // GET /route?state=XX&force_agent=AGENT_ID — Admin override for testing
     // =============================================
     if (path === 'route' && req.method === 'GET') {
       const state = url.searchParams.get('state');
       if (!state || !US_STATES.has(state.toUpperCase())) {
         return json({ error: 'Valid US state code required' }, 400);
+      }
+
+      // Admin override: force a specific agent (for onboarding E2E testing)
+      const forceAgentId = url.searchParams.get('force_agent');
+      if (forceAgentId) {
+        const { data: forcedClient } = await supabase
+          .from('clients')
+          .select('id, name, agent_id, scheduler_link, profile_image_url')
+          .eq('agent_id', forceAgentId)
+          .single();
+
+        if (!forcedClient) {
+          return json({ error: `force_agent not found: ${forceAgentId}` }, 404);
+        }
+
+        console.log(`[ROUTER] force_agent override: ${forcedClient.name} (${forceAgentId})`);
+        return json({
+          state: state.toUpperCase(),
+          selected: {
+            agent_id:      forcedClient.agent_id,
+            name:          forcedClient.name,
+            scheduler_url: forcedClient.scheduler_link,
+            headshot:      forcedClient.profile_image_url,
+          },
+          forced: true,
+        });
       }
 
       const result = await routeAgent(supabase, state);

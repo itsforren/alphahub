@@ -873,6 +873,55 @@ export default function PortalAdminClientDetail() {
               />
             )}
 
+            {/* Test Funnel (Admin Only) — E2E lead test for this agent */}
+            {!isClientView && client.agent_id && client.lander_link && (
+              <Card className="border-border/50 bg-card/60">
+                <CardContent className="py-4 px-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Test Funnel</h3>
+                    <Badge variant="outline" className="text-[10px]">Admin</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Walk through the full lead funnel for this agent. Fill out the survey, verify routing, check calendar, and confirm CRM delivery.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={client.lander_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Open Lander
+                    </a>
+                    {client.scheduler_link && (
+                      <a
+                        href={client.scheduler_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Open Scheduler
+                      </a>
+                    )}
+                    <a
+                      href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-router/route?state=${((client as any).states || 'FL').split(',')[0].trim()}&force_agent=${client.agent_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
+                    >
+                      <Zap className="w-3 h-3" />
+                      Test Router (force)
+                    </a>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60 mt-2">
+                    Router force URL: <code className="bg-muted px-1 py-0.5 rounded">/route?state=XX&force_agent={client.agent_id}</code>
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Read-only Campaign Summary for Clients */}
             {isClientView && client && (
               <div className="relative rounded-2xl border border-white/[0.06] bg-white/[0.02] backdrop-blur-xl p-5 overflow-hidden">
