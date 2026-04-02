@@ -956,6 +956,13 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Individual Google Ads campaign creation paused — agents use consolidated router
+      if (i === 16) {
+        console.log(`[Consolidated] Skipping step 16: create_google_ads — using consolidated router`);
+        await updateStep(i, true, { skipped: true, reason: 'Individual campaign creation paused — agent uses consolidated router' });
+        continue;
+      }
+
       // Manual steps: pause if not yet completed by admin, otherwise continue
       if ((step as any).manual) {
         const stepsCompleted = (automationRun.steps_completed || []) as number[];
@@ -1822,24 +1829,28 @@ Deno.serve(async (req) => {
           case 'final_verification': {
             const missing: string[] = [];
             if (!client.use_own_crm) {
-              // Standard flow: require GHL artifacts
               if (!isNonEmptyString(client.subaccount_id)) missing.push('subaccount_id');
               if (!isNonEmptyString(client.discovery_calendar_id)) missing.push('discovery_calendar_id');
             }
-            if (!isNonEmptyString(client.google_campaign_id)) missing.push('google_campaign_id');
+            // google_campaign_id is optional — agents on consolidated router don't have individual campaigns
 
             if (missing.length > 0) {
               throw new Error(`Final verification failed: missing ${missing.join(', ')}`);
             }
 
-            const checked = client.use_own_crm
-              ? ['google_campaign_id']
-              : ['subaccount_id', 'discovery_calendar_id', 'google_campaign_id'];
+            const checked: string[] = [];
+            if (!client.use_own_crm) checked.push('subaccount_id', 'discovery_calendar_id');
+            if (isNonEmptyString(client.google_campaign_id)) checked.push('google_campaign_id');
+
+            const hasIndividualCampaign = isNonEmptyString(client.google_campaign_id);
             await updateStep(i, true, {
               checked,
               ownCrm: !!client.use_own_crm,
+              consolidatedRouter: !hasIndividualCampaign,
               note: client.use_own_crm
-                ? 'Own-CRM mode: verified Google Ads only (GHL artifacts skipped).'
+                ? 'Own-CRM mode: GHL artifacts skipped.'
+                : !hasIndividualCampaign
+                ? 'Consolidated router mode: no individual campaign (spend attributed via consolidated).'
                 : 'Core onboarding artifacts verified before live test.',
             });
             break;
