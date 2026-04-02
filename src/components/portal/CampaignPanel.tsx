@@ -317,10 +317,33 @@ export function CampaignPanel({
           <span>Safe mode active — budgets locked at minimum. Resolve payment to restore.</span>
         </div>
       )}
-      {/* Consolidated Router Campaign — read-only display row.
-          spend is attributed via ad_spend_daily (campaign_id = 23706217116).
-          Cannot appear in the campaigns table due to UNIQUE (google_customer_id, google_campaign_id). */}
-      {consolidatedSpend !== null && consolidatedSpend !== undefined && (
+      {/* ── CLIENT VIEW: single clean campaign card ── */}
+      {isClientView && (
+        <Card className="border-border/50">
+          <CardContent className="py-3 px-4">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <Zap className="h-3.5 w-3.5 text-primary/60" />
+                <span className="font-medium text-foreground">Google Ads Campaign</span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Daily Budget:</span>
+                <span className="font-medium">${monthlyAdSpendCap ? Math.round(monthlyAdSpendCap / 30) : '—'}/day</span>
+              </div>
+              {campaigns[0]?.states && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Targeting:</span>
+                  <span className="font-medium">{campaigns[0].states}</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── ADMIN VIEW: consolidated + individual campaigns ── */}
+      {!isClientView && consolidatedSpend !== null && consolidatedSpend !== undefined && (
         <Card className="border-border/50 bg-primary/5">
           <CardContent className="py-3 px-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm">
@@ -362,7 +385,7 @@ export function CampaignPanel({
         </Card>
       )}
 
-      {campaigns.map((campaign) => (
+      {!isClientView && campaigns.map((campaign) => (
         <Card key={campaign.id} className="border-border/50">
           <CardContent className="py-3 px-4">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -389,21 +412,16 @@ export function CampaignPanel({
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Budget:</span>
                 <span className="font-medium">
-                  {isClientView
-                    ? `$${monthlyAdSpendCap ? Math.round(monthlyAdSpendCap / 30) : '—'}/day`
-                    : campaign.current_daily_budget ? `$${campaign.current_daily_budget}` : '—'
-                  }
+                  {campaign.current_daily_budget ? `$${campaign.current_daily_budget}` : '—'}
                 </span>
-                {!isClientView && (
-                  <EditBudgetDialog
-                    clientId={clientId}
-                    currentBudget={campaign.current_daily_budget}
-                    googleCampaignId={`${campaign.google_customer_id}:${campaign.google_campaign_id}`}
-                    campaignRowId={campaign.id}
-                    campaignLabel={campaign.label || undefined}
-                    onSuccess={onRefresh}
-                  />
-                )}
+                <EditBudgetDialog
+                  clientId={clientId}
+                  currentBudget={campaign.current_daily_budget}
+                  googleCampaignId={`${campaign.google_customer_id}:${campaign.google_campaign_id}`}
+                  campaignRowId={campaign.id}
+                  campaignLabel={campaign.label || undefined}
+                  onSuccess={onRefresh}
+                />
               </div>
 
               <div className="flex items-center gap-2">
