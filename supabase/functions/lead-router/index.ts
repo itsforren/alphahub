@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 const DEFAULT_MONTHLY_BUDGET = 1000; // fallback when monthly_ad_spend_cap is null
-const AVG_CPL = 45;
+const DEFAULT_CPL = 45; // fallback when no 7-day data exists
+const CONSOLIDATED_CAMPAIGN_ID = '23706217116';
 const FLEX = 1.5;
 
 /** Returns true if the lead looks like a test — name contains "test" (case-insensitive) */
@@ -55,12 +56,25 @@ serve(async (req) => {
     // =============================================
     if (path === 'route' && req.method === 'GET') {
       const state = url.searchParams.get('state');
-      if (!state) {
-        return json({ error: 'state parameter required' }, 400);
+      if (!state || !US_STATES.has(state.toUpperCase())) {
+        return json({ error: 'Valid US state code required' }, 400);
       }
 
       const result = await routeAgent(supabase, state);
-      return json(result);
+
+      // Strip internal financial/operational fields — callers only need agent identity
+      const sanitize = (agent: any) => agent ? {
+        agent_id:      agent.agent_id,
+        name:          agent.name,
+        scheduler_url: agent.scheduler_url,
+        headshot:      agent.headshot,
+      } : null;
+
+      return json({
+        state:    result.state,
+        selected: sanitize(result.selected),
+        error:    result.error,
+      });
     }
 
     // =============================================
@@ -232,6 +246,38 @@ serve(async (req) => {
 });
 
 // =============================================
+// ROLLING CPL — 7-day average from actual campaign data
+// =============================================
+async function getRollingCPL(supabase: any): Promise<number> {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const { data, error } = await supabase
+    .from('ad_spend_daily')
+    .select('cost, conversions')
+    .eq('campaign_id', CONSOLIDATED_CAMPAIGN_ID)
+    .gte('spend_date', sevenDaysAgo)
+    .lte('spend_date', today);
+
+  if (error || !data || data.length === 0) {
+    console.log(`[ROUTER] getRollingCPL: no data, using DEFAULT_CPL=$${DEFAULT_CPL}`);
+    return DEFAULT_CPL;
+  }
+
+  const totalSpend = data.reduce((sum: number, r: any) => sum + Number(r.cost || 0), 0);
+  const totalLeads = data.reduce((sum: number, r: any) => sum + Number(r.conversions || 0), 0);
+
+  if (totalSpend === 0 || totalLeads === 0) {
+    console.log(`[ROUTER] getRollingCPL: spend=${totalSpend} leads=${totalLeads}, using DEFAULT_CPL`);
+    return DEFAULT_CPL;
+  }
+
+  const cpl = totalSpend / totalLeads;
+  console.log(`[ROUTER] getRollingCPL: 7d spend=$${totalSpend.toFixed(2)}, leads=${totalLeads}, CPL=$${cpl.toFixed(2)}`);
+  return cpl;
+}
+
+// =============================================
 // ROUTER LOGIC
 // =============================================
 async function routeAgent(supabase: any, state: string) {
@@ -372,13 +418,14 @@ async function routeAgent(supabase: any, state: string) {
   }
 
   // 4. Calculate fill scores and filter capped agents
+  const rollingCPL = await getRollingCPL(supabase);
   const eligible: any[] = [];
   const capped: any[] = [];
 
   covering.forEach((c: any) => {
     // Use actual monthly cap; fall back to default if not set
     const budget     = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
-    const dailyTarget = budget / 30 / AVG_CPL;
+    const dailyTarget = budget / 30 / rollingCPL;
     const dailyMax   = Math.ceil(dailyTarget * FLEX);
     const leadsToday = leadCounts[c.agent_id] || 0;
     const fillPct    = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;
@@ -501,6 +548,7 @@ async function getPoolStatus(supabase: any) {
       leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
     });
 
+  const rollingCPL = await getRollingCPL(supabase);
   const eligible: any[] = [];
   const capped: any[]   = [];
   const excluded: any[] = [];
@@ -508,7 +556,7 @@ async function getPoolStatus(supabase: any) {
   clients.forEach((c: any) => {
     const balance     = Math.round((walletBalances[c.id] || 0) * 100) / 100;
     const budget      = walletSettings[c.id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
-    const dailyTarget = budget / 30 / AVG_CPL;
+    const dailyTarget = budget / 30 / rollingCPL;
     const dailyMax    = Math.ceil(dailyTarget * FLEX);
     const leadsToday  = leadCounts[c.agent_id] || 0;
     const fillPct     = dailyMax > 0 ? Math.round(leadsToday / dailyMax * 100 * 10) / 10 : 0;

@@ -683,44 +683,57 @@ export function ConsolidatedRouterDashboard() {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold uppercase tracking-wider">Cost Attribution</CardTitle>
-              {summary && summary.total_leads > 0 && (
-                <span className="text-xs text-muted-foreground">
-                  ${(summary.total_spend ?? 0).toFixed(2)} ÷ {summary.total_leads} leads
-                </span>
-              )}
+              <div className="text-right">
+                {summary?.model && (
+                  <span className="text-xs text-primary font-medium block">{summary.model.replace('_', '/').replace('hybrid/', 'Hybrid ')}</span>
+                )}
+                {summary && (
+                  <span className="text-xs text-muted-foreground">
+                    ${(summary.total_spend ?? 0).toFixed(2)} across {summary.pool_size ?? 0} agents
+                    {summary.exempt_agent && <span className="text-primary/70"> ({summary.exempt_agent} exempt)</span>}
+                  </span>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-0">
             {summaryLoading ? (
               <div className="p-4 space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-7" />)}</div>
-            ) : summary?.total_leads > 0 ? (
+            ) : (summary?.breakdown?.length ?? 0) > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/50 hover:bg-transparent">
                     <TableHead className="text-xs">Agent</TableHead>
+                    <TableHead className="text-xs text-center">Share</TableHead>
                     <TableHead className="text-xs text-center">Leads</TableHead>
                     <TableHead className="text-xs text-right">Raw Cost</TableHead>
                     <TableHead className="text-xs text-right">w/ Fee</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(summary.breakdown || [])
-                    .sort((a: any, b: any) => b.leads - a.leads)
-                    .map((row: any) => (
-                      <TableRow key={row.agent_id || row.agent} className="border-border/30">
-                        <TableCell className="py-1.5 text-xs font-medium">{row.agent}</TableCell>
-                        <TableCell className="py-1.5 text-xs text-center">{row.leads}</TableCell>
-                        <TableCell className="py-1.5 text-xs text-right font-mono">
-                          ${(row.charged_before_fee ?? 0).toFixed(2)}
-                        </TableCell>
-                        <TableCell className="py-1.5 text-xs text-right font-mono text-primary">
-                          ${(row.charged_with_fee ?? 0).toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  {/* Totals row */}
+                  {(summary.breakdown || []).map((row: any) => (
+                    <TableRow key={row.agent_id || row.agent} className={`border-border/30 ${row.exempt ? 'opacity-50' : ''}`}>
+                      <TableCell className="py-1.5 text-xs font-medium">
+                        {row.agent}
+                        {row.exempt && <span className="ml-1.5 text-[10px] text-primary/70 font-semibold">OWNER</span>}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-xs text-center text-muted-foreground">
+                        {row.exempt ? '—' : `${(row.budget_share ?? 0).toFixed(1)}%`}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-xs text-center">
+                        {row.leads > 0 ? <span className="text-emerald-400 font-medium">{row.leads}</span> : <span className="text-muted-foreground">0</span>}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-xs text-right font-mono">
+                        {row.exempt ? '$0' : `$${(row.charged_before_fee ?? 0).toFixed(2)}`}
+                      </TableCell>
+                      <TableCell className="py-1.5 text-xs text-right font-mono text-primary">
+                        {row.exempt ? '$0' : `$${(row.charged_with_fee ?? 0).toFixed(2)}`}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                   <TableRow className="border-t border-border/50 bg-muted/20">
                     <TableCell className="py-2 text-xs font-semibold">Total</TableCell>
+                    <TableCell className="py-2 text-xs text-center font-semibold">100%</TableCell>
                     <TableCell className="py-2 text-xs text-center font-semibold">{summary.total_leads}</TableCell>
                     <TableCell className="py-2 text-xs text-right font-mono font-semibold">
                       ${(summary.total_spend ?? 0).toFixed(2)}
@@ -734,7 +747,7 @@ export function ConsolidatedRouterDashboard() {
             ) : (
               <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">
                 {summary?.total_spend > 0
-                  ? 'No leads yet — attribution will run when leads arrive'
+                  ? 'Spend recorded — attribution will distribute on next run'
                   : 'No spend data yet for today'}
               </div>
             )}
