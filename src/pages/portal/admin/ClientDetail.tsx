@@ -1302,7 +1302,7 @@ export default function PortalAdminClientDetail() {
 
               {/* Webhook URL (shown when use_own_crm is enabled) */}
               {(client as any).use_own_crm && (
-                <div className="space-y-2 pl-0.5">
+                <div className="space-y-3 pl-0.5">
                   <Label htmlFor="webhook-url" className="text-sm font-medium">Lead Webhook URL</Label>
                   <p className="text-xs text-muted-foreground">
                     New leads will be POSTed to this URL as JSON. Must return 2xx to confirm delivery.
@@ -1337,45 +1337,63 @@ export default function PortalAdminClientDetail() {
                     >
                       {isSavingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
                     </Button>
-                    {(client as any).external_webhook_url && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isTestingWebhook}
-                        onClick={async () => {
-                          setIsTestingWebhook(true);
-                          try {
-                            const testPayload = {
-                              test: true,
-                              lead_id: 'test-' + Date.now(),
-                              first_name: 'Test',
-                              last_name: 'Lead',
-                              email: 'test@alphaagent.io',
-                              phone: '+15551234567',
-                              state: 'FL',
-                              agent_id: client.agent_id,
-                              timestamp: new Date().toISOString(),
-                            };
-                            const resp = await fetch((client as any).external_webhook_url, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify(testPayload),
-                            });
-                            if (resp.ok) {
-                              toast.success(`Webhook test passed (${resp.status})`);
-                            } else {
-                              toast.error(`Webhook returned ${resp.status} — check the URL`);
-                            }
-                          } catch (err: any) {
-                            toast.error(`Webhook test failed: ${err.message || 'Network error'}`);
-                          }
-                          setIsTestingWebhook(false);
-                        }}
-                      >
-                        {isTestingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test'}
-                      </Button>
-                    )}
                   </div>
+
+                  {/* Send Test Lead button — sends full realistic payload for Zapier field mapping */}
+                  {(client as any).external_webhook_url && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={isTestingWebhook}
+                      className="gap-2"
+                      onClick={async () => {
+                        setIsTestingWebhook(true);
+                        try {
+                          const testPayload = {
+                            lead_id: 'test-' + Date.now(),
+                            first_name: 'Jane',
+                            last_name: 'Smith',
+                            email: 'jane.smith@example.com',
+                            phone: '+15551234567',
+                            state: 'FL',
+                            agent_id: client.agent_id,
+                            lead_source: 'google_ads',
+                            age: '35-44',
+                            employment: 'W2 Employee',
+                            interest: 'Tax-Free Retirement',
+                            savings: '$50,000 - $100,000',
+                            investments: '$100,000 - $250,000',
+                            timezone: 'America/New_York',
+                            utm_source: 'google',
+                            utm_medium: 'cpc',
+                            utm_campaign: 'iul_maxconv_search',
+                            utm_content: 'tax_free_retirement',
+                            utm_term: 'indexed universal life insurance',
+                            gclid: 'test_gclid_' + Date.now(),
+                            fbclid: null,
+                            notes: 'Test lead sent from Alpha Hub for Zapier field mapping',
+                            created_at: new Date().toISOString(),
+                          };
+                          const resp = await fetch((client as any).external_webhook_url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(testPayload),
+                          });
+                          if (resp.ok) {
+                            toast.success(`Test lead sent successfully (${resp.status}) — check Zapier to map fields`);
+                          } else {
+                            toast.error(`Webhook returned ${resp.status} — check the URL`);
+                          }
+                        } catch (err: any) {
+                          toast.error(`Webhook test failed: ${err.message || 'Network error'}`);
+                        }
+                        setIsTestingWebhook(false);
+                      }}
+                    >
+                      {isTestingWebhook ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                      Send Test Lead
+                    </Button>
+                  )}
                 </div>
               )}
 
