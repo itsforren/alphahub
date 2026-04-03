@@ -150,7 +150,28 @@ serve(async (req) => {
         return json({ error: 'Agent not found' }, 404);
       }
 
-      // 2. Create lead in Supabase (use client-provided order_id as lead_id for matching)
+      // 2. Duplicate check — same email within last 10 minutes = skip
+      const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: existingLead } = await supabase
+        .from('leads')
+        .select('id, lead_id, agent_id')
+        .eq('email', email.trim().toLowerCase())
+        .gte('created_at', tenMinAgo)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingLead) {
+        console.log(`[SUBMIT] Duplicate blocked: ${email} already submitted ${existingLead.lead_id} within 10 min`);
+        return json({
+          ok: true,
+          duplicate: true,
+          agent_name: client.name,
+          agent_id: agent_id,
+          order_id: existingLead.lead_id,
+        });
+      }
+
+      // 3. Create lead in Supabase (use client-provided order_id as lead_id for matching)
       const leadId = order_id || crypto.randomUUID();
       const { error: leadError } = await supabase
         .from('leads')
