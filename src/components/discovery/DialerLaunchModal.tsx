@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { PhoneCall, Zap, Target, TrendingUp, Rocket } from 'lucide-react';
@@ -7,6 +8,7 @@ const DISMISS_KEY = 'dialer-launch-seen-v1';
 
 export function DialerLaunchModal() {
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!localStorage.getItem(DISMISS_KEY)) {
@@ -17,6 +19,7 @@ export function DialerLaunchModal() {
   const handleClose = () => {
     setOpen(false);
     localStorage.setItem(DISMISS_KEY, 'true');
+    navigate('/hub/leads');
   };
 
   return (
