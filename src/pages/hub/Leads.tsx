@@ -4,23 +4,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import { LeadDiscoveryDashboard } from '@/components/discovery/LeadDiscoveryDashboard';
 import { NewLeadPopup } from '@/components/discovery/NewLeadPopup';
 import { useLeadDiscoveryQueue, useMyClient } from '@/hooks/useLeadDiscoveryQueue';
-import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-// Feature flag: only these agent_ids can access My Leads (remove to enable for all)
-const DISCOVERY_ENABLED_AGENTS = ['EIx4YsVXAfD6hoIX2ixz']; // James Warren (+ Sierra via team members)
-
 export default function Leads() {
-  const { isAdmin } = useAuth();
   const { data: myClient, isLoading: clientLoading } = useMyClient();
   const queryClient = useQueryClient();
   const [newLeadPopup, setNewLeadPopup] = useState<any>(null);
 
-  // Admin fallback: if no client record found, use James Warren's agent_id
-  const agentId = myClient?.agent_id || (isAdmin ? 'EIx4YsVXAfD6hoIX2ixz' : null);
-  const isEnabled = agentId && (isAdmin || DISCOVERY_ENABLED_AGENTS.includes(agentId));
+  // Enable for all agents that don't use their own CRM
+  const agentId = myClient?.agent_id || null;
+  const isEnabled = agentId && !(myClient as any)?.use_own_crm;
   const { data: queueData, isLoading: queueLoading } = useLeadDiscoveryQueue(isEnabled ? agentId : null);
 
   const isLoading = clientLoading || queueLoading;

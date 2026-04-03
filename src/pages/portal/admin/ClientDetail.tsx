@@ -1456,6 +1456,39 @@ export default function PortalAdminClientDetail() {
                   />
                 </div>
               )}
+
+              {/* Calendar IDs (read-only, for discovery/dial tracker) */}
+              {((client as any).callback_calendar_id || (client as any).discovery_calendar_id || (client as any).strategy_calendar_id) && (
+                <div className="space-y-3 pt-2 border-t border-border/30">
+                  <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Calendar IDs</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {(client as any).callback_calendar_id && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Callback</label>
+                        <p className="text-xs font-mono text-foreground/70 bg-muted/30 rounded px-2 py-1 truncate">
+                          {(client as any).callback_calendar_id}
+                        </p>
+                      </div>
+                    )}
+                    {(client as any).discovery_calendar_id && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Discovery</label>
+                        <p className="text-xs font-mono text-foreground/70 bg-muted/30 rounded px-2 py-1 truncate">
+                          {(client as any).discovery_calendar_id}
+                        </p>
+                      </div>
+                    )}
+                    {(client as any).strategy_calendar_id && (
+                      <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground">Strategy</label>
+                        <p className="text-xs font-mono text-foreground/70 bg-muted/30 rounded px-2 py-1 truncate">
+                          {(client as any).strategy_calendar_id}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Contact Information */}

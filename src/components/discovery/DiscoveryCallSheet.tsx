@@ -271,7 +271,7 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
       await invokeEdgeFunction('book-discovery-appointment', {
         lead_id: lead.id,
         agent_id: agentId,
-        calendar_id: callbackCalendarId || _calendarId,
+        calendar_id: callbackCalendarId || _calendarId, // Prefer client record, fall back to slot's calendar
         calendar_type: 'callback',
         selected_slot: slot,
         reschedule: true,
@@ -498,22 +498,27 @@ export function DiscoveryCallSheet({ open, onClose, lead, agentId, callbackCalen
 
     // Book 15-min callback on the Callback calendar if date is set
     if (outcome === 'call_back' && callbackDate) {
-      try {
-        const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
-        await invokeEdgeFunction('book-discovery-appointment', {
-          lead_id: lead.id,
-          agent_id: agentId,
-          calendar_id: callbackCalendarId || '7DRohwRVnVUA5QvMOiHN', // Per-user callback calendar
-          calendar_type: 'callback',
-          selected_slot: callbackDate,
-          notes: `Callback: ${leadName}\n${pendingFormData?.discovery_data?.notes || ''}`,
-        });
-        toast.success(`Callback booked for ${new Date(callbackDate).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
-        setSavedMessage(`Callback booked — ${new Date(callbackDate).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
-      } catch (err: any) {
-        console.error('Callback booking failed:', err);
-        toast.error('Callback saved but calendar booking failed');
-        setSavedMessage('Call back saved (calendar booking failed)');
+      if (!callbackCalendarId) {
+        toast.error('No callback calendar configured — contact admin to set up calendar IDs');
+        setSavedMessage('Call back saved (no calendar configured)');
+      } else {
+        try {
+          const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(' ');
+          await invokeEdgeFunction('book-discovery-appointment', {
+            lead_id: lead.id,
+            agent_id: agentId,
+            calendar_id: callbackCalendarId,
+            calendar_type: 'callback',
+            selected_slot: callbackDate,
+            notes: `Callback: ${leadName}\n${pendingFormData?.discovery_data?.notes || ''}`,
+          });
+          toast.success(`Callback booked for ${new Date(callbackDate).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+          setSavedMessage(`Callback booked — ${new Date(callbackDate).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+        } catch (err: any) {
+          console.error('Callback booking failed:', err);
+          toast.error('Callback saved but calendar booking failed');
+          setSavedMessage('Call back saved (calendar booking failed)');
+        }
       }
     } else {
       const messages: Record<string, string> = {

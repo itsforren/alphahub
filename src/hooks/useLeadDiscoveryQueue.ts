@@ -176,15 +176,7 @@ export function useLeadDiscoveryQueue(agentId: string | null) {
   });
 }
 
-// Team member mappings — maps user_id to agent config
-// This is the source of truth for who can access which agent's leads
-const TEAM_MEMBERS: Record<string, { agent_id: string; callback_calendar_id: string; role: string; name: string }> = {
-  '2145cc04-a44e-4dea-b51f-6d91a71447d8': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '7DRohwRVnVUA5QvMOiHN', role: 'closer', name: 'James Warren' },
-  'f12f4bfc-711a-4c20-bfd8-33f35017de65': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '8Plj0zg1g4QOHKuQ10MW', role: 'setter', name: 'Sierra Warren' },
-  'b5af9972-c8ed-43ef-a3a4-4487ea7c56a9': { agent_id: 'EIx4YsVXAfD6hoIX2ixz', callback_calendar_id: '8Plj0zg1g4QOHKuQ10MW', role: 'setter', name: 'Sierra Smith' },
-};
-
-/** Fetch the current user's client record OR team membership to get agent_id */
+/** Fetch the current user's client record from the clients table */
 export function useMyClient() {
   return useQuery({
     queryKey: ['my-client'],
@@ -195,37 +187,15 @@ export function useMyClient() {
       console.log('[my-client] auth user:', user?.id, user?.email);
       if (!user) return null;
 
-      // Check team member mapping FIRST (handles Sierra and other setters)
-      const teamData = TEAM_MEMBERS[user.id];
-      console.log('[my-client] team match:', teamData ? teamData.name : 'none');
-      if (teamData) {
-        const { data: agentClient } = await supabase
-          .from('clients')
-          .select('id, agent_id, name, scheduler_link, subaccount_id')
-          .eq('agent_id', teamData.agent_id)
-          .eq('status', 'active')
-          .limit(1)
-          .single();
-
-        if (agentClient) {
-          return {
-            ...agentClient,
-            callback_calendar_id: teamData.callback_calendar_id,
-            team_role: teamData.role,
-            team_member_name: teamData.name,
-          };
-        }
-      }
-
-      // Fallback: direct client record (agent owner)
       const { data: clientData } = await supabase
         .from('clients')
-        .select('id, agent_id, name, scheduler_link, subaccount_id')
+        .select('id, agent_id, name, scheduler_link, subaccount_id, callback_calendar_id, discovery_calendar_id, strategy_calendar_id, use_own_crm')
         .eq('user_id', user.id)
         .eq('status', 'active')
         .limit(1)
         .maybeSingle();
 
+      console.log('[my-client] client record:', clientData?.name || 'none', 'agent_id:', clientData?.agent_id || 'none');
       if (clientData?.agent_id) return clientData;
 
       return null;
