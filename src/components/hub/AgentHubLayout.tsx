@@ -55,6 +55,7 @@ import { MaintenanceBanner } from '@/components/hub/MaintenanceBanner';
 import { CampaignUpdateBanner } from '@/components/hub/CampaignUpdateBanner';
 import { PlatformUpdateBanner } from '@/components/hub/PlatformUpdateBanner';
 import { GHLOAuthBanner } from '@/components/hub/GHLOAuthBanner';
+import { DialerLaunchModal } from '@/components/discovery/DialerLaunchModal';
 import { NotificationBell } from '@/components/admin/NotificationBell';
 import { useUnreadCount } from '@/hooks/useChat';
 import { cn } from '@/lib/utils';
@@ -531,6 +532,7 @@ export default function AgentHubLayout() {
           collapsed ? 'lg:pl-[72px]' : 'lg:pl-[280px]'
         }`}
       >
+        <DialerLaunchModal />
         <GHLOAuthBanner />
         <MaintenanceBanner />
         <CampaignUpdateBanner />

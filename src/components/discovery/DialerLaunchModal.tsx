@@ -99,6 +99,12 @@ export function DialerLaunchModal() {
           </div>
 
           <div className="text-center">
+            <p className="text-[11px] text-muted-foreground">
+              A training video on how to use the Lead Dialer will be added to the Courses section shortly.
+            </p>
+          </div>
+
+          <div className="text-center">
             <p className="text-[11px] text-muted-foreground/60">
               Powered by our technology partner <span className="text-primary font-semibold">Welthra</span> — a taste of what's coming with their full CRM launch. We're proud to be their partners.
             </p>
