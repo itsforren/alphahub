@@ -98,13 +98,13 @@ export function DialerLaunchModal() {
             <p className="text-[11px] text-muted-foreground">Alpha Hub now loads directly inside your CRM dashboard — no more switching tabs. Access your portal, leads, and dialer all from one place.</p>
           </div>
 
-          <div className="text-center">
+          <div className="text-center space-y-2">
+            <p className="text-[11px] text-muted-foreground">
+              This feature is brand new and may have minor bugs. If you see any issues, let your Customer Success Manager know and we'll fix it right away. Your dialer should be synced with your Alpha Agent CRM.
+            </p>
             <p className="text-[11px] text-muted-foreground">
               A training video on how to use the Lead Dialer will be added to the Courses section shortly.
             </p>
-          </div>
-
-          <div className="text-center">
             <p className="text-[11px] text-muted-foreground/60">
               Powered by our technology partner <span className="text-primary font-semibold">Welthra</span> — a taste of what's coming with their full CRM launch. We're proud to be their partners.
             </p>
