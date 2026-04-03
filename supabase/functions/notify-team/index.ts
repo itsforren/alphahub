@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
         const agentPhone = agentClient.phone.replace(/\D/g, '');
         const normalizedPhone = agentPhone.length === 10 ? `+1${agentPhone}` : agentPhone.length === 11 && agentPhone.startsWith('1') ? `+${agentPhone}` : agentPhone;
 
-        const agentSms = `New Lead Assigned to You!\n\n${rawName}\nPhone: ${lead.phone || 'N/A'}\nEmail: ${lead.email || 'N/A'}\nState: ${lead.state || 'N/A'}\n\nTrack your dial here:\nhttps://alphaagent.io/hub/leads`;
+        const agentSms = `New Lead Assigned to You!\n\n${rawName}\nPhone: ${lead.phone || 'N/A'}\nEmail: ${lead.email || 'N/A'}\nState: ${lead.state || 'N/A'}\n\nDial now:\nhttps://alphaagent.io/hub/leads?highlight=${lead.id}`;
 
         try {
           await sendSMS(twilioSid!, twilioToken!, twilioPhone!, normalizedPhone, agentSms);

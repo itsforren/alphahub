@@ -93,6 +93,11 @@ export function DialerLaunchModal() {
 
         {/* Partner credit + CTA */}
         <div className="px-8 pt-4 pb-6 space-y-4">
+          <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-center space-y-1">
+            <p className="text-xs font-semibold text-primary">Also New: Alpha Hub Inside Your CRM</p>
+            <p className="text-[11px] text-muted-foreground">Alpha Hub now loads directly inside your CRM dashboard — no more switching tabs. Access your portal, leads, and dialer all from one place.</p>
+          </div>
+
           <div className="text-center">
             <p className="text-[11px] text-muted-foreground/60">
               Powered by our technology partner <span className="text-primary font-semibold">Welthra</span> — a taste of what's coming with their full CRM launch. We're proud to be their partners.
