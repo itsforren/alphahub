@@ -21,7 +21,7 @@ export function DialerLaunchModal() {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="sm:max-w-lg p-0 overflow-hidden border-primary/20 bg-gradient-to-b from-background to-background/95">
+      <DialogContent className="sm:max-w-2xl p-0 overflow-hidden border-primary/20 bg-gradient-to-b from-background to-background/95 max-h-[90vh] overflow-y-auto">
         {/* Header glow */}
         <div className="relative px-8 pt-8 pb-4 text-center">
           <div className="absolute inset-0 bg-gradient-to-b from-primary/10 to-transparent" />
