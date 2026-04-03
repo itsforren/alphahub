@@ -317,7 +317,7 @@ serve(async (req) => {
       const lastName  = fields.LAST_NAME || '';
       const email     = fields.EMAIL || '';
       const phone     = fields.PHONE_NUMBER || '';
-      const rawState  = fields.CUSTOM_QUESTION_0 || ''; // State is first custom question
+      const rawState  = fields.CUSTOM_QUESTION_0 || fields.REGION || fields.STATE || ''; // State from custom question, region, or state field
 
       if (!email) {
         return json({ error: 'Email required' }, 400);
