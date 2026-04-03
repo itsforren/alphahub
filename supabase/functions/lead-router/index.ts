@@ -257,6 +257,141 @@ serve(async (req) => {
     }
 
     // =============================================
+    // POST /demand-gen — Google Ads Demand Gen lead form webhook
+    // =============================================
+    if (path === 'demand-gen' && req.method === 'POST') {
+      const body = await req.json();
+      const { lead_id: googleLeadId, user_column_data, gcl_id, google_key, is_test, form_id, campaign_id, adgroup_id, creative_id } = body;
+
+      // 1. Verify webhook key
+      const expectedKey = Deno.env.get('GOOGLE_LEAD_FORM_KEY');
+      if (expectedKey && google_key !== expectedKey) {
+        return json({ error: 'Invalid google_key' }, 403);
+      }
+
+      // 2. Parse user_column_data
+      const fields: Record<string, string> = {};
+      if (Array.isArray(user_column_data)) {
+        for (const col of user_column_data) {
+          fields[col.column_id] = col.string_value || '';
+        }
+      }
+
+      const firstName = fields.FIRST_NAME || '';
+      const lastName  = fields.LAST_NAME || '';
+      const email     = fields.EMAIL || '';
+      const phone     = fields.PHONE_NUMBER || '';
+      const rawState  = fields.CUSTOM_QUESTION_0 || ''; // State is first custom question
+
+      if (!email) {
+        return json({ error: 'Email required' }, 400);
+      }
+
+      // 3. Normalize state (full name → 2-letter code)
+      const STATE_NAMES: Record<string, string> = {
+        'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
+        'colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC',
+        'florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL',
+        'indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA',
+        'maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN',
+        'mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV',
+        'new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY',
+        'north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR',
+        'pennsylvania':'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',
+        'tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA',
+        'washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY',
+      };
+      const cleaned = rawState.trim();
+      const state = cleaned.length === 2 ? cleaned.toUpperCase() : (STATE_NAMES[cleaned.toLowerCase()] || cleaned.toUpperCase());
+
+      if (!US_STATES.has(state)) {
+        // Save lead as unroutable but still return 200 to Google
+        await supabase.from('leads').insert({
+          lead_id: `DG-${googleLeadId}`, agent_id: null, first_name: firstName, last_name: lastName,
+          email, phone, state: rawState, gclid: gcl_id || null,
+          lead_source: is_test ? 'DEMAND_GEN_TEST' : 'DEMAND_GEN',
+          lead_date: new Date().toISOString(), status: 'new', delivery_status: 'unroutable',
+          lead_data: { form_id, campaign_id, adgroup_id, creative_id, raw_state: rawState, error: 'Invalid state' },
+          webhook_payload: body,
+        }).then(() => {}).catch(e => console.error('DG unroutable save failed:', e));
+        console.log(`[DEMAND-GEN] Unroutable: invalid state "${rawState}"`);
+        return json({ ok: true, warning: 'Lead saved but state not routable' });
+      }
+
+      // 4. Idempotency check
+      const dgLeadId = `DG-${googleLeadId}`;
+      const { data: existing } = await supabase.from('leads').select('id').eq('lead_id', dgLeadId).maybeSingle();
+      if (existing) {
+        console.log(`[DEMAND-GEN] Duplicate: ${dgLeadId} already exists`);
+        return json({ ok: true, duplicate: true });
+      }
+
+      // 5. Route via existing algorithm
+      const routeResult = await routeAgent(supabase, state);
+      const agent = routeResult.selected;
+
+      if (!agent) {
+        // No eligible agent — save as unroutable
+        await supabase.from('leads').insert({
+          lead_id: dgLeadId, agent_id: null, first_name: firstName, last_name: lastName,
+          email, phone, state, gclid: gcl_id || null,
+          lead_source: is_test ? 'DEMAND_GEN_TEST' : 'DEMAND_GEN',
+          lead_date: new Date().toISOString(), status: 'new', delivery_status: 'unroutable',
+          lead_data: { form_id, campaign_id, adgroup_id, creative_id, route_error: routeResult.error },
+          webhook_payload: body,
+        }).then(() => {}).catch(e => console.error('DG unroutable save failed:', e));
+        console.log(`[DEMAND-GEN] No eligible agent for state ${state}: ${routeResult.error}`);
+        return json({ ok: true, warning: 'No eligible agent', state });
+      }
+
+      // 6. Create lead
+      const { error: leadError } = await supabase.from('leads').insert({
+        lead_id:         dgLeadId,
+        agent_id:        agent.agent_id,
+        first_name:      firstName,
+        last_name:       lastName,
+        email:           email,
+        phone:           phone,
+        state:           state,
+        gclid:           gcl_id || null,
+        lead_source:     is_test ? 'DEMAND_GEN_TEST' : 'DEMAND_GEN',
+        lead_date:       new Date().toISOString(),
+        status:          'new',
+        delivery_status: 'pending',
+        lead_data:       { form_id, campaign_id, adgroup_id, creative_id, source: 'demand_gen' },
+        webhook_payload: body,
+      });
+
+      if (leadError) {
+        console.error('[DEMAND-GEN] Lead insert failed:', leadError);
+        return json({ error: 'Failed to save lead' }, 500);
+      }
+
+      console.log(`[DEMAND-GEN] ${state} → ${agent.name} (${agent.agent_id}) lead_id=${dgLeadId}`);
+
+      // 7. Background: GHL delivery + routing log (don't block the 200 response)
+      const { data: createdLead } = await supabase.from('leads').select('id').eq('lead_id', dgLeadId).single();
+
+      if (createdLead?.id && !is_test) {
+        fetch(`${supabaseUrl}/functions/v1/inject-lead-to-ghl`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+          body: JSON.stringify({ leadId: createdLead.id }),
+        }).then(res => {
+          supabase.from('leads').update({ delivery_status: res.ok ? 'delivered' : 'failed' }).eq('id', createdLead.id);
+        }).catch(e => console.error('[DEMAND-GEN] GHL inject error:', e));
+      }
+
+      // Routing log
+      supabase.from('lead_router_log').insert({
+        agent_id: agent.agent_id, state, lead_id: createdLead?.id || dgLeadId,
+        email, routed_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
+
+      return json({ ok: true, agent_name: agent.name, agent_id: agent.agent_id, lead_id: dgLeadId });
+    }
+
+    // =============================================
     // GET /pool — Admin dashboard: full pool status
     // =============================================
     if (path === 'pool' && req.method === 'GET') {
@@ -434,7 +569,7 @@ async function routeAgent(supabase: any, state: string) {
     .select('agent_id, first_name, last_name, created_at')
     .in('agent_id', agentIds)
     .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
-    .eq('lead_source', 'CONSOLIDATED_ROUTER');
+    .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN']);
 
   const leadCounts: Record<string, number> = {};      // today only
   const leadCounts5d: Record<string, number> = {};    // rolling 5 days
@@ -583,7 +718,7 @@ async function getPoolStatus(supabase: any) {
     .select('agent_id, first_name, last_name, created_at')
     .in('agent_id', agentIds)
     .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
-    .eq('lead_source', 'CONSOLIDATED_ROUTER');
+    .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN']);
 
   const leadCounts: Record<string, number> = {};
   const leadCounts5d: Record<string, number> = {};
