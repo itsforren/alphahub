@@ -139,6 +139,33 @@ Deno.serve(async (req) => {
       })
     );
 
+    // 5. Also notify the AGENT directly via SMS (if they have a phone number)
+    if (canSMS) {
+      const { data: agentClient } = await supabase
+        .from('clients')
+        .select('phone, name, use_own_crm')
+        .eq('agent_id', lead.agent_id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      if (agentClient?.phone && !agentClient.use_own_crm) {
+        const agentPhone = agentClient.phone.replace(/\D/g, '');
+        const normalizedPhone = agentPhone.length === 10 ? `+1${agentPhone}` : agentPhone.length === 11 && agentPhone.startsWith('1') ? `+${agentPhone}` : agentPhone;
+
+        const agentSms = `New Lead Assigned to You!\n\n${rawName}\nPhone: ${lead.phone || 'N/A'}\nEmail: ${lead.email || 'N/A'}\nState: ${lead.state || 'N/A'}\n\nTrack your dial here:\nhttps://alphaagent.io/hub/leads`;
+
+        try {
+          await sendSMS(twilioSid!, twilioToken!, twilioPhone!, normalizedPhone, agentSms);
+          sent++;
+          console.log(`Agent SMS sent to ${agentClient.name} (${normalizedPhone})`);
+        } catch (smsErr: any) {
+          failed++;
+          errors.push(`Agent SMS to ${agentClient.name}: ${smsErr.message}`);
+          console.error(`Agent SMS failed for ${agentClient.name}:`, smsErr.message);
+        }
+      }
+    }
+
     console.log(`notify-team lead=${leadId} agent=${lead.agent_id}: sent=${sent} failed=${failed} skipped=${skipped}${errors.length ? ' errors=' + JSON.stringify(errors) : ''}`);
 
     return new Response(JSON.stringify({ sent, failed, skipped, errors: errors.length ? errors : undefined }), {

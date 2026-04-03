@@ -79,6 +79,16 @@ export function DialerLaunchModal() {
               <p className="text-xs text-muted-foreground">Every call outcome, callback, and booked meeting syncs directly to your CRM. No manual entry.</p>
             </div>
           </div>
+
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-pink-500/10 flex-shrink-0">
+              <PhoneCall className="w-4 h-4 text-pink-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Instant SMS Lead Alerts</p>
+              <p className="text-xs text-muted-foreground">Get a text the moment a new lead is assigned to you — with their name, phone, and email. Tap the link to open your dialer instantly.</p>
+            </div>
+          </div>
         </div>
 
         {/* Partner credit + CTA */}
