@@ -32,6 +32,21 @@ const CONSOLIDATED_CID    = '23706217116';
 const CAMPAIGN_LABEL      = 'ALPHA AGENT EXCLUSIVE IUL SEARCH CAMPAIGN';
 const MIN_WALLET_BALANCE  = 100;
 
+// Human-readable campaign names from src tags
+const CAMPAIGN_NAMES: Record<string, string> = {
+  's-consolidated': 'Consolidated OG',
+  's-jh':           'JH Search',
+  's-joshua':       'JH Search',
+  's-nat':          'Revamp',
+  'dg-prospecting': 'DG Prospecting',
+  'dg-remarketing': 'DG Remarketing',
+  'direct':         'Direct',
+};
+function getCampaignName(src: string | null): string {
+  if (!src) return 'Unknown';
+  return CAMPAIGN_NAMES[src] || src;
+}
+
 // ── Data hooks ──
 
 function usePoolStatus() {
@@ -117,14 +132,14 @@ function useRecentConsolidatedLeads() {
       const [consRes, allRes] = await Promise.all([
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, created_at, delivery_status')
-          .eq('lead_source', 'CONSOLIDATED_ROUTER')
+          .select('id, first_name, last_name, state, agent_id, created_at, delivery_status, lead_data')
+          .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN'])
           .gte('created_at', today + 'T00:00:00Z')
           .order('created_at', { ascending: false })
           .limit(20),
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, lead_source, created_at, delivery_status')
+          .select('id, first_name, last_name, state, agent_id, lead_source, created_at, delivery_status, lead_data')
           .order('created_at', { ascending: false })
           .limit(15),
       ]);
@@ -146,7 +161,12 @@ function useRecentConsolidatedLeads() {
 
       const enrich = (leads: any[]) =>
         leads
-          .map(l => ({ ...l, agent_name: agentNames[l.agent_id] || null, isTest: isTestLead(l) }));
+          .map(l => ({
+            ...l,
+            agent_name: agentNames[l.agent_id] || null,
+            isTest: isTestLead(l),
+            campaign: getCampaignName(l.lead_data?.source || null),
+          }));
 
       return {
         consolidated: enrich(consRes.data || []),
@@ -635,7 +655,7 @@ export function ConsolidatedRouterDashboard() {
                     <TableHead className="text-xs">Name</TableHead>
                     <TableHead className="text-xs">St</TableHead>
                     <TableHead className="text-xs">Agent</TableHead>
-                    <TableHead className="text-xs text-center">Src</TableHead>
+                    <TableHead className="text-xs">Campaign</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -658,13 +678,8 @@ export function ConsolidatedRouterDashboard() {
                         <TableCell className="py-1.5 text-xs truncate max-w-[120px]">
                           {lead.agent_name || '—'}
                         </TableCell>
-                        <TableCell className="py-1.5 text-center">
-                          <Badge
-                            variant="outline"
-                            className={`text-[9px] py-0 px-1 ${isCons ? 'text-primary border-primary/30' : 'text-muted-foreground border-border/50'}`}
-                          >
-                            {isCons ? 'CONS' : 'IND'}
-                          </Badge>
+                        <TableCell className="py-1.5 text-xs text-muted-foreground">
+                          {lead.campaign || '—'}
                         </TableCell>
                       </TableRow>
                     );
