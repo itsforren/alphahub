@@ -87,6 +87,7 @@ const UnifiedChat = lazy(() => import("./pages/hub/admin/UnifiedChat"));
 const UnifiedSales = lazy(() => import("./pages/hub/admin/UnifiedSales"));
 const TVAnalytics = lazy(() => import("./pages/hub/admin/TVAnalytics"));
 const GHLBridge = lazy(() => import("./pages/hub/admin/GHLBridge"));
+const FunnelAnalytics = lazy(() => import("./pages/hub/admin/FunnelAnalytics"));
 const BillingDashboard = lazy(() => import("./pages/hub/admin/BillingDashboard"));
 
 // Legacy pages still needed for settings consolidation
@@ -237,6 +238,13 @@ const App = () => (
                       </ProtectedRoute>
                     } />
                     
+                    {/* Funnel Analytics */}
+                    <Route path="admin/funnel-analytics" element={
+                      <ProtectedRoute requiredRole="admin">
+                        <FunnelAnalytics />
+                      </ProtectedRoute>
+                    } />
+
                     {/* Courses Admin */}
                     <Route path="admin/courses" element={
                       <ProtectedRoute requiredRole="admin">

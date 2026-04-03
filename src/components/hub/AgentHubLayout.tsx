@@ -127,6 +127,7 @@ const adminNavSections: NavSection[] = [
     items: [
       { to: '/hub/admin/sales', icon: Target, label: 'Sales' },
       { to: '/hub/admin/analytics', icon: TrendingUp, label: 'Analytics' },
+      { to: '/hub/admin/funnel-analytics', icon: BarChart3, label: 'Funnel Analytics' },
     ],
   },
   {
