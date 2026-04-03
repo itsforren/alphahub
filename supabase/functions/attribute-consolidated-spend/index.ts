@@ -56,40 +56,58 @@ async function getAccessToken(): Promise<string> {
   return (await res.json()).access_token;
 }
 
-// ── Fetch consolidated campaign spend from Google Ads ──
-async function getCampaignSpend(etDate: string): Promise<{
+// ── Fetch consolidated campaign spend from Google Ads (supports multiple campaigns) ──
+async function getCampaignSpend(etDate: string, campaignIds?: string[]): Promise<{
   spend: number; clicks: number; impressions: number; ctr: number; avgCpc: number;
 }> {
+  const ids = campaignIds && campaignIds.length > 0 ? campaignIds : [CONSOLIDATED_CAMPAIGN_ID];
   const token = await getAccessToken();
-  const query = `
-    SELECT metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.ctr, metrics.average_cpc
-    FROM campaign
-    WHERE campaign.id = ${CONSOLIDATED_CAMPAIGN_ID} AND segments.date = '${etDate}'
-  `;
-  const res = await fetch(
-    `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${CUSTOMER_ID}/googleAds:search`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-        'developer-token': Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')!,
-        'login-customer-id': getMccId(),
-      },
-      body: JSON.stringify({ query }),
+
+  let totalSpend = 0, totalClicks = 0, totalImpressions = 0;
+
+  for (const cid of ids) {
+    const query = `
+      SELECT metrics.cost_micros, metrics.clicks, metrics.impressions, metrics.ctr, metrics.average_cpc
+      FROM campaign
+      WHERE campaign.id = ${cid} AND segments.date = '${etDate}'
+    `;
+    try {
+      const res = await fetch(
+        `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}/customers/${CUSTOMER_ID}/googleAds:search`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'developer-token': Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')!,
+            'login-customer-id': getMccId(),
+          },
+          body: JSON.stringify({ query }),
+        }
+      );
+      if (!res.ok) {
+        console.warn(`[Attribution] Campaign ${cid} API error: ${res.status}`);
+        continue;
+      }
+      const data = await res.json();
+      const result = data.results?.[0];
+      if (result) {
+        const m = result.metrics;
+        totalSpend += Number(m.costMicros || 0) / 1_000_000;
+        totalClicks += Number(m.clicks || 0);
+        totalImpressions += Number(m.impressions || 0);
+      }
+    } catch (e) {
+      console.warn(`[Attribution] Campaign ${cid} fetch error:`, e);
     }
-  );
-  if (!res.ok) throw new Error(`Google Ads API error: ${await res.text()}`);
-  const data = await res.json();
-  const result = data.results?.[0];
-  if (!result) return { spend: 0, clicks: 0, impressions: 0, ctr: 0, avgCpc: 0 };
-  const m = result.metrics;
+  }
+
   return {
-    spend:       Number(m.costMicros || 0) / 1_000_000,
-    clicks:      Number(m.clicks || 0),
-    impressions: Number(m.impressions || 0),
-    ctr:         Number(m.ctr || 0) * 100,
-    avgCpc:      Number(m.averageCpc || 0) / 1_000_000,
+    spend:       totalSpend,
+    clicks:      totalClicks,
+    impressions: totalImpressions,
+    ctr:         totalClicks > 0 ? (totalClicks / totalImpressions) * 100 : 0,
+    avgCpc:      totalClicks > 0 ? totalSpend / totalClicks : 0,
   };
 }
 
@@ -227,14 +245,28 @@ async function getExemptAgentId(supabase: any): Promise<string | null> {
   return data?.setting_value || null;
 }
 
+// ── Read consolidated campaign IDs (multiple campaigns can feed the router) ──
+async function getConsolidatedCampaignIds(supabase: any): Promise<string[]> {
+  const { data } = await supabase
+    .from('onboarding_settings')
+    .select('setting_value')
+    .eq('setting_key', 'consolidated_campaign_ids')
+    .maybeSingle();
+  if (data?.setting_value) {
+    return data.setting_value.split(',').map((id: string) => id.trim()).filter(Boolean);
+  }
+  return [CONSOLIDATED_CAMPAIGN_ID]; // fallback to single campaign
+}
+
 // ── Core attribution job — Hybrid 40/60 ──
 async function runAttribution(supabase: any, targetDate?: string) {
   const etDate = targetDate || getTodayET();
   console.log(`[Attribution] Running Hybrid attribution for ${etDate}`);
 
-  // 1. Get Google Ads spend
-  const campaignMetrics = await getCampaignSpend(etDate);
-  console.log(`[Attribution] Campaign spend: $${campaignMetrics.spend.toFixed(2)}, clicks: ${campaignMetrics.clicks}`);
+  // 1. Get Google Ads spend from ALL consolidated campaigns
+  const campaignIds = await getConsolidatedCampaignIds(supabase);
+  const campaignMetrics = await getCampaignSpend(etDate, campaignIds);
+  console.log(`[Attribution] Campaign spend: $${campaignMetrics.spend.toFixed(2)}, clicks: ${campaignMetrics.clicks}, campaigns: ${campaignIds.join(', ')}`);
 
   if (campaignMetrics.spend === 0) {
     return { ok: true, skipped: true, reason: 'No campaign spend recorded yet', date: etDate, spend: 0 };
@@ -369,10 +401,11 @@ async function runAttribution(supabase: any, targetDate?: string) {
 // ── Summary (read-only, for dashboard) ──
 async function getSummary(supabase: any): Promise<any> {
   const etDate = getTodayET();
+  const campaignIds = await getConsolidatedCampaignIds(supabase).catch(() => [CONSOLIDATED_CAMPAIGN_ID]);
 
   const [leadsPerAgent, campaignMetrics, poolAgents, basePct, exemptAgentId] = await Promise.all([
     getLeadsPerAgent(supabase, etDate).catch(() => []),
-    getCampaignSpend(etDate).catch(() => ({ spend: 0, clicks: 0, impressions: 0, ctr: 0, avgCpc: 0 })),
+    getCampaignSpend(etDate, campaignIds).catch(() => ({ spend: 0, clicks: 0, impressions: 0, ctr: 0, avgCpc: 0 })),
     getEligiblePoolAgents(supabase).catch(() => []),
     getBasePct(supabase).catch(() => DEFAULT_BASE_PCT / 100),
     getExemptAgentId(supabase).catch(() => null),
