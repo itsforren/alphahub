@@ -66,7 +66,7 @@ serve(async (req) => {
       if (forceAgentId) {
         const { data: forcedClient } = await supabase
           .from('clients')
-          .select('id, name, agent_id, scheduler_link, profile_image_url')
+          .select('id, name, agent_id, scheduler_link, profile_image_url, npn, states')
           .eq('agent_id', forceAgentId)
           .single();
 
@@ -82,6 +82,8 @@ serve(async (req) => {
             name:          forcedClient.name,
             scheduler_url: forcedClient.scheduler_link,
             headshot:      forcedClient.profile_image_url,
+            npn:           forcedClient.npn || null,
+            states_count:  forcedClient.states ? forcedClient.states.split(',').length : 0,
           },
           forced: true,
         });
@@ -95,6 +97,8 @@ serve(async (req) => {
         name:          agent.name,
         scheduler_url: agent.scheduler_url,
         headshot:      agent.headshot,
+        npn:           agent.npn || null,
+        states_count:  agent.states_count || 0,
       } : null;
 
       return json({
@@ -110,7 +114,8 @@ serve(async (req) => {
     if (path === 'submit' && req.method === 'POST') {
       const body = await req.json();
       const { agent_id, state, firstName, lastName, email, phone,
-              age, employment, contribution, investments, interests, gclid, order_id, src, keyword } = body;
+              age, employment, contribution, investments, interests, gclid, order_id, src, keyword,
+              utm, landing_page, campaignid, adgroupid, creative, matchtype } = body;
 
       if (!agent_id || !state || !email) {
         return json({ error: 'agent_id, state, and email required' }, 400);
@@ -172,7 +177,17 @@ serve(async (req) => {
             source:        src || 'consolidated_campaign',
             campaign_type: src || 'direct',
             keyword:       keyword || null,
-            router_version: 'v1',
+            landing_page:  landing_page || null,
+            campaignid:    campaignid || null,
+            adgroupid:     adgroupid || null,
+            creative:      creative || null,
+            matchtype:     matchtype || null,
+            utm_source:    utm?.utm_source || null,
+            utm_medium:    utm?.utm_medium || null,
+            utm_campaign:  utm?.utm_campaign || null,
+            utm_content:   utm?.utm_content || null,
+            utm_term:      utm?.utm_term || null,
+            router_version: 'v2',
             survey: { age, employment, contribution, investments, interests },
           },
         });
@@ -448,7 +463,7 @@ async function routeAgent(supabase: any, state: string) {
   // 1. Get all active clients with states and scheduler links
   const { data: allClients } = await supabase
     .from('clients')
-    .select('id, name, agent_id, states, scheduler_link, profile_image_url, consolidated_router_enabled')
+    .select('id, name, agent_id, states, scheduler_link, profile_image_url, consolidated_router_enabled, npn')
     .eq('status', 'active')
     .not('agent_id', 'is', null)
     .not('scheduler_link', 'is', null);
@@ -610,6 +625,8 @@ async function routeAgent(supabase: any, state: string) {
       agent_id:       c.agent_id,
       scheduler_url:  c.scheduler_link,
       headshot:       c.profile_image_url || '',
+      npn:            c.npn || null,
+      states_count:   c.states ? c.states.split(',').length : 0,
       leads_today:    leadsToday,
       leads_5d:       leads5d,
       daily_max:      dailyMax,
