@@ -315,7 +315,7 @@ export function CampaignPanel({
 
   return (
     <div className="space-y-3">
-      {rechargeState?.safe_mode_active && (
+      {rechargeState?.safe_mode_active && !isClientView && (
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-sm text-amber-700">
           <Shield className="h-4 w-4" />
           <span>Safe mode active — budgets locked at minimum. Resolve payment to restore.</span>
@@ -331,10 +331,12 @@ export function CampaignPanel({
                 <span className="font-medium text-foreground">Google Ads Campaign</span>
                 <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-green-500/10 text-green-600 border-green-500/20">Active</Badge>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Daily Budget:</span>
-                <span className="font-medium">${monthlyAdSpendCap ? Math.round(monthlyAdSpendCap / 30) : '—'}/day</span>
-              </div>
+              {monthlyAdSpendCap && monthlyAdSpendCap > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Daily Budget:</span>
+                  <span className="font-medium">${Math.round(monthlyAdSpendCap / 30)}/day</span>
+                </div>
+              )}
               {campaigns[0]?.states && (
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Targeting:</span>
