@@ -132,16 +132,16 @@ function useRecentConsolidatedLeads() {
       const [consRes, allRes] = await Promise.all([
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, created_at, delivery_status, lead_data')
+          .select('id, first_name, last_name, phone, email, state, agent_id, created_at, delivery_status, lead_data')
           .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN'])
           .gte('created_at', today + 'T00:00:00Z')
           .order('created_at', { ascending: false })
-          .limit(20),
+          .limit(30),
         supabase
           .from('leads')
-          .select('id, first_name, last_name, state, agent_id, lead_source, created_at, delivery_status, lead_data')
+          .select('id, first_name, last_name, phone, email, state, agent_id, lead_source, created_at, delivery_status, lead_data')
           .order('created_at', { ascending: false })
-          .limit(15),
+          .limit(30),
       ]);
 
       // Collect all unique agent_ids, then resolve to client names in one query
@@ -653,18 +653,20 @@ export function ConsolidatedRouterDashboard() {
                   <TableRow className="border-border/50 hover:bg-transparent">
                     <TableHead className="text-xs">Time</TableHead>
                     <TableHead className="text-xs">Name</TableHead>
+                    <TableHead className="text-xs">Phone</TableHead>
+                    <TableHead className="text-xs">Email</TableHead>
                     <TableHead className="text-xs">St</TableHead>
                     <TableHead className="text-xs">Agent</TableHead>
                     <TableHead className="text-xs">Campaign</TableHead>
+                    <TableHead className="text-xs text-center">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(leadsData?.recent || []).slice(0, 15).map((lead: any) => {
-                    const isCons = lead.lead_source === 'CONSOLIDATED_ROUTER';
+                  {(leadsData?.recent || []).slice(0, 30).map((lead: any) => {
                     return (
                       <TableRow key={lead.id} className={`border-border/30 ${lead.isTest ? 'opacity-60' : ''}`}>
-                        <TableCell className="py-1.5 text-xs text-muted-foreground">
-                          {format(new Date(lead.created_at), 'h:mma')}
+                        <TableCell className="py-1.5 text-xs text-muted-foreground whitespace-nowrap">
+                          {format(new Date(lead.created_at), 'MMM d h:mma')}
                         </TableCell>
                         <TableCell className="py-1.5 text-xs">
                           <span className="flex items-center gap-1.5">
@@ -674,6 +676,8 @@ export function ConsolidatedRouterDashboard() {
                             )}
                           </span>
                         </TableCell>
+                        <TableCell className="py-1.5 text-xs font-mono whitespace-nowrap">{lead.phone || '—'}</TableCell>
+                        <TableCell className="py-1.5 text-xs text-muted-foreground truncate max-w-[160px]">{lead.email || '—'}</TableCell>
                         <TableCell className="py-1.5 text-xs font-mono">{lead.state}</TableCell>
                         <TableCell className="py-1.5 text-xs truncate max-w-[120px]">
                           {lead.agent_name || '—'}
@@ -681,12 +685,17 @@ export function ConsolidatedRouterDashboard() {
                         <TableCell className="py-1.5 text-xs text-muted-foreground">
                           {lead.campaign || '—'}
                         </TableCell>
+                        <TableCell className="py-1.5 text-center">
+                          <Badge variant="outline" className={`text-[9px] py-0 px-1 ${lead.delivery_status === 'delivered' ? 'text-emerald-400 border-emerald-400/30' : lead.delivery_status === 'failed' ? 'text-red-400 border-red-400/30' : 'text-muted-foreground border-border/50'}`}>
+                            {lead.delivery_status || '—'}
+                          </Badge>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {(!leadsData?.recent || leadsData.recent.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
+                      <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-6">
                         No leads yet today
                       </TableCell>
                     </TableRow>
