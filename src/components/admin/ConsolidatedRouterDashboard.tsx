@@ -32,7 +32,7 @@ const CONSOLIDATED_CID    = '23706217116';
 const CAMPAIGN_LABEL      = 'ALPHA AGENT EXCLUSIVE IUL SEARCH CAMPAIGN';
 const MIN_WALLET_BALANCE  = 100;
 
-// Human-readable campaign names from src tags
+// Human-readable campaign names from src tags AND campaign IDs
 const CAMPAIGN_NAMES: Record<string, string> = {
   's-consolidated': 'Consolidated OG',
   's-jh':           'JH Search',
@@ -40,11 +40,25 @@ const CAMPAIGN_NAMES: Record<string, string> = {
   's-nat':          'Revamp',
   'dg-prospecting': 'DG Prospecting',
   'dg-remarketing': 'DG Remarketing',
+  'demand_gen':     'Demand Gen',
   'direct':         'Direct',
 };
-function getCampaignName(src: string | null): string {
-  if (!src) return 'Unknown';
-  return CAMPAIGN_NAMES[src] || src;
+const CAMPAIGN_ID_NAMES: Record<string, string> = {
+  '23706217116': 'Consolidated OG',
+  '23399555696': 'Revamp',
+  '23363894096': 'JH Search',
+  '23718879086': 'DG Prospecting',
+  '23713839732': 'DG Remarketing',
+};
+function getCampaignName(leadData: any): string {
+  // Try campaign ID first (most specific)
+  const cid = leadData?.campaignid || leadData?.campaign_id;
+  if (cid && CAMPAIGN_ID_NAMES[String(cid)]) return CAMPAIGN_ID_NAMES[String(cid)];
+  // Fall back to src tag
+  const src = leadData?.source;
+  if (src && CAMPAIGN_NAMES[src]) return CAMPAIGN_NAMES[src];
+  if (src) return src;
+  return 'Unknown';
 }
 
 // ── Data hooks ──
@@ -165,7 +179,8 @@ function useRecentConsolidatedLeads() {
             ...l,
             agent_name: agentNames[l.agent_id] || null,
             isTest: isTestLead(l),
-            campaign: getCampaignName(l.lead_data?.source || null),
+            campaign: getCampaignName(l.lead_data),
+            keyword: l.lead_data?.keyword || null,
           }));
 
       return {
@@ -658,6 +673,7 @@ export function ConsolidatedRouterDashboard() {
                     <TableHead className="text-xs">St</TableHead>
                     <TableHead className="text-xs">Agent</TableHead>
                     <TableHead className="text-xs">Campaign</TableHead>
+                    <TableHead className="text-xs">Keyword</TableHead>
                     <TableHead className="text-xs text-center">Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -685,6 +701,9 @@ export function ConsolidatedRouterDashboard() {
                         <TableCell className="py-1.5 text-xs text-muted-foreground">
                           {lead.campaign || '—'}
                         </TableCell>
+                        <TableCell className="py-1.5 text-xs text-muted-foreground truncate max-w-[120px]">
+                          {lead.keyword || '—'}
+                        </TableCell>
                         <TableCell className="py-1.5 text-center">
                           <Badge variant="outline" className={`text-[9px] py-0 px-1 ${lead.delivery_status === 'delivered' ? 'text-emerald-400 border-emerald-400/30' : lead.delivery_status === 'failed' ? 'text-red-400 border-red-400/30' : 'text-muted-foreground border-border/50'}`}>
                             {lead.delivery_status || '—'}
@@ -695,7 +714,7 @@ export function ConsolidatedRouterDashboard() {
                   })}
                   {(!leadsData?.recent || leadsData.recent.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center text-xs text-muted-foreground py-6">
+                      <TableCell colSpan={9} className="text-center text-xs text-muted-foreground py-6">
                         No leads yet today
                       </TableCell>
                     </TableRow>
