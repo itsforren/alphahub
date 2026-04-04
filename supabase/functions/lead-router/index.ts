@@ -248,6 +248,13 @@ serve(async (req) => {
         } catch (e) {
           console.error('GHL inject failed:', e);
         }
+
+        // 4b. Notify agent via SMS + email (fire and forget)
+        fetch(`${supabaseUrl}/functions/v1/notify-team`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+          body: JSON.stringify({ leadId: createdLead.id }),
+        }).catch(e => console.error('notify-team error (non-blocking):', e));
       }
 
       // 5. Record the routing for fill score tracking
@@ -416,6 +423,13 @@ serve(async (req) => {
         }).then(res => {
           supabase.from('leads').update({ delivery_status: res.ok ? 'delivered' : 'failed' }).eq('id', createdLead.id);
         }).catch(e => console.error('[DEMAND-GEN] GHL inject error:', e));
+
+        // Notify agent via SMS + email
+        fetch(`${supabaseUrl}/functions/v1/notify-team`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
+          body: JSON.stringify({ leadId: createdLead.id }),
+        }).catch(e => console.error('[DEMAND-GEN] notify-team error:', e));
       }
 
       // Routing log
