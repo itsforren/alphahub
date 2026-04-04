@@ -259,7 +259,8 @@ async function getConsolidatedCampaignIds(supabase: any): Promise<string[]> {
 }
 
 // ── Core attribution job — Hybrid 40/60 ──
-async function runAttribution(supabase: any, targetDate?: string) {
+// write_mode: 'final' = write to ad_spend_daily (midnight only), 'projection' = return data without writing
+async function runAttribution(supabase: any, targetDate?: string, writeMode: 'final' | 'projection' = 'final') {
   const etDate = targetDate || getTodayET();
   console.log(`[Attribution] Running Hybrid attribution for ${etDate}`);
 
@@ -347,14 +348,19 @@ async function runAttribution(supabase: any, targetDate?: string) {
     };
   });
 
-  // 6. Upsert
-  const { error: upsertError } = await supabase
-    .from('ad_spend_daily')
-    .upsert(upsertRows, {
-      onConflict: 'client_id,campaign_id,spend_date',
-      ignoreDuplicates: false,
-    });
-  if (upsertError) throw new Error(`Upsert failed: ${upsertError.message}`);
+  // 6. Upsert — only write to ad_spend_daily in 'final' mode (midnight run)
+  if (writeMode === 'final') {
+    const { error: upsertError } = await supabase
+      .from('ad_spend_daily')
+      .upsert(upsertRows, {
+        onConflict: 'client_id,campaign_id,spend_date',
+        ignoreDuplicates: false,
+      });
+    if (upsertError) throw new Error(`Upsert failed: ${upsertError.message}`);
+    console.log(`[Attribution] FINAL: wrote ${upsertRows.length} rows to ad_spend_daily`);
+  } else {
+    console.log(`[Attribution] PROJECTION: calculated ${upsertRows.length} rows (not written to ad_spend_daily)`);
+  }
 
   // 7. Summary
   const totalAttributed = upsertRows.reduce((sum, r) => sum + r.cost, 0);
@@ -484,10 +490,17 @@ serve(async (req) => {
       return json(await getSummary(supabase));
     }
     if (path === 'run' && req.method === 'POST') {
+      // Default: projection only (doesn't write to ad_spend_daily)
       const body = await req.json().catch(() => ({}));
-      return json(await runAttribution(supabase, body.date || undefined));
+      const writeMode = body.write_mode === 'final' ? 'final' : 'projection';
+      return json(await runAttribution(supabase, body.date || undefined, writeMode));
     }
-    return json({ error: 'Use GET /summary or POST /run' }, 404);
+    if (path === 'run-final' && req.method === 'POST') {
+      // Midnight cron: writes final numbers to ad_spend_daily
+      const body = await req.json().catch(() => ({}));
+      return json(await runAttribution(supabase, body.date || undefined, 'final'));
+    }
+    return json({ error: 'Use GET /summary, POST /run (projection), or POST /run-final (writes to DB)' }, 404);
   } catch (e) {
     console.error('[Attribution] Error:', e);
     return json({ error: String(e) }, 500);

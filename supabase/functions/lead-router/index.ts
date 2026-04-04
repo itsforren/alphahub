@@ -564,11 +564,22 @@ async function routeAgent(supabase: any, state: string) {
   });
 
   // Compute wallet balance: deposits − (spend × feeMultiplier)
+  // Also estimate today's projected cost (ad_spend_daily only written at midnight)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const totalPoolBudget = clientIds.reduce((sum, id) => sum + (walletSettings[id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET), 0);
+  // Rough estimate: each agent's daily share ≈ (their budget / total budget) × average daily pool spend
+  // Average daily pool spend ≈ total monthly budgets / 30
+  const estimatedDailyPoolSpend = totalPoolBudget / 30;
+
   const walletBalances: Record<string, number> = {};
   clientIds.forEach((id: string) => {
     const dep   = depositTotals[id] || 0;
     const spend = spendTotals[id]   || 0;
-    walletBalances[id] = dep - (spend * feeMultiplier);
+    // Check if today's ad_spend_daily row exists — if not, add projected cost
+    const hasTodaySpend = (spendResult.data || []).some((s: any) => s.client_id === id && s.spend_date === today);
+    const budget = walletSettings[id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
+    const projectedToday = hasTodaySpend ? 0 : (budget / totalPoolBudget) * estimatedDailyPoolSpend;
+    walletBalances[id] = dep - ((spend + projectedToday) * feeMultiplier);
   });
 
   // Filter: only agents with wallet balance > $100
