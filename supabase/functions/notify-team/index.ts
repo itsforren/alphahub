@@ -71,9 +71,7 @@ Deno.serve(async (req) => {
 
     if (!team || team.length === 0) {
       console.log('No team members configured for agent:', lead.agent_id);
-      return new Response(JSON.stringify({ sent: 0, skipped: 0 }), {
-        status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      // Don't return early — still need to send agent SMS below
     }
 
     // 3. Build the message (escape HTML for email safety)
@@ -107,7 +105,7 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
 
     const results = await Promise.allSettled(
-      team.flatMap((member: any) => {
+      (team || []).flatMap((member: any) => {
         const tasks: Promise<any>[] = [];
 
         const wantsSMS = member.notify_sms && member.phone;
@@ -148,7 +146,7 @@ Deno.serve(async (req) => {
         .eq('status', 'active')
         .maybeSingle();
 
-      if (agentClient?.phone && !agentClient.use_own_crm) {
+      if (agentClient?.phone) {
         const agentPhone = agentClient.phone.replace(/\D/g, '');
         const normalizedPhone = agentPhone.length === 10 ? `+1${agentPhone}` : agentPhone.length === 11 && agentPhone.startsWith('1') ? `+${agentPhone}` : agentPhone;
 
