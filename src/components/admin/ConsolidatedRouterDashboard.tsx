@@ -515,6 +515,13 @@ export function ConsolidatedRouterDashboard() {
             const formatShare = (v: number | null | undefined, exempt: boolean) =>
               exempt ? '—' : (v == null || v === 0 ? '—' : `${v.toFixed(1)}%`);
 
+            // Compute fill pct from the displayed lead count so the dots,
+            // the percentage text, and the "Leads" column always tell the same
+            // story. The backend's agent.fill_pct can drift when lead-router
+            // uses UTC day bounds while attribution uses Bogota day bounds.
+            const computeFillPct = (leads: number, dailyMax: number) =>
+              dailyMax > 0 ? Math.min(100, (leads / dailyMax) * 100) : 0;
+
             // Render a single row for eligible/capped (shares structure, different opacity + badge).
             const renderActiveRow = (agent: any, isCapped: boolean) => {
               const attr = attrByAgentId.get(agent.agent_id);
@@ -523,6 +530,7 @@ export function ConsolidatedRouterDashboard() {
               const share = attr?.budget_share ?? 0;
               const costWithFee = attr?.charged_with_fee ?? 0;
               const cpl = !isExempt && leads > 0 ? costWithFee / leads : null;
+              const fillPct = isCapped ? 100 : computeFillPct(leads, agent.daily_max || 0);
               return (
                 <TableRow key={agent.agent_id} className={`border-border/30 ${isCapped ? 'opacity-60' : ''}`}>
                   <TableCell className="py-2">
@@ -542,7 +550,7 @@ export function ConsolidatedRouterDashboard() {
                     <WalletBadge balance={agent.wallet_balance} />
                   </TableCell>
                   <TableCell className="py-2">
-                    <FillBar pct={isCapped ? 100 : agent.fill_pct} />
+                    <FillBar pct={fillPct} />
                   </TableCell>
                   <TableCell className="py-2 text-center text-sm">
                     {leads > 0 ? <span className="text-emerald-400 font-medium">{leads}</span> : <span className="text-muted-foreground">0</span>}
@@ -637,7 +645,7 @@ export function ConsolidatedRouterDashboard() {
                             <WalletBadge balance={agent.wallet_balance} />
                           </TableCell>
                           <TableCell className="py-2">
-                            <FillBar pct={agent.fill_pct || 0} />
+                            <FillBar pct={computeFillPct(leads, agent.daily_max || 0)} />
                           </TableCell>
                           <TableCell className="py-2 text-center text-sm">
                             {leads > 0 ? <span className="text-emerald-400/70 font-medium">{leads}</span> : <span className="text-muted-foreground">0</span>}

@@ -596,21 +596,30 @@ async function routeAgent(supabase: any, state: string) {
   //    routing and attribution share one definition of "pool lead": every
   //    CONSOLIDATED_ROUTER lead plus any DEMAND_GEN lead whose campaign_id is in
   //    the configured pool list.
-  const today = new Date().toISOString().split('T')[0];
-  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const nowIso = new Date().toISOString();
-  const agentIds = covering.map((c: any) => c.agent_id);
-  const poolCampaignIds = await getConsolidatedCampaignIds(supabase);
+  //
+  //    IMPORTANT: day bounds are BOGOTA, not UTC. Attribution also bounds by
+  //    Bogota day; if we used UTC midnight here the router's "today" would
+  //    include the 5 hours of yesterday's Bogota evening (7pm-midnight Bogota
+  //    = 00:00-05:00 UTC on the next day), inflating fill_pct and causing
+  //    the router UI to disagree with the attribution breakdown.
+  const todayBogotaStr     = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date()); // YYYY-MM-DD
+  const nowMs              = Date.now();
+  const bogotaDayStart     = new Date(`${todayBogotaStr}T00:00:00-05:00`).toISOString();      // 05:00 UTC
+  const fiveDaysAgoStr     = new Date(nowMs - 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  const bogotaFiveDayStart = new Date(`${fiveDaysAgoStr}T00:00:00-05:00`).toISOString();
+  const nowIso             = new Date().toISOString();
+  const agentIds           = covering.map((c: any) => c.agent_id);
+  const poolCampaignIds    = await getConsolidatedCampaignIds(supabase);
 
   const [todayCountsResult, rollingCountsResult] = await Promise.all([
     supabase.rpc('get_pool_lead_counts', {
-      p_start: today + 'T00:00:00Z',
+      p_start: bogotaDayStart,
       p_end:   nowIso,
       p_campaign_ids: poolCampaignIds,
       p_agent_ids:    agentIds,
     }),
     supabase.rpc('get_pool_lead_counts', {
-      p_start: fiveDaysAgo + 'T00:00:00Z',
+      p_start: bogotaFiveDayStart,
       p_end:   nowIso,
       p_campaign_ids: poolCampaignIds,
       p_agent_ids:    agentIds,
@@ -716,23 +725,29 @@ async function getPoolStatus(supabase: any) {
 
   // Wallet caps + canonical balances + pool lead counts, all in parallel.
   // Single source of truth: compute_wallet_balances() / get_pool_lead_counts() RPCs.
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const nowIso = new Date().toISOString();
-  const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
-  const poolCampaignIds = await getConsolidatedCampaignIds(supabase);
+  //
+  // Day bounds are BOGOTA, not UTC — attribution uses Bogota bounds and the
+  // router must match or fill_pct drifts from attribution's leads count.
+  const todayBogotaStr     = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const nowMs              = Date.now();
+  const bogotaDayStart     = new Date(`${todayBogotaStr}T00:00:00-05:00`).toISOString();      // midnight Bogota = 05:00 UTC
+  const fiveDaysAgoStr     = new Date(nowMs - 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  const bogotaFiveDayStart = new Date(`${fiveDaysAgoStr}T00:00:00-05:00`).toISOString();
+  const nowIso             = new Date().toISOString();
+  const agentIds           = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
+  const poolCampaignIds    = await getConsolidatedCampaignIds(supabase);
 
   const [walletResult, balancesResult, todayCountsResult, rollingCountsResult] = await Promise.all([
     supabase.from('client_wallets').select('client_id, monthly_ad_spend_cap').in('client_id', clientIds),
     supabase.rpc('compute_wallet_balances', { p_client_ids: clientIds }),
     supabase.rpc('get_pool_lead_counts', {
-      p_start: today + 'T00:00:00Z',
+      p_start: bogotaDayStart,
       p_end:   nowIso,
       p_campaign_ids: poolCampaignIds,
       p_agent_ids:    agentIds,
     }),
     supabase.rpc('get_pool_lead_counts', {
-      p_start: fiveDaysAgo + 'T00:00:00Z',
+      p_start: bogotaFiveDayStart,
       p_end:   nowIso,
       p_campaign_ids: poolCampaignIds,
       p_agent_ids:    agentIds,
