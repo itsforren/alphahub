@@ -112,25 +112,28 @@ async function getCampaignSpend(etDate: string, campaignIds?: string[]): Promise
 }
 
 // ── Fetch leads per agent for a given day ──
-async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
+// Uses the get_pool_lead_counts RPC so attribution and router share one
+// source of truth for "what counts as a pool lead": every CONSOLIDATED_ROUTER
+// lead, plus any DEMAND_GEN lead whose lead_data.campaign_id is in the pool
+// list. See 20260404_pool_campaign_helpers.sql for the is_pool_lead rule.
+async function getLeadsPerAgent(
+  supabase: any,
+  bogotaDate: string,
+  campaignIds: string[],
+): Promise<
   Array<{ agent_id: string; client_id: string; client_name: string; count: number }>
 > {
-  const { start, end } = getETDayBoundsUTC(etDate);
-  const { data: leads, error } = await supabase
-    .from('leads')
-    .select('agent_id, first_name, last_name')
-    .eq('lead_source', 'CONSOLIDATED_ROUTER')
-    .gte('created_at', start)
-    .lte('created_at', end);
-  if (error) throw new Error(`Leads query failed: ${error.message}`);
-  if (!leads || leads.length === 0) return [];
+  const { start, end } = getETDayBoundsUTC(bogotaDate);
+  const { data: counts, error } = await supabase.rpc('get_pool_lead_counts', {
+    p_start: start,
+    p_end: end,
+    p_campaign_ids: campaignIds,
+    p_agent_ids: null,
+  });
+  if (error) throw new Error(`get_pool_lead_counts RPC failed: ${error.message}`);
+  if (!counts || counts.length === 0) return [];
 
-  const counts: Record<string, number> = {};
-  for (const lead of leads) {
-    if (isTestLead(lead)) continue;
-    counts[lead.agent_id] = (counts[lead.agent_id] || 0) + 1;
-  }
-  const agentIds = Object.keys(counts);
+  const agentIds = counts.map((r: any) => r.agent_id);
 
   const { data: clients, error: clientsError } = await supabase
     .from('clients')
@@ -141,11 +144,13 @@ async function getLeadsPerAgent(supabase: any, etDate: string): Promise<
   const clientMap: Record<string, { id: string; name: string }> = {};
   for (const c of clients || []) clientMap[c.agent_id] = { id: c.id, name: c.name };
 
-  return agentIds
-    .filter(aid => clientMap[aid])
-    .map(aid => ({
-      agent_id: aid, client_id: clientMap[aid].id,
-      client_name: clientMap[aid].name, count: counts[aid],
+  return counts
+    .filter((r: any) => clientMap[r.agent_id])
+    .map((r: any) => ({
+      agent_id:    r.agent_id,
+      client_id:   clientMap[r.agent_id].id,
+      client_name: clientMap[r.agent_id].name,
+      count:       Number(r.lead_count),
     }));
 }
 
@@ -280,8 +285,11 @@ async function runAttribution(supabase: any, targetDate?: string, writeMode: 'fi
   }
 
   // 3. Get leads per agent + base percentage + exempt agent
+  //    getLeadsPerAgent now counts every pool lead (CONSOLIDATED_ROUTER + any
+  //    DEMAND_GEN lead whose campaign_id is in the pool list) via the
+  //    get_pool_lead_counts RPC.
   const [leadsPerAgent, basePct, exemptAgentId] = await Promise.all([
-    getLeadsPerAgent(supabase, etDate),
+    getLeadsPerAgent(supabase, etDate, campaignIds),
     getBasePct(supabase),
     getExemptAgentId(supabase),
   ]);
@@ -410,7 +418,7 @@ async function getSummary(supabase: any): Promise<any> {
   const campaignIds = await getConsolidatedCampaignIds(supabase).catch(() => [CONSOLIDATED_CAMPAIGN_ID]);
 
   const [leadsPerAgent, campaignMetrics, poolAgents, basePct, exemptAgentId] = await Promise.all([
-    getLeadsPerAgent(supabase, etDate).catch(() => []),
+    getLeadsPerAgent(supabase, etDate, campaignIds).catch(() => []),
     getCampaignSpend(etDate, campaignIds).catch(() => ({ spend: 0, clicks: 0, impressions: 0, ctr: 0, avgCpc: 0 })),
     getEligiblePoolAgents(supabase).catch(() => []),
     getBasePct(supabase).catch(() => DEFAULT_BASE_PCT / 100),
