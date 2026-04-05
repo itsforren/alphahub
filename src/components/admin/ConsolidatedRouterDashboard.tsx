@@ -14,7 +14,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import {
   Table,
   TableBody,
@@ -26,6 +31,14 @@ import {
 import { RefreshCw, Circle, TrendingUp, DollarSign, Users, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+
+// Compact agent name: "Mario Cittadino" → "Mario C."
+function shortName(name?: string | null): string {
+  if (!name) return '—';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+}
 
 const SUPABASE_URL        = import.meta.env.VITE_SUPABASE_URL;
 const CONSOLIDATED_CID    = '23706217116';
@@ -450,15 +463,33 @@ export function ConsolidatedRouterDashboard() {
         </div>
       )}
 
-      {/* Agent Pool */}
+      {/* Agent Pool (merged with Cost Attribution) */}
       <Card className="bg-card/60 backdrop-blur-sm border-border/50">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold uppercase tracking-wider">
-              Agent Pool
-            </CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <CardTitle className="text-sm font-semibold uppercase tracking-wider">
+                Agent Pool
+              </CardTitle>
+              {!summaryLoading && summary && (summary.total_spend ?? 0) > 0 && (
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {summary.model && (
+                    <span className="text-primary font-medium">
+                      {String(summary.model).replace('_', '/').replace('hybrid/', 'Hybrid ')}
+                    </span>
+                  )}
+                  {summary.model && ' · '}
+                  <span>
+                    ${(summary.total_spend ?? 0).toFixed(2)} across {summary.pool_size ?? 0} agents
+                  </span>
+                  {summary.exempt_agent && (
+                    <span className="text-primary/70"> ({summary.exempt_agent} exempt)</span>
+                  )}
+                </p>
+              )}
+            </div>
             {!poolLoading && pool && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground whitespace-nowrap">
                 <span className="text-emerald-400 font-medium">{pool.total_eligible} eligible</span>
                 <span>·</span>
                 <span className="text-yellow-400 font-medium">{pool.total_capped} capped</span>
@@ -473,121 +504,177 @@ export function ConsolidatedRouterDashboard() {
             <div className="p-4 space-y-2">
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8" />)}
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="text-xs w-[200px]">Agent</TableHead>
-                  <TableHead className="text-xs">Wallet</TableHead>
-                  <TableHead className="text-xs">Fill</TableHead>
-                  <TableHead className="text-xs text-center">Leads</TableHead>
-                  <TableHead className="text-xs text-center">Daily Max</TableHead>
-                  <TableHead className="text-xs text-center">States</TableHead>
-                  <TableHead className="text-xs text-center">Budget/mo</TableHead>
-                  <TableHead className="text-xs text-center w-16">Active</TableHead>
+          ) : (() => {
+            // Merge pool data with attribution breakdown keyed by agent_id.
+            // attr may be missing for an agent (e.g. no leads today) → treat as zero.
+            const attrByAgentId = new Map<string, any>(
+              (summary?.breakdown || []).map((b: any) => [b.agent_id, b])
+            );
+            const formatCost = (v: number | null | undefined) =>
+              v == null || v === 0 ? '—' : `$${v.toFixed(2)}`;
+            const formatShare = (v: number | null | undefined, exempt: boolean) =>
+              exempt ? '—' : (v == null || v === 0 ? '—' : `${v.toFixed(1)}%`);
+
+            // Render a single row for eligible/capped (shares structure, different opacity + badge).
+            const renderActiveRow = (agent: any, isCapped: boolean) => {
+              const attr = attrByAgentId.get(agent.agent_id);
+              const isExempt = !!attr?.exempt;
+              const leads = attr?.leads ?? agent.leads_today ?? 0;
+              const share = attr?.budget_share ?? 0;
+              const costWithFee = attr?.charged_with_fee ?? 0;
+              const cpl = !isExempt && leads > 0 ? costWithFee / leads : null;
+              return (
+                <TableRow key={agent.agent_id} className={`border-border/30 ${isCapped ? 'opacity-60' : ''}`}>
+                  <TableCell className="py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{shortName(agent.name)}</span>
+                      {isCapped && (
+                        <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-400/30 py-0">
+                          FULL
+                        </Badge>
+                      )}
+                      {isExempt && (
+                        <span className="text-[10px] text-primary/70 font-semibold">OWNER</span>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <WalletBadge balance={agent.wallet_balance} />
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <FillBar pct={isCapped ? 100 : agent.fill_pct} />
+                  </TableCell>
+                  <TableCell className="py-2 text-center text-sm">
+                    {leads > 0 ? <span className="text-emerald-400 font-medium">{leads}</span> : <span className="text-muted-foreground">0</span>}
+                  </TableCell>
+                  <TableCell className="py-2 text-center text-xs text-muted-foreground">
+                    {formatShare(share, isExempt)}
+                  </TableCell>
+                  <TableCell className="py-2 text-right text-xs font-mono text-primary">
+                    {isExempt ? '$0' : formatCost(costWithFee)}
+                  </TableCell>
+                  <TableCell className="py-2 text-right text-xs font-mono text-muted-foreground">
+                    {cpl != null ? `$${cpl.toFixed(2)}` : '—'}
+                  </TableCell>
+                  <TableCell className="py-2 text-center text-sm">{agent.daily_max}</TableCell>
+                  <TableCell className="py-2 text-center text-sm">{agent.states_count}</TableCell>
+                  <TableCell className="py-2 text-center text-sm">
+                    ${(agent.monthly_budget || 0).toLocaleString()}
+                  </TableCell>
+                  <TableCell className="py-2 text-center">
+                    <Switch
+                      checked={true}
+                      onCheckedChange={() => handleDisableClick(agent)}
+                      disabled={toggleAgent.isPending}
+                      className="data-[state=checked]:bg-emerald-500"
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Eligible agents */}
-                {(pool?.eligible || []).map((agent: any) => (
-                  <TableRow key={agent.agent_id} className="border-border/30">
-                    <TableCell className="py-2">
-                      <span className="text-sm font-medium">{agent.name}</span>
-                    </TableCell>
-                    <TableCell className="py-2">
-                      <WalletBadge balance={agent.wallet_balance} />
-                    </TableCell>
-                    <TableCell className="py-2">
-                      <FillBar pct={agent.fill_pct} />
-                    </TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.leads_today}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.daily_max}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.states_count}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">
-                      ${(agent.monthly_budget || 0).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="py-2 text-center">
-                      <Switch
-                        checked={true}
-                        onCheckedChange={() => handleDisableClick(agent)}
-                        disabled={toggleAgent.isPending}
-                        className="data-[state=checked]:bg-emerald-500"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Capped agents */}
-                {(pool?.capped || []).map((agent: any) => (
-                  <TableRow key={agent.agent_id} className="border-border/30 opacity-60">
-                    <TableCell className="py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{agent.name}</span>
-                        <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-400/30 py-0">FULL</Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-2"><WalletBadge balance={agent.wallet_balance} /></TableCell>
-                    <TableCell className="py-2"><FillBar pct={100} /></TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.leads_today}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.daily_max}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">{agent.states_count}</TableCell>
-                    <TableCell className="py-2 text-center text-sm">
-                      ${(agent.monthly_budget || 0).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="py-2 text-center">
-                      <Switch
-                        checked={true}
-                        onCheckedChange={() => handleDisableClick(agent)}
-                        disabled={toggleAgent.isPending}
-                        className="data-[state=checked]:bg-emerald-500"
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {/* Excluded divider */}
-                {(pool?.excluded || []).length > 0 && (
-                  <TableRow className="border-border/30 bg-muted/20">
-                    <TableCell colSpan={8} className="py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Excluded
-                    </TableCell>
-                  </TableRow>
-                )}
-                {/* Excluded agents */}
-                {(pool?.excluded || []).map((agent: any) => {
-                  const isManualDisable = agent.consolidated_enabled === false;
-                  return (
-                    <TableRow key={agent.agent_id} className="border-border/30 opacity-40 hover:opacity-60">
-                      <TableCell className="py-2">
-                        <div>
-                          <span className="text-sm">{agent.name}</span>
-                          {isManualDisable && agent.consolidated_note && (
-                            <p className="text-[10px] text-muted-foreground mt-0.5 italic">{agent.consolidated_note}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-2">
-                        <WalletBadge balance={agent.wallet_balance} />
-                      </TableCell>
-                      <TableCell className="py-2 text-xs text-muted-foreground" colSpan={4}>
-                        ✗ {agent.exclude_reason}
-                      </TableCell>
-                      <TableCell />
-                      <TableCell className="py-2 text-center">
-                        {isManualDisable ? (
-                          <Switch
-                            checked={false}
-                            onCheckedChange={() => handleReEnable(agent)}
-                            disabled={toggleAgent.isPending}
-                          />
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground/40">—</span>
-                        )}
-                      </TableCell>
+              );
+            };
+
+            return (
+              <TooltipProvider delayDuration={150}>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-border/50 hover:bg-transparent">
+                      <TableHead className="text-xs w-[130px]">Agent</TableHead>
+                      <TableHead className="text-xs">Wallet</TableHead>
+                      <TableHead className="text-xs">Fill</TableHead>
+                      <TableHead className="text-xs text-center">Leads</TableHead>
+                      <TableHead className="text-xs text-center">Share</TableHead>
+                      <TableHead className="text-xs text-right">Cost w/ Fee</TableHead>
+                      <TableHead className="text-xs text-right">Avg CPL</TableHead>
+                      <TableHead className="text-xs text-center">Daily Max</TableHead>
+                      <TableHead className="text-xs text-center">States</TableHead>
+                      <TableHead className="text-xs text-center">Budget/mo</TableHead>
+                      <TableHead className="text-xs text-center w-16">Active</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
+                  </TableHeader>
+                  <TableBody>
+                    {/* Eligible agents */}
+                    {(pool?.eligible || []).map((agent: any) => renderActiveRow(agent, false))}
+                    {/* Capped agents */}
+                    {(pool?.capped || []).map((agent: any) => renderActiveRow(agent, true))}
+
+                    {/* Excluded divider */}
+                    {(pool?.excluded || []).length > 0 && (
+                      <TableRow className="border-border/30 bg-muted/20">
+                        <TableCell colSpan={11} className="py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                          Excluded
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* Excluded agents — full details + hover tooltip on name explaining exclusion */}
+                    {(pool?.excluded || []).map((agent: any) => {
+                      const isManualDisable = agent.consolidated_enabled === false;
+                      const attr = attrByAgentId.get(agent.agent_id);
+                      const isExempt = !!attr?.exempt;
+                      const leads = attr?.leads ?? agent.leads_today ?? 0;
+                      const share = attr?.budget_share ?? 0;
+                      const costWithFee = attr?.charged_with_fee ?? 0;
+                      const cpl = !isExempt && leads > 0 ? costWithFee / leads : null;
+                      const tooltipText = isManualDisable
+                        ? (agent.consolidated_note || 'Manually disabled')
+                        : (agent.exclude_reason || 'Unknown reason');
+                      return (
+                        <TableRow key={agent.agent_id} className="border-border/30 opacity-40 hover:opacity-70">
+                          <TableCell className="py-2">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-sm cursor-help underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+                                  {shortName(agent.name)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="right" className="max-w-xs text-xs">
+                                <div className="font-semibold text-red-300">Excluded</div>
+                                <div className="mt-1">{tooltipText}</div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell className="py-2">
+                            <WalletBadge balance={agent.wallet_balance} />
+                          </TableCell>
+                          <TableCell className="py-2">
+                            <FillBar pct={agent.fill_pct || 0} />
+                          </TableCell>
+                          <TableCell className="py-2 text-center text-sm">
+                            {leads > 0 ? <span className="text-emerald-400/70 font-medium">{leads}</span> : <span className="text-muted-foreground">0</span>}
+                          </TableCell>
+                          <TableCell className="py-2 text-center text-xs text-muted-foreground">
+                            {formatShare(share, isExempt)}
+                          </TableCell>
+                          <TableCell className="py-2 text-right text-xs font-mono text-muted-foreground">
+                            {isExempt ? '$0' : formatCost(costWithFee)}
+                          </TableCell>
+                          <TableCell className="py-2 text-right text-xs font-mono text-muted-foreground">
+                            {cpl != null ? `$${cpl.toFixed(2)}` : '—'}
+                          </TableCell>
+                          <TableCell className="py-2 text-center text-sm">{agent.daily_max}</TableCell>
+                          <TableCell className="py-2 text-center text-sm">{agent.states_count}</TableCell>
+                          <TableCell className="py-2 text-center text-sm">
+                            ${(agent.monthly_budget || 0).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="py-2 text-center">
+                            {isManualDisable ? (
+                              <Switch
+                                checked={false}
+                                onCheckedChange={() => handleReEnable(agent)}
+                                disabled={toggleAgent.isPending}
+                              />
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground/40">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TooltipProvider>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -651,8 +738,8 @@ export function ConsolidatedRouterDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Recent Leads + Cost Attribution side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Recent Leads — full width (Cost Attribution merged into Agent Pool above) */}
+      <div className="grid grid-cols-1 gap-6">
 
         {/* Recent Leads */}
         <Card className="bg-card/60 backdrop-blur-sm border-border/50">
@@ -725,81 +812,6 @@ export function ConsolidatedRouterDashboard() {
           </CardContent>
         </Card>
 
-        {/* Cost Attribution */}
-        <Card className="bg-card/60 backdrop-blur-sm border-border/50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wider">Cost Attribution</CardTitle>
-              <div className="text-right">
-                {summary?.model && (
-                  <span className="text-xs text-primary font-medium block">{summary.model.replace('_', '/').replace('hybrid/', 'Hybrid ')}</span>
-                )}
-                {summary && (
-                  <span className="text-xs text-muted-foreground">
-                    ${(summary.total_spend ?? 0).toFixed(2)} across {summary.pool_size ?? 0} agents
-                    {summary.exempt_agent && <span className="text-primary/70"> ({summary.exempt_agent} exempt)</span>}
-                  </span>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {summaryLoading ? (
-              <div className="p-4 space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-7" />)}</div>
-            ) : (summary?.breakdown?.length ?? 0) > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border/50 hover:bg-transparent">
-                    <TableHead className="text-xs">Agent</TableHead>
-                    <TableHead className="text-xs text-center">Share</TableHead>
-                    <TableHead className="text-xs text-center">Leads</TableHead>
-                    <TableHead className="text-xs text-right">Raw Cost</TableHead>
-                    <TableHead className="text-xs text-right">w/ Fee</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {(summary.breakdown || []).map((row: any) => (
-                    <TableRow key={row.agent_id || row.agent} className={`border-border/30 ${row.exempt ? 'opacity-50' : ''}`}>
-                      <TableCell className="py-1.5 text-xs font-medium">
-                        {row.agent}
-                        {row.exempt && <span className="ml-1.5 text-[10px] text-primary/70 font-semibold">OWNER</span>}
-                      </TableCell>
-                      <TableCell className="py-1.5 text-xs text-center text-muted-foreground">
-                        {row.exempt ? '—' : `${(row.budget_share ?? 0).toFixed(1)}%`}
-                      </TableCell>
-                      <TableCell className="py-1.5 text-xs text-center">
-                        {row.leads > 0 ? <span className="text-emerald-400 font-medium">{row.leads}</span> : <span className="text-muted-foreground">0</span>}
-                      </TableCell>
-                      <TableCell className="py-1.5 text-xs text-right font-mono">
-                        {row.exempt ? '$0' : `$${(row.charged_before_fee ?? 0).toFixed(2)}`}
-                      </TableCell>
-                      <TableCell className="py-1.5 text-xs text-right font-mono text-primary">
-                        {row.exempt ? '$0' : `$${(row.charged_with_fee ?? 0).toFixed(2)}`}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="border-t border-border/50 bg-muted/20">
-                    <TableCell className="py-2 text-xs font-semibold">Total</TableCell>
-                    <TableCell className="py-2 text-xs text-center font-semibold">100%</TableCell>
-                    <TableCell className="py-2 text-xs text-center font-semibold">{summary.total_leads}</TableCell>
-                    <TableCell className="py-2 text-xs text-right font-mono font-semibold">
-                      ${(summary.total_spend ?? 0).toFixed(2)}
-                    </TableCell>
-                    <TableCell className="py-2 text-xs text-right font-mono font-semibold text-primary">
-                      ${((summary.total_spend ?? 0) * 1.10).toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            ) : (
-              <div className="flex items-center justify-center h-32 text-xs text-muted-foreground">
-                {summary?.total_spend > 0
-                  ? 'Spend recorded — attribution will distribute on next run'
-                  : 'No spend data yet for today'}
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
