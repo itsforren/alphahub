@@ -458,6 +458,24 @@ serve(async (req) => {
 });
 
 // =============================================
+// Read the list of pool campaigns from onboarding_settings.
+// Used for get_pool_lead_counts so the router and attribute-consolidated-spend
+// count pool leads identically. Falls back to the single hardcoded ID if the
+// setting is missing (preserves prior behavior for safety).
+// =============================================
+async function getConsolidatedCampaignIds(supabase: any): Promise<string[]> {
+  const { data } = await supabase
+    .from('onboarding_settings')
+    .select('setting_value')
+    .eq('setting_key', 'consolidated_campaign_ids')
+    .maybeSingle();
+  if (data?.setting_value) {
+    return String(data.setting_value).split(',').map((s: string) => s.trim()).filter(Boolean);
+  }
+  return [CONSOLIDATED_CAMPAIGN_ID];
+}
+
+// =============================================
 // ROLLING CPL — 7-day average from actual campaign data
 // =============================================
 async function getRollingCPL(supabase: any): Promise<number> {
@@ -517,37 +535,25 @@ async function routeAgent(supabase: any, state: string) {
   const clientIds = clients.map((c: any) => c.id);
   const MIN_WALLET_BALANCE = 100;
 
-  // Fetch everything needed for balance computation in parallel
-  const [perfResult, walletResult, depositResult, spendResult] = await Promise.all([
-    // Performance fee percentage (e.g. 10 → multiply spend by 1.10)
-    supabase
-      .from('onboarding_settings')
-      .select('setting_value')
-      .eq('setting_key', 'performance_percentage')
-      .maybeSingle(),
-    // Wallet settings: monthly cap for fill-score calculation
+  // Fetch wallet caps + canonical balances in parallel.
+  // compute_wallet_balances() is a SQL batch wrapper around compute_wallet_balance();
+  // the canonical RPC is the single source of truth for balances across the entire
+  // codebase (ClientDetail, check-low-balance, dispute-webhook, stripe-billing-webhook,
+  // manual-wallet-refill, mcp-proxy, every React hook). The router used to
+  // reimplement the math inline and drifted — e.g. Joshua $325 (RPC) vs $992 (manual).
+  const [walletResult, balancesResult] = await Promise.all([
+    // Monthly cap per client — needed for fill-score / pacing calculations below.
     supabase
       .from('client_wallets')
       .select('client_id, monthly_ad_spend_cap')
       .in('client_id', clientIds),
-    // All deposits + adjustments with created_at (needed to derive first_deposit_date)
-    supabase
-      .from('wallet_transactions')
-      .select('client_id, amount, created_at')
-      .in('client_id', clientIds)
-      .in('transaction_type', ['deposit', 'adjustment']),
-    // All ad spend rows — filtered per-client by first_deposit_date below
-    supabase
-      .from('ad_spend_daily')
-      .select('client_id, cost, spend_date')
-      .in('client_id', clientIds),
+    // Canonical wallet balance for every pool client in a single round-trip.
+    supabase.rpc('compute_wallet_balances', { p_client_ids: clientIds }),
   ]);
 
-  // Performance fee multiplier (default 10% if setting missing)
-  const perfPct = perfResult.data?.setting_value != null
-    ? Number(perfResult.data.setting_value)
-    : 10;
-  const feeMultiplier = 1 + perfPct / 100;
+  if (balancesResult.error) {
+    console.error('[ROUTER] compute_wallet_balances RPC failed:', balancesResult.error);
+  }
 
   // Build per-client wallet settings map
   const walletSettings: Record<string, { monthly_ad_spend_cap: number | null }> = {};
@@ -555,45 +561,10 @@ async function routeAgent(supabase: any, state: string) {
     walletSettings[w.client_id] = { monthly_ad_spend_cap: w.monthly_ad_spend_cap };
   });
 
-  // Sum deposits per client; track first deposit date (canonical balance start)
-  const depositTotals: Record<string, number> = {};
-  const firstDepositDates: Record<string, string> = {};
-  (depositResult.data || []).forEach((d: any) => {
-    depositTotals[d.client_id] = (depositTotals[d.client_id] || 0) + (d.amount || 0);
-    // Keep the earliest deposit/adjustment date as the tracking start
-    const dateStr = d.created_at.split('T')[0];
-    if (!firstDepositDates[d.client_id] || dateStr < firstDepositDates[d.client_id]) {
-      firstDepositDates[d.client_id] = dateStr;
-    }
-  });
-
-  // Sum ad spend per client — only from first_deposit_date onwards.
-  // This matches the compute_wallet_balance() RPC used by the frontend.
-  const spendTotals: Record<string, number> = {};
-  (spendResult.data || []).forEach((s: any) => {
-    const startDate = firstDepositDates[s.client_id];
-    if (!startDate || s.spend_date >= startDate) {
-      spendTotals[s.client_id] = (spendTotals[s.client_id] || 0) + (s.cost || 0);
-    }
-  });
-
-  // Compute wallet balance: deposits − (spend × feeMultiplier)
-  // Also estimate today's projected cost (ad_spend_daily only written at midnight)
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-  const totalPoolBudget = clientIds.reduce((sum, id) => sum + (walletSettings[id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET), 0);
-  // Rough estimate: each agent's daily share ≈ (their budget / total budget) × average daily pool spend
-  // Average daily pool spend ≈ total monthly budgets / 30
-  const estimatedDailyPoolSpend = totalPoolBudget / 30;
-
+  // Canonical balances keyed by client_id.
   const walletBalances: Record<string, number> = {};
-  clientIds.forEach((id: string) => {
-    const dep   = depositTotals[id] || 0;
-    const spend = spendTotals[id]   || 0;
-    // Check if today's ad_spend_daily row exists — if not, add projected cost
-    const hasTodaySpend = (spendResult.data || []).some((s: any) => s.client_id === id && s.spend_date === today);
-    const budget = walletSettings[id]?.monthly_ad_spend_cap || DEFAULT_MONTHLY_BUDGET;
-    const projectedToday = hasTodaySpend ? 0 : (budget / totalPoolBudget) * estimatedDailyPoolSpend;
-    walletBalances[id] = dep - ((spend + projectedToday) * feeMultiplier);
+  (balancesResult.data || []).forEach((r: any) => {
+    walletBalances[r.client_id] = Number(r.remaining_balance) || 0;
   });
 
   // Filter: only agents with wallet balance > $100
@@ -620,30 +591,39 @@ async function routeAgent(supabase: any, state: string) {
     return { error: 'No agents cover state: ' + state, total_covering: 0 };
   }
 
-  // 3. Get today's + 5-day rolling lead counts per agent (for fill score + pacing)
+  // 3. Get today's + 5-day rolling pool-lead counts per agent (fill score + pacing).
+  //    Uses get_pool_lead_counts RPC (same one attribute-consolidated-spend uses) so
+  //    routing and attribution share one definition of "pool lead": every
+  //    CONSOLIDATED_ROUTER lead plus any DEMAND_GEN lead whose campaign_id is in
+  //    the configured pool list.
   const today = new Date().toISOString().split('T')[0];
   const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const nowIso = new Date().toISOString();
   const agentIds = covering.map((c: any) => c.agent_id);
+  const poolCampaignIds = await getConsolidatedCampaignIds(supabase);
 
-  const { data: recentLeads } = await supabase
-    .from('leads')
-    .select('agent_id, first_name, last_name, created_at')
-    .in('agent_id', agentIds)
-    .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
-    .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN']);
+  const [todayCountsResult, rollingCountsResult] = await Promise.all([
+    supabase.rpc('get_pool_lead_counts', {
+      p_start: today + 'T00:00:00Z',
+      p_end:   nowIso,
+      p_campaign_ids: poolCampaignIds,
+      p_agent_ids:    agentIds,
+    }),
+    supabase.rpc('get_pool_lead_counts', {
+      p_start: fiveDaysAgo + 'T00:00:00Z',
+      p_end:   nowIso,
+      p_campaign_ids: poolCampaignIds,
+      p_agent_ids:    agentIds,
+    }),
+  ]);
 
-  const leadCounts: Record<string, number> = {};      // today only
-  const leadCounts5d: Record<string, number> = {};    // rolling 5 days
-  if (recentLeads) {
-    recentLeads
-      .filter((l: any) => !isTestLead(l))
-      .forEach((l: any) => {
-        leadCounts5d[l.agent_id] = (leadCounts5d[l.agent_id] || 0) + 1;
-        if (l.created_at >= today + 'T00:00:00Z') {
-          leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
-        }
-      });
-  }
+  if (todayCountsResult.error) console.error('[ROUTER] get_pool_lead_counts (today) failed:', todayCountsResult.error);
+  if (rollingCountsResult.error) console.error('[ROUTER] get_pool_lead_counts (5d) failed:', rollingCountsResult.error);
+
+  const leadCounts: Record<string, number> = {};   // today only
+  const leadCounts5d: Record<string, number> = {}; // rolling 5 days
+  (todayCountsResult.data || []).forEach((r: any) => { leadCounts[r.agent_id] = Number(r.lead_count); });
+  (rollingCountsResult.data || []).forEach((r: any) => { leadCounts5d[r.agent_id] = Number(r.lead_count); });
 
   // 4. Calculate fill scores and filter capped agents
   const PACING_WINDOW = 5; // days
@@ -734,65 +714,49 @@ async function getPoolStatus(supabase: any) {
 
   const clientIds = clients.map((c: any) => c.id);
 
-  const [perfResult, walletResult, depositResult, spendResult] = await Promise.all([
-    supabase.from('onboarding_settings').select('setting_value').eq('setting_key', 'performance_percentage').maybeSingle(),
+  // Wallet caps + canonical balances + pool lead counts, all in parallel.
+  // Single source of truth: compute_wallet_balances() / get_pool_lead_counts() RPCs.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const nowIso = new Date().toISOString();
+  const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
+  const poolCampaignIds = await getConsolidatedCampaignIds(supabase);
+
+  const [walletResult, balancesResult, todayCountsResult, rollingCountsResult] = await Promise.all([
     supabase.from('client_wallets').select('client_id, monthly_ad_spend_cap').in('client_id', clientIds),
-    supabase.from('wallet_transactions').select('client_id, amount, created_at').in('client_id', clientIds).in('transaction_type', ['deposit', 'adjustment']),
-    supabase.from('ad_spend_daily').select('client_id, cost, spend_date').in('client_id', clientIds),
+    supabase.rpc('compute_wallet_balances', { p_client_ids: clientIds }),
+    supabase.rpc('get_pool_lead_counts', {
+      p_start: today + 'T00:00:00Z',
+      p_end:   nowIso,
+      p_campaign_ids: poolCampaignIds,
+      p_agent_ids:    agentIds,
+    }),
+    supabase.rpc('get_pool_lead_counts', {
+      p_start: fiveDaysAgo + 'T00:00:00Z',
+      p_end:   nowIso,
+      p_campaign_ids: poolCampaignIds,
+      p_agent_ids:    agentIds,
+    }),
   ]);
 
-  const perfPct       = perfResult.data?.setting_value != null ? Number(perfResult.data.setting_value) : 10;
-  const feeMultiplier = 1 + perfPct / 100;
+  if (balancesResult.error)      console.error('[ROUTER/pool] compute_wallet_balances failed:', balancesResult.error);
+  if (todayCountsResult.error)   console.error('[ROUTER/pool] get_pool_lead_counts (today) failed:', todayCountsResult.error);
+  if (rollingCountsResult.error) console.error('[ROUTER/pool] get_pool_lead_counts (5d) failed:', rollingCountsResult.error);
 
   const walletSettings: Record<string, { monthly_ad_spend_cap: number | null }> = {};
   (walletResult.data || []).forEach((w: any) => {
     walletSettings[w.client_id] = { monthly_ad_spend_cap: w.monthly_ad_spend_cap };
   });
 
-  const depositTotals: Record<string, number> = {};
-  const firstDepositDates: Record<string, string> = {};
-  (depositResult.data || []).forEach((d: any) => {
-    depositTotals[d.client_id] = (depositTotals[d.client_id] || 0) + (d.amount || 0);
-    const dateStr = d.created_at.split('T')[0];
-    if (!firstDepositDates[d.client_id] || dateStr < firstDepositDates[d.client_id]) {
-      firstDepositDates[d.client_id] = dateStr;
-    }
-  });
-
-  const spendTotals: Record<string, number> = {};
-  (spendResult.data || []).forEach((s: any) => {
-    const startDate = firstDepositDates[s.client_id];
-    if (!startDate || s.spend_date >= startDate) {
-      spendTotals[s.client_id] = (spendTotals[s.client_id] || 0) + (s.cost || 0);
-    }
-  });
-
   const walletBalances: Record<string, number> = {};
-  clientIds.forEach((id: string) => {
-    walletBalances[id] = (depositTotals[id] || 0) - (spendTotals[id] || 0) * feeMultiplier;
+  (balancesResult.data || []).forEach((r: any) => {
+    walletBalances[r.client_id] = Number(r.remaining_balance) || 0;
   });
-
-  // Today's + 5-day rolling leads per agent (for fill scores + pacing) — test leads excluded
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-  const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const agentIds = clients.filter((c: any) => c.agent_id).map((c: any) => c.agent_id);
-  const { data: recentLeads } = await supabase
-    .from('leads')
-    .select('agent_id, first_name, last_name, created_at')
-    .in('agent_id', agentIds)
-    .gte('created_at', fiveDaysAgo + 'T00:00:00Z')
-    .in('lead_source', ['CONSOLIDATED_ROUTER', 'DEMAND_GEN']);
 
   const leadCounts: Record<string, number> = {};
   const leadCounts5d: Record<string, number> = {};
-  (recentLeads || [])
-    .filter((l: any) => !isTestLead(l))
-    .forEach((l: any) => {
-      leadCounts5d[l.agent_id] = (leadCounts5d[l.agent_id] || 0) + 1;
-      if (l.created_at >= today + 'T00:00:00Z') {
-        leadCounts[l.agent_id] = (leadCounts[l.agent_id] || 0) + 1;
-      }
-    });
+  (todayCountsResult.data || []).forEach((r: any) => { leadCounts[r.agent_id] = Number(r.lead_count); });
+  (rollingCountsResult.data || []).forEach((r: any) => { leadCounts5d[r.agent_id] = Number(r.lead_count); });
 
   const PACING_WINDOW = 5;
   const rollingCPL = await getRollingCPL(supabase);
